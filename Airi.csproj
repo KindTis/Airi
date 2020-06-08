@@ -14,6 +14,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.24" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="MahApps.Metro">
       <HintPath>lib\MahApps.Metro.dll</HintPath>
     </Reference>
