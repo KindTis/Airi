@@ -28,11 +28,12 @@ namespace Airi
     public partial class MainWindow
     {
         HtmlWeb mWeb = new HtmlWeb();
-        private List<CompareListItem> mThumbnailList = new List<CompareListItem>();
+        private AiriJSON mAiri = null;
         private BackgroundWorker mDownloadWorker = new BackgroundWorker();
         private Border mPrevSelectedBorder = null;
+        private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
 
-        public class CompareListItem
+        public class VideoInfo
         {
             // binded
             public string strImagePath { get; set; }
@@ -40,25 +41,59 @@ namespace Airi
 
             // ext
             public string fullPath { get; set; }
-        }        
+        }
+
+        public class AiriJSON
+        {
+            public List<string> ParseDirectory { get; set; }
+            public List<VideoInfo> Videos { get; set; }
+        }
 
         public MainWindow()
         {
             InitializeComponent();
             Directory.CreateDirectory("thumb");
-            lbThumbnailList.ItemsSource = mThumbnailList;
+
+            _LoadArirJson();
 
             mDownloadWorker.WorkerReportsProgress = true;
             mDownloadWorker.WorkerSupportsCancellation = true;
             mDownloadWorker.DoWork += new DoWorkEventHandler(_DoWork);
             mDownloadWorker.RunWorkerAsync();
-            //File.WriteAllText(@"list.json", JsonConvert.SerializeObject(mThumbnailList));
         }
 
-        public void _DoWork(object sender, DoWorkEventArgs e)
+        private void _LoadArirJson()
         {
-            _ParseDirectory(@"e:\");
+            if (File.Exists(@"Airi.json"))
+            {
+                mAiri = JsonConvert.DeserializeObject<AiriJSON>(File.ReadAllText(@"Airi.json"));
+            }
+
+            if (mAiri == null)
+            {
+                mAiri = new AiriJSON();
+                mAiri.ParseDirectory = new List<string>();
+                mAiri.Videos = new List<VideoInfo>();
+                mAiri.ParseDirectory.Add(@"e:\Fascinating\Candidate");
+            }
+
+            lbThumbnailList.ItemsSource = mAiri.Videos;
+            _VideoListMapUpdate();
+        }
+
+        private void _SaveAiriJson()
+        {
+            File.WriteAllText(@"Airi.json", JsonConvert.SerializeObject(mAiri, Formatting.Indented));
+        }
+
+        private void _DoWork(object sender, DoWorkEventArgs e)
+        {
+            foreach (string dir in mAiri.ParseDirectory)
+            {
+                _ParseDirectory(dir);
+            }
             _UpdateCoverImg();
+            _SaveAiriJson();
         }
 
         private void _ParseDirectory(string path)
@@ -66,12 +101,17 @@ namespace Airi
             string[] fileEntries = Directory.GetFiles(path);
             foreach (string fileName in fileEntries)
             {
-                mThumbnailList.Add(new CompareListItem()
+                string _strTitle = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                if (mVideoListMap.ContainsKey(_strTitle))
+                    continue;
+
+                mAiri.Videos.Add(new VideoInfo()
                 {
                     strImagePath = System.IO.Path.GetFullPath(@"thumb/noimage.jpg"),
-                    strTitle = System.IO.Path.GetFileNameWithoutExtension(fileName),
+                    strTitle = _strTitle,
                     fullPath = fileName
                 });
+                mVideoListMap.Add(_strTitle, mAiri.Videos.Count - 1);
             }
 
             string[] subdirectoryEntries = Directory.GetDirectories(path);
@@ -81,8 +121,19 @@ namespace Airi
 
         private void _UpdateCoverImg()
         {
-            foreach (var e in mThumbnailList)
+            List<VideoInfo> removeQue = new List<VideoInfo>();
+            foreach (var e in mAiri.Videos)
             {
+                if (!File.Exists(e.fullPath))
+                {
+                    removeQue.Add(e);
+                    continue;
+                }
+
+                string imgName = System.IO.Path.GetFileNameWithoutExtension(e.strImagePath);
+                if (imgName != "noimage")
+                    continue;
+
                 var html = @"http://www.javlibrary.com/en/vl_searchbyid.php?keyword=" + e.strTitle;
                 var htmlDoc = mWeb.Load(html);
                 if (_ParsingHTMLPage(htmlDoc.DocumentNode, e.strTitle))
@@ -94,6 +145,12 @@ namespace Airi
                 {
                     lbThumbnailList.Items.Refresh();
                 }));
+            }
+
+            foreach (var q in removeQue)
+            {
+                mVideoListMap.Remove(q.strTitle);
+                mAiri.Videos.Remove(q);
             }
         }
 
@@ -131,7 +188,17 @@ namespace Airi
             }
         }
 
-        private void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void _VideoListMapUpdate()
+        {
+            int index = 0;
+            mVideoListMap.Clear();
+            foreach (var e in mAiri.Videos)
+            {
+                mVideoListMap.Add(e.strTitle, index++);
+            }
+        }
+
+        public void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var item = sender as ListViewItem;
             Border b = Util.FindByName("Outline", item) as Border;
@@ -146,7 +213,7 @@ namespace Airi
             {
                 new Process
                 {
-                    StartInfo = new ProcessStartInfo(mThumbnailList[lbThumbnailList.SelectedIndex].fullPath)
+                    StartInfo = new ProcessStartInfo(mAiri.Videos[lbThumbnailList.SelectedIndex].fullPath)
                     {
                         UseShellExecute = true
                     }
