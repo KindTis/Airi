@@ -6,55 +6,69 @@
         xmlns:Controls="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
         xmlns:local="clr-namespace:Airi"
         mc:Ignorable="d"
+        ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Title="Airi" Height="900" Width="1358">
-    <Grid Background="#2D2D30">
-        <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30"
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Height="30">
+            <Button Margin="10,0,1280,0">목록 갱신</Button>
+            <Button Margin="1223,0,75,0" Click="OnBtnClickNameSort">제목순</Button>
+            <Button Margin="1288,0,10,0" Click="OnBtnClickTimeSort">시간순</Button>
+        </Grid>
+        <Grid DockPanel.Dock="Top" Height="5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="21*"/>
+                <ColumnDefinition Width="173*"/>
+            </Grid.ColumnDefinitions>
+        </Grid>
+        <Grid Background="#2D2D30">
+            <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30"
                   BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionMode="Single"
                   SelectedItem="{Binding SelectedComputer, RelativeSource={RelativeSource AncestorType=Window}}">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="{x:Type ListViewItem}">
-                    <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListViewItem_PreviewMouseLeftButtonDown" />
-                    <Setter Property="Margin" Value="5,5,5,5"/>
-                    <Setter Property="Padding" Value="0,0,0,0"/>
-                    <Setter Property="HorizontalAlignment" Value="Left"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="{x:Type ListViewItem}">
-                                <Border Name="Outline" BorderBrush="Transparent" BorderThickness="2">
-                                    <Grid HorizontalAlignment="Left" VerticalAlignment="Top" >
-                                        <Border x:Name="insideBorder" BorderBrush="{x:Null}" BorderThickness="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" CornerRadius="2.5"/>
-                                        <StackPanel HorizontalAlignment="Stretch"  VerticalAlignment="Stretch">
-                                            <ContentPresenter/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel/>
-                </ItemsPanelTemplate>
-            </ListView.ItemsPanel>
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding strTitle}" FontSize="18" Foreground="#FFFFFF" Background="#404040" Padding="5, 0, 0, 0"/>
-                        <Image Source="{Binding strImagePath}" Width="320" Stretch="Uniform"/>
-                    </DockPanel>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-            <!--preview begin-->
-            <!--<ListViewItem>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="{x:Type ListViewItem}">
+                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListViewItem_PreviewMouseLeftButtonDown" />
+                        <Setter Property="Margin" Value="5,5,5,5"/>
+                        <Setter Property="Padding" Value="0,0,0,0"/>
+                        <Setter Property="HorizontalAlignment" Value="Left"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type ListViewItem}">
+                                    <Border Name="Outline" BorderBrush="Transparent" BorderThickness="2">
+                                        <Grid HorizontalAlignment="Left" VerticalAlignment="Top" >
+                                            <Border x:Name="insideBorder" BorderBrush="{x:Null}" BorderThickness="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" CornerRadius="2.5"/>
+                                            <StackPanel HorizontalAlignment="Stretch"  VerticalAlignment="Stretch">
+                                                <ContentPresenter/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Bottom" Text="{Binding strTitle}" FontSize="18" Foreground="#FFFFFF" Background="#404040" Padding="5, 0, 0, 0"/>
+                            <Image Source="{Binding strImagePath}" Width="320" Stretch="Uniform"/>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <!--preview begin-->
+                <!--<ListViewItem>
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Bottom" Text="Title" FontSize="18" Foreground="#FFFFFF" Background="#404040" Padding="5, 0, 0, 0"/>
                     <Image Source="d:\Projects\Airi\bin\Debug\netcoreapp3.1\thumb/img.jpg" Width="320" Stretch="Uniform"/>
                 </DockPanel>
             </ListViewItem>-->
-            <!--preview end-->
-        </ListView>
-    </Grid>
+                <!--preview end-->
+            </ListView>
+        </Grid>
+    </DockPanel>
 </Controls:MetroWindow>

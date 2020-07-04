@@ -33,6 +33,14 @@ namespace Airi
         private Border mPrevSelectedBorder = null;
         private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
 
+        public enum SortType : int
+        {
+            SORT_ASC_NAME = 0,
+            SORT_DESC_NAME,
+            SORT_ASC_TIME,
+            SORT_DESC_TIME
+        }
+
         public class VideoInfo
         {
             // binded
@@ -41,10 +49,12 @@ namespace Airi
 
             // ext
             public string fullPath { get; set; }
+            public DateTime dateTime { get; set; }
         }
 
         public class AiriJSON
         {
+            public int SortType { get; set; }
             public List<string> ParseDirectory { get; set; }
             public List<VideoInfo> Videos { get; set; }
         }
@@ -72,13 +82,14 @@ namespace Airi
             if (mAiri == null)
             {
                 mAiri = new AiriJSON();
+                mAiri.SortType = (int)SortType.SORT_ASC_NAME;
                 mAiri.ParseDirectory = new List<string>();
                 mAiri.Videos = new List<VideoInfo>();
                 mAiri.ParseDirectory.Add(@"e:\Fascinating\Candidate");
             }
 
             lbThumbnailList.ItemsSource = mAiri.Videos;
-            _VideoListMapUpdate();
+            _VideoListSort((SortType)mAiri.SortType);
         }
 
         private void _SaveAiriJson()
@@ -109,8 +120,9 @@ namespace Airi
                 {
                     strImagePath = System.IO.Path.GetFullPath(@"thumb/noimage.jpg"),
                     strTitle = _strTitle,
-                    fullPath = fileName
-                });
+                    fullPath = fileName,
+                    dateTime = File.GetCreationTime(fileName)
+            });
                 mVideoListMap.Add(_strTitle, mAiri.Videos.Count - 1);
             }
 
@@ -188,14 +200,52 @@ namespace Airi
             }
         }
 
-        private void _VideoListMapUpdate()
+        private void _VideoListSort(SortType sortType)
         {
+            switch (sortType)
+            {
+                case SortType.SORT_ASC_NAME:
+                    {
+                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        {
+                            return left.strTitle.CompareTo(right.strTitle);
+                        });
+                        break;
+                    }
+                case SortType.SORT_DESC_NAME:
+                    {
+                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        {
+                            return left.strTitle.CompareTo(right.strTitle) * -1;
+                        });
+                        break;
+                    }
+                case SortType.SORT_ASC_TIME:
+                    {
+                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        {
+                            return left.dateTime.CompareTo(right.dateTime);
+                        });
+                        break;
+                    }
+                case SortType.SORT_DESC_TIME:
+                    {
+                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        {
+                            return left.dateTime.CompareTo(right.dateTime) * -1;
+                        });
+                        break;
+                    }
+            }
+
             int index = 0;
             mVideoListMap.Clear();
             foreach (var e in mAiri.Videos)
             {
                 mVideoListMap.Add(e.strTitle, index++);
             }
+
+            lbThumbnailList.Items.Refresh();
         }
 
         public void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -219,6 +269,36 @@ namespace Airi
                     }
                 }.Start();
             }
+        }
+
+        private void OnBtnClickNameSort(object sender, RoutedEventArgs e)
+        {
+            if (mAiri.SortType == (int)SortType.SORT_ASC_NAME)
+            {
+                mAiri.SortType = (int)SortType.SORT_DESC_NAME;
+            }
+            else
+            {
+                mAiri.SortType = (int)SortType.SORT_ASC_NAME;
+            }
+
+            _VideoListSort((SortType)mAiri.SortType);
+            _SaveAiriJson();
+        }
+
+        private void OnBtnClickTimeSort(object sender, RoutedEventArgs e)
+        {
+            if (mAiri.SortType == (int)SortType.SORT_ASC_TIME)
+            {
+                mAiri.SortType = (int)SortType.SORT_DESC_TIME;
+            }
+            else
+            {
+                mAiri.SortType = (int)SortType.SORT_ASC_TIME;
+            }
+
+            _VideoListSort((SortType)mAiri.SortType);
+            _SaveAiriJson();
         }
     }
 }
