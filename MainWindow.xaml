@@ -22,7 +22,7 @@
             </Grid.ColumnDefinitions>
         </Grid>
         <Grid Background="#2D2D30">
-            <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30"
+            <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30" KeyDown="ListViewKeyDown"
                   BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionMode="Single"
                   SelectedItem="{Binding SelectedComputer, RelativeSource={RelativeSource AncestorType=Window}}">
                 <ListView.ItemContainerStyle>

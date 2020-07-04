@@ -85,11 +85,11 @@ namespace Airi
                 mAiri.SortType = (int)SortType.SORT_ASC_NAME;
                 mAiri.ParseDirectory = new List<string>();
                 mAiri.Videos = new List<VideoInfo>();
-                mAiri.ParseDirectory.Add(@"e:\Fascinating\Candidate");
+                mAiri.ParseDirectory.Add(@"e:\Fascinating\Jap");
             }
 
             lbThumbnailList.ItemsSource = mAiri.Videos;
-            _VideoListSort((SortType)mAiri.SortType);
+            _VideoListMapUpdate();
         }
 
         private void _SaveAiriJson()
@@ -103,6 +103,7 @@ namespace Airi
             {
                 _ParseDirectory(dir);
             }
+            _VideoListSort((SortType)mAiri.SortType);
             _UpdateCoverImg();
             _SaveAiriJson();
         }
@@ -112,6 +113,13 @@ namespace Airi
             string[] fileEntries = Directory.GetFiles(path);
             foreach (string fileName in fileEntries)
             {
+                string extension = System.IO.Path.GetExtension(fileName);
+                if (!string.Equals(extension, ".mp4", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.Equals(extension, ".mkv", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.Equals(extension, ".avi", StringComparison.CurrentCultureIgnoreCase)
+                    && !string.Equals(extension, ".wmv", StringComparison.CurrentCultureIgnoreCase))
+                    continue;
+
                 string _strTitle = System.IO.Path.GetFileNameWithoutExtension(fileName);
                 if (mVideoListMap.ContainsKey(_strTitle))
                     continue;
@@ -122,8 +130,7 @@ namespace Airi
                     strTitle = _strTitle,
                     fullPath = fileName,
                     dateTime = File.GetCreationTime(fileName)
-            });
-                mVideoListMap.Add(_strTitle, mAiri.Videos.Count - 1);
+                });
             }
 
             string[] subdirectoryEntries = Directory.GetDirectories(path);
@@ -200,6 +207,16 @@ namespace Airi
             }
         }
 
+        private void _VideoListMapUpdate()
+        {
+            int index = 0;
+            mVideoListMap.Clear();
+            foreach (var e in mAiri.Videos)
+            {
+                mVideoListMap.Add(e.strTitle, index++);
+            }
+        }
+
         private void _VideoListSort(SortType sortType)
         {
             switch (sortType)
@@ -237,15 +254,12 @@ namespace Airi
                         break;
                     }
             }
+            _VideoListMapUpdate();
 
-            int index = 0;
-            mVideoListMap.Clear();
-            foreach (var e in mAiri.Videos)
+            Dispatcher.Invoke((Action)(() =>
             {
-                mVideoListMap.Add(e.strTitle, index++);
-            }
-
-            lbThumbnailList.Items.Refresh();
+                lbThumbnailList.Items.Refresh();
+            }));
         }
 
         public void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -268,6 +282,21 @@ namespace Airi
                         UseShellExecute = true
                     }
                 }.Start();
+            }
+        }
+
+        private void ListViewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete)
+            {
+                if (MessageBox.Show("파일과 함께 삭제 하시겠습니까?", "확인", MessageBoxButton.YesNo)
+                    == MessageBoxResult.Yes)
+                {
+                    Util.MoveToRecycleBin(mAiri.Videos[lbThumbnailList.SelectedIndex].fullPath);
+                }
+                mAiri.Videos.RemoveAt(lbThumbnailList.SelectedIndex);
+                _VideoListSort((SortType)mAiri.SortType);
+                _SaveAiriJson();
             }
         }
 
