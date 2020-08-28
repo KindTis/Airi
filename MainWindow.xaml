@@ -11,7 +11,7 @@
         Title="Airi" Height="900" Width="1358">
     <DockPanel>
         <Grid DockPanel.Dock="Top" Height="30">
-            <Button Margin="10,0,1280,0">목록 갱신</Button>
+            <Button Margin="10,0,1280,0" Name="btnUpdateList" Click="OnBtnClickUpdateList">목록 갱신</Button>
             <Button Margin="1223,0,75,0" Click="OnBtnClickNameSort">제목순</Button>
             <Button Margin="1288,0,10,0" Click="OnBtnClickTimeSort">시간순</Button>
         </Grid>

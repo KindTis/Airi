@@ -66,9 +66,11 @@ namespace Airi
 
             _LoadArirJson();
 
+            btnUpdateList.IsEnabled = false;
             mDownloadWorker.WorkerReportsProgress = true;
             mDownloadWorker.WorkerSupportsCancellation = true;
             mDownloadWorker.DoWork += new DoWorkEventHandler(_DoWork);
+            mDownloadWorker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(_WorkComplete);
             mDownloadWorker.RunWorkerAsync();
         }
 
@@ -106,6 +108,12 @@ namespace Airi
             _VideoListSort((SortType)mAiri.SortType);
             _UpdateCoverImg();
             _SaveAiriJson();
+        }
+
+        private void _WorkComplete(object sender, RunWorkerCompletedEventArgs e)
+        {
+            this.Title = "Airi";
+            btnUpdateList.IsEnabled = true;
         }
 
         private void _ParseDirectory(string path)
@@ -153,6 +161,11 @@ namespace Airi
                 if (imgName != "noimage")
                     continue;
 
+                Dispatcher.Invoke((Action)(() =>
+                {
+                    this.Title = "Airi [" + e.strTitle + " 갱신 중...]";
+                }));
+
                 var html = @"http://www.javlibrary.com/en/vl_searchbyid.php?keyword=" + e.strTitle;
                 var htmlDoc = mWeb.Load(html);
                 if (_ParsingHTMLPage(htmlDoc.DocumentNode, e.strTitle))
@@ -189,6 +202,8 @@ namespace Airi
             else
             {
                 selectNode = node.SelectSingleNode("//img[contains(@id, 'video_jacket_img')]");
+                if (selectNode == null)
+                    return false;
                 var imgSrc = selectNode.Attributes["src"].Value;
 
                 try
@@ -298,6 +313,12 @@ namespace Airi
                 _VideoListSort((SortType)mAiri.SortType);
                 _SaveAiriJson();
             }
+        }
+
+        private void OnBtnClickUpdateList(object sender, RoutedEventArgs e)
+        {
+            btnUpdateList.IsEnabled = false;
+            mDownloadWorker.RunWorkerAsync();
         }
 
         private void OnBtnClickNameSort(object sender, RoutedEventArgs e)
