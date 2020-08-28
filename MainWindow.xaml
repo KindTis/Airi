@@ -8,26 +8,33 @@
         mc:Ignorable="d"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
-        Title="Airi" Height="900" Width="1358">
+        Title="Airi" Height="900" Width="1490">
     <DockPanel>
         <Grid DockPanel.Dock="Top" Height="30">
-            <Button Margin="10,0,1280,0" Name="btnUpdateList" Click="OnBtnClickUpdateList">목록 갱신</Button>
-            <Button Margin="1223,0,75,0" Click="OnBtnClickNameSort">제목순</Button>
-            <Button Margin="1288,0,10,0" Click="OnBtnClickTimeSort">시간순</Button>
+            <Button Margin="10,0,1400,0" Name="btnUpdateList" Click="OnBtnClickUpdateList">목록 갱신</Button>
+            <Button Margin="1355,0,75,0" Name="btnSortbyTitle" Click="OnBtnClickNameSort">제목순</Button>
+            <Button Margin="1420,0,10,0" Name="btnSortbyTime" Click="OnBtnClickTimeSort">시간순</Button>
         </Grid>
         <Grid DockPanel.Dock="Top" Height="5">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="21*"/>
-                <ColumnDefinition Width="173*"/>
-            </Grid.ColumnDefinitions>
         </Grid>
-        <Grid Background="#2D2D30">
-            <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30" KeyDown="ListViewKeyDown"
+        <Grid DockPanel.Dock="Left" Width="130">
+            <ListView Name="lbActorList" ItemsSource="{Binding Path=Items}" Background="#2D2D30" Foreground="#FFFFFF"
                   BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionMode="Single"
                   SelectedItem="{Binding SelectedComputer, RelativeSource={RelativeSource AncestorType=Window}}">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="{x:Type ListViewItem}">
-                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListViewItem_PreviewMouseLeftButtonDown" />
+                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="lbActorList_PreviewMouseLeftButtonDown" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Grid>
+        <Grid Background="#2D2D30">
+            <ListView Name="lbThumbnailList" ItemsSource="{Binding Path=Items}" Background="#2D2D30" KeyDown="lbThumbnailList_ListViewKeyDown"
+                  BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionMode="Single"
+                  SelectedItem="{Binding SelectedComputer, RelativeSource={RelativeSource AncestorType=Window}}">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="{x:Type ListViewItem}">
+                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="lbThumbnailList_PreviewMouseLeftButtonDown" />
                         <Setter Property="Margin" Value="5,5,5,5"/>
                         <Setter Property="Padding" Value="0,0,0,0"/>
                         <Setter Property="HorizontalAlignment" Value="Left"/>
@@ -55,7 +62,7 @@
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Bottom" Text="{Binding strTitle}" FontSize="18" Foreground="#FFFFFF" Background="#404040" Padding="5, 0, 0, 0"/>
+                            <TextBlock DockPanel.Dock="Bottom" Text="{Binding strTitle}" Width="320" FontSize="18" Foreground="#FFFFFF" Background="#404040" Padding="5, 0, 0, 0" />
                             <Image Source="{Binding strImagePath}" Width="320" Stretch="Uniform"/>
                         </DockPanel>
                     </DataTemplate>

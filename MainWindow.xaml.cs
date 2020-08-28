@@ -19,6 +19,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Text.RegularExpressions;
 
 namespace Airi
 {
@@ -32,6 +33,8 @@ namespace Airi
         private BackgroundWorker mDownloadWorker = new BackgroundWorker();
         private Border mPrevSelectedBorder = null;
         private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
+        private List<VideoInfo> mFilteredVideoList = new List<VideoInfo>();
+        private List<string> mActorListAll = new List<string>();
 
         public enum SortType : int
         {
@@ -50,6 +53,7 @@ namespace Airi
             // ext
             public string fullPath { get; set; }
             public DateTime dateTime { get; set; }
+            public List<string> actors { get; set; }
         }
 
         public class AiriJSON
@@ -62,11 +66,13 @@ namespace Airi
         public MainWindow()
         {
             InitializeComponent();
-            Directory.CreateDirectory("thumb");
 
+            Directory.CreateDirectory("thumb");
             _LoadArirJson();
 
             btnUpdateList.IsEnabled = false;
+            btnSortbyTitle.IsEnabled = false;
+            btnSortbyTime.IsEnabled = false;
             mDownloadWorker.WorkerReportsProgress = true;
             mDownloadWorker.WorkerSupportsCancellation = true;
             mDownloadWorker.DoWork += new DoWorkEventHandler(_DoWork);
@@ -90,7 +96,23 @@ namespace Airi
                 mAiri.ParseDirectory.Add(@"e:\Fascinating\Jap");
             }
 
+            mActorListAll.Clear();
+            mActorListAll.Add("ALL");
+
+            foreach (var video in mAiri.Videos)
+            {
+                foreach (var actor in video.actors)
+                {
+                    if (mActorListAll.Contains(actor))
+                        continue;
+                    mActorListAll.Add(actor);
+                }
+            }
+
+            mActorListAll.Sort(1, mActorListAll.Count - 1, null);
+
             lbThumbnailList.ItemsSource = mAiri.Videos;
+            lbActorList.ItemsSource = mActorListAll;
             _VideoListMapUpdate();
         }
 
@@ -106,7 +128,7 @@ namespace Airi
                 _ParseDirectory(dir);
             }
             _VideoListSort((SortType)mAiri.SortType);
-            _UpdateCoverImg();
+            _UpdateMetaData();
             _SaveAiriJson();
         }
 
@@ -114,6 +136,8 @@ namespace Airi
         {
             this.Title = "Airi";
             btnUpdateList.IsEnabled = true;
+            btnSortbyTitle.IsEnabled = true;
+            btnSortbyTime.IsEnabled = true;
         }
 
         private void _ParseDirectory(string path)
@@ -137,8 +161,11 @@ namespace Airi
                     strImagePath = System.IO.Path.GetFullPath(@"thumb/noimage.jpg"),
                     strTitle = _strTitle,
                     fullPath = fileName,
-                    dateTime = File.GetCreationTime(fileName)
+                    dateTime = File.GetCreationTime(fileName),
+                    actors = new List<string>()
                 });
+
+                mVideoListMap.Add(_strTitle, mVideoListMap.Count);
             }
 
             string[] subdirectoryEntries = Directory.GetDirectories(path);
@@ -146,8 +173,10 @@ namespace Airi
                 _ParseDirectory(subdirectory);
         }
 
-        private void _UpdateCoverImg()
+        private void _UpdateMetaData()
         {
+            Regex rx = new Regex(@"([\w]+)-([\d]+)",
+                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
             List<VideoInfo> removeQue = new List<VideoInfo>();
             foreach (var e in mAiri.Videos)
             {
@@ -157,26 +186,62 @@ namespace Airi
                     continue;
                 }
 
-                string imgName = System.IO.Path.GetFileNameWithoutExtension(e.strImagePath);
-                if (imgName != "noimage")
-                    continue;
-
                 Dispatcher.Invoke((Action)(() =>
                 {
                     this.Title = "Airi [" + e.strTitle + " 갱신 중...]";
                 }));
 
-                var html = @"http://www.javlibrary.com/en/vl_searchbyid.php?keyword=" + e.strTitle;
-                var htmlDoc = mWeb.Load(html);
-                if (_ParsingHTMLPage(htmlDoc.DocumentNode, e.strTitle))
-                {
-                    e.strImagePath = System.IO.Path.GetFullPath(@"thumb/" + e.strTitle + @".jpg");
-                }
+                bool needDownloadCoverImg = false;
+                bool needUpdateMetadata = false;
+                string imgName = System.IO.Path.GetFileNameWithoutExtension(e.strImagePath);
 
-                Dispatcher.Invoke((Action)(() =>
+                if (imgName == "noimage")
+                    needDownloadCoverImg = true;
+                if (e.actors.Count == 0)
+                    needUpdateMetadata = true;
+
+                if (needDownloadCoverImg || needUpdateMetadata)
                 {
-                    lbThumbnailList.Items.Refresh();
-                }));
+                    MatchCollection matches = rx.Matches(e.strTitle);
+                    if (rx.Matches(e.strTitle).Count == 0)
+                        continue;
+
+                    string title = matches.First().Value;
+                    var html = @"http://www.javlibrary.com/en/vl_searchbyid.php?keyword=" + title;
+                    var htmlDoc = mWeb.Load(html);
+                    var properNode = _GetProperNode(htmlDoc.DocumentNode);
+                    if (properNode == null)
+                        continue;
+
+                    if (needUpdateMetadata)
+                    {
+                        _UpdateActorList(properNode, e.actors);
+                        foreach (var actor in e.actors)
+                        {
+                            if (mActorListAll.Contains(actor))
+                                continue;
+                            mActorListAll.Add(actor);
+                        }
+                        mActorListAll.Sort(1, mActorListAll.Count - 1, null);
+
+                        Dispatcher.Invoke((Action)(() =>
+                        {
+                            lbActorList.Items.Refresh();
+                        }));
+                    }
+
+                    if (needDownloadCoverImg)
+                    {
+                        if (_DownloadCoverImg(properNode, e.strTitle))
+                        {
+                            e.strImagePath = System.IO.Path.GetFullPath(@"thumb/" + e.strTitle + @".jpg");
+                        }
+                        Dispatcher.Invoke((Action)(() =>
+                        {
+                            lbThumbnailList.Items.Refresh();
+                        }));
+                    }
+                }
             }
 
             foreach (var q in removeQue)
@@ -186,7 +251,7 @@ namespace Airi
             }
         }
 
-        private bool _ParsingHTMLPage(HtmlNode node, string name)
+        private HtmlAgilityPack.HtmlNode _GetProperNode(HtmlNode node)
         {
             var selectNode = node.SelectSingleNode("//text()[contains(., 'ID Search Result')]/..");
             if (selectNode != null)
@@ -194,31 +259,59 @@ namespace Airi
                 selectNode = node.SelectSingleNode("//div[contains(@class, 'videos')]");
                 var link = selectNode.SelectSingleNode(".//a[@href]");
                 if (link == null)
-                    return false;
+                    return null;
                 var href = link.Attributes["href"].Value;
                 var htmlDoc = mWeb.Load(@"http://www.javlibrary.com/en/" + href);
-                return _ParsingHTMLPage(htmlDoc.DocumentNode, name);
+                return _GetProperNode(htmlDoc.DocumentNode);
             }
             else
             {
                 selectNode = node.SelectSingleNode("//img[contains(@id, 'video_jacket_img')]");
-                if (selectNode == null)
-                    return false;
-                var imgSrc = selectNode.Attributes["src"].Value;
+                if (selectNode != null)
+                    return node;
+                return null;
+            }
+        }
 
-                try
+        private void _UpdateActorList(HtmlNode node, List<string> list)
+        {
+            var castNode = node.SelectNodes("//span[contains(@class, 'cast')]");
+            if (castNode == null)
+                return;
+
+            foreach (var actor in castNode)
+            {
+                var link = actor.SelectSingleNode(".//a[@href]");
+                if (link == null)
+                    continue;
+
+                var href = link.Attributes["href"].Value;
+                if (href == null)
+                    continue;
+
+                list.Add(link.InnerText);
+            }
+        }
+
+        private bool _DownloadCoverImg(HtmlNode node, string name)
+        {
+            var selectNode = node.SelectSingleNode("//img[contains(@id, 'video_jacket_img')]");
+            if (selectNode == null)
+                return false;
+
+            var imgSrc = selectNode.Attributes["src"].Value;
+            try
+            {
+                using (var imgClient = new WebClient())
                 {
-                    using (var imgClient = new WebClient())
-                    {
-                        imgClient.DownloadFile("http:" + imgSrc, @"thumb/" + name + @".jpg");
-                        return true;
-                    }
+                    imgClient.DownloadFile("http:" + imgSrc, @"thumb/" + name + @".jpg");
+                    return true;
                 }
-                catch (System.Exception ex)
-                {
-                    Console.WriteLine(ex);
-                    return false;
-                }
+            }
+            catch (System.Exception ex)
+            {
+                Console.WriteLine(ex);
+                return false;
             }
         }
 
@@ -277,7 +370,33 @@ namespace Airi
             }));
         }
 
-        public void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void lbActorList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var item = sender as ListViewItem;
+            string actorName = item.Content as string;
+
+            if (actorName == "ALL")
+            {
+                lbThumbnailList.ItemsSource = mAiri.Videos;
+                lbThumbnailList.Items.Refresh();
+                return;
+            }
+
+            
+            mFilteredVideoList.Clear();
+            foreach (var video in mAiri.Videos)
+            {
+                if (video.actors.Contains(actorName))
+                {
+                    mFilteredVideoList.Add(video);
+                    continue;
+                }
+            }
+            lbThumbnailList.ItemsSource = mFilteredVideoList;
+            lbThumbnailList.Items.Refresh();
+        }
+
+        private void lbThumbnailList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var item = sender as ListViewItem;
             Border b = Util.FindByName("Outline", item) as Border;
@@ -300,7 +419,7 @@ namespace Airi
             }
         }
 
-        private void ListViewKeyDown(object sender, KeyEventArgs e)
+        private void lbThumbnailList_ListViewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Delete)
             {
@@ -318,6 +437,8 @@ namespace Airi
         private void OnBtnClickUpdateList(object sender, RoutedEventArgs e)
         {
             btnUpdateList.IsEnabled = false;
+            btnSortbyTitle.IsEnabled = false;
+            btnSortbyTime.IsEnabled = false;
             mDownloadWorker.RunWorkerAsync();
         }
 
