@@ -35,6 +35,7 @@ namespace Airi
         private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
         private List<VideoInfo> mThumbnailVideoList = new List<VideoInfo>();
         private List<string> mActorListAll = new List<string>();
+        private Random mRandom = new Random();
 
         public enum SortType : int
         {
@@ -68,11 +69,8 @@ namespace Airi
             InitializeComponent();
 
             Directory.CreateDirectory("thumb");
-            _LoadArirJson();
 
-            btnUpdateList.IsEnabled = false;
-            btnSortbyTitle.IsEnabled = false;
-            btnSortbyTime.IsEnabled = false;
+            _AllBtnEnable(false);
             mDownloadWorker.WorkerReportsProgress = true;
             mDownloadWorker.WorkerSupportsCancellation = true;
             mDownloadWorker.DoWork += new DoWorkEventHandler(_DoWork);
@@ -112,8 +110,12 @@ namespace Airi
 
             mActorListAll.Sort(1, mActorListAll.Count - 1, null);
 
-            lbThumbnailList.ItemsSource = mThumbnailVideoList;
-            lbActorList.ItemsSource = mActorListAll;
+            Dispatcher.Invoke((Action)(() =>
+            {
+                lbThumbnailList.ItemsSource = mThumbnailVideoList;
+                lbActorList.ItemsSource = mActorListAll;
+            }));
+            
             _VideoListMapUpdate();
         }
 
@@ -160,6 +162,7 @@ namespace Airi
 
         private void _DoWork(object sender, DoWorkEventArgs e)
         {
+            _LoadArirJson();
             _RemoveRemovedVideo();
             foreach (string dir in mAiri.ParseDirectory)
             {
@@ -173,9 +176,7 @@ namespace Airi
         private void _WorkComplete(object sender, RunWorkerCompletedEventArgs e)
         {
             this.Title = "Airi";
-            btnUpdateList.IsEnabled = true;
-            btnSortbyTitle.IsEnabled = true;
-            btnSortbyTime.IsEnabled = true;
+            _AllBtnEnable(true);
         }
 
         private void _RemoveRemovedVideo()
@@ -267,7 +268,7 @@ namespace Airi
                         continue;
 
                     string title = matches.First().Value;
-                    var html = @"http://www.javlibrary.com/en/vl_searchbyid.php?keyword=" + title;
+                    var html = @"http://www.b49t.com/en/vl_searchbyid.php?keyword=" + title;
                     var htmlDoc = mWeb.Load(html);
                     var properNode = _GetProperNode(htmlDoc.DocumentNode);
                     if (properNode == null)
@@ -315,7 +316,7 @@ namespace Airi
                 if (link == null)
                     return null;
                 var href = link.Attributes["href"].Value;
-                var htmlDoc = mWeb.Load(@"http://www.javlibrary.com/en/" + href);
+                var htmlDoc = mWeb.Load(@"http://www.b49t.com/en/" + href);
                 return _GetProperNode(htmlDoc.DocumentNode);
             }
             else
@@ -424,6 +425,14 @@ namespace Airi
             }));
         }
 
+        private void _AllBtnEnable(bool flag)
+        {
+            btnUpdateList.IsEnabled = flag;
+            btnRandomPlay.IsEnabled = flag;
+            btnSortbyTitle.IsEnabled = flag;
+            btnSortbyTime.IsEnabled = flag;
+        }
+
         private void lbActorList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var item = sender as ListViewItem;
@@ -496,10 +505,23 @@ namespace Airi
 
         private void OnBtnClickUpdateList(object sender, RoutedEventArgs e)
         {
-            btnUpdateList.IsEnabled = false;
-            btnSortbyTitle.IsEnabled = false;
-            btnSortbyTime.IsEnabled = false;
+            _AllBtnEnable(false);
             mDownloadWorker.RunWorkerAsync();
+        }
+
+        private void OnBtnClickRandomPlay(object sender, RoutedEventArgs e)
+        {
+            string fullPath;
+            int rndIdx = mRandom.Next(mThumbnailVideoList.Count);
+            fullPath = mThumbnailVideoList[rndIdx].fullPath;
+
+            new Process
+            {
+                StartInfo = new ProcessStartInfo(fullPath)
+                {
+                    UseShellExecute = true
+                }
+            }.Start();
         }
 
         private void OnBtnClickNameSort(object sender, RoutedEventArgs e)

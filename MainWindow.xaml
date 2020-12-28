@@ -12,6 +12,7 @@
     <DockPanel>
         <Grid DockPanel.Dock="Top" Height="30">
             <Button Margin="10,0,1400,0" Name="btnUpdateList" Click="OnBtnClickUpdateList">목록 갱신</Button>
+            <Button Margin="95,0,1315,0" Name="btnRandomPlay" Click="OnBtnClickRandomPlay" Content="랜덤 재생"/>
             <Button Margin="1355,0,75,0" Name="btnSortbyTitle" Click="OnBtnClickNameSort">제목순</Button>
             <Button Margin="1420,0,10,0" Name="btnSortbyTime" Click="OnBtnClickTimeSort">시간순</Button>
         </Grid>
