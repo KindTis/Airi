@@ -257,26 +257,37 @@ namespace Airi
                 string imgName = System.IO.Path.GetFileNameWithoutExtension(e.strImagePath);
 
                 if (imgName == "noimage")
+                {
                     needDownloadCoverImg = true;
-                if (e.actors.Count == 0)
                     needUpdateMetadata = true;
+                }
 
                 if (needDownloadCoverImg || needUpdateMetadata)
                 {
-                    MatchCollection matches = rx.Matches(e.strTitle);
-                    if (rx.Matches(e.strTitle).Count == 0)
-                        continue;
+                    string url = @"https://onejav.com/search/";
+                    string title = "";
+                    if (e.strTitle.ToLower().StartsWith("fc2"))
+                    {
+                        url = @"https://onejav.com/torrent/";
+                        title = e.strTitle.ToLower();
+                    }
+                    else
+                    {
+                        MatchCollection matches = rx.Matches(e.strTitle);
+                        if (rx.Matches(e.strTitle).Count == 0)
+                            continue;
+                        title = matches.First().Value;
+                    }
 
-                    string title = matches.First().Value;
-                    var html = @"http://www.b49t.com/en/vl_searchbyid.php?keyword=" + title;
+                    var html = url + title;
                     var htmlDoc = mWeb.Load(html);
-                    var properNode = _GetProperNode(htmlDoc.DocumentNode);
-                    if (properNode == null)
+                    var rootNode = htmlDoc.DocumentNode;
+                    if (rootNode == null)
                         continue;
 
                     if (needUpdateMetadata)
                     {
-                        _UpdateActorList(properNode, e.actors);
+                        _UpdateActorList(rootNode, e.actors);
                         foreach (var actor in e.actors)
                         {
                             if (mActorListAll.Contains(actor))
@@ -293,7 +304,7 @@ namespace Airi
 
                     if (needDownloadCoverImg)
                     {
-                        if (_DownloadCoverImg(properNode, e.strTitle))
+                        if (_DownloadCoverImg(rootNode, e.strTitle))
                         {
                             e.strImagePath = System.IO.Path.GetFullPath(@"thumb/" + e.strTitle + @".jpg");
                         }
@@ -306,51 +317,25 @@ namespace Airi
             }
         }
 
-        private HtmlAgilityPack.HtmlNode _GetProperNode(HtmlNode node)
-        {
-            var selectNode = node.SelectSingleNode("//text()[contains(., 'ID Search Result')]/..");
-            if (selectNode != null)
-            {
-                selectNode = node.SelectSingleNode("//div[contains(@class, 'videos')]");
-                var link = selectNode.SelectSingleNode(".//a[@href]");
-                if (link == null)
-                    return null;
-                var href = link.Attributes["href"].Value;
-                var htmlDoc = mWeb.Load(@"http://www.b49t.com/en/" + href);
-                return _GetProperNode(htmlDoc.DocumentNode);
-            }
-            else
-            {
-                selectNode = node.SelectSingleNode("//img[contains(@id, 'video_jacket_img')]");
-                if (selectNode != null)
-                    return node;
-                return null;
-            }
-        }
-
         private void _UpdateActorList(HtmlNode node, List<string> list)
         {
-            var castNode = node.SelectNodes("//span[contains(@class, 'cast')]");
+            var castNode = node.SelectNodes("(//div[contains(@class, 'card-content is-flex')])[1]/div[contains(@class, 'panel')]/a[@href]");
             if (castNode == null)
                 return;
 
             foreach (var actor in castNode)
             {
-                var link = actor.SelectSingleNode(".//a[@href]");
-                if (link == null)
-                    continue;
-
-                var href = link.Attributes["href"].Value;
-                if (href == null)
-                    continue;
-
-                list.Add(link.InnerText);
+                list.Add(actor.InnerText);
             }
         }
 
         private bool _DownloadCoverImg(HtmlNode node, string name)
         {
-            var selectNode = node.SelectSingleNode("//img[contains(@id, 'video_jacket_img')]");
+            var selectNode = node.SelectSingleNode("(//div[contains(@class, 'card mb-3')])[1]");
+            if (selectNode == null)
+                return false;
+
+            selectNode = selectNode.SelectSingleNode("//img[contains(@class, 'image')]");
             if (selectNode == null)
                 return false;
 
@@ -359,7 +344,7 @@ namespace Airi
             {
                 using (var imgClient = new WebClient())
                 {
-                    imgClient.DownloadFile("http:" + imgSrc, @"thumb/" + name + @".jpg");
+                    imgClient.DownloadFile(imgSrc, @"thumb/" + name + @".jpg");
                     return true;
                 }
             }
