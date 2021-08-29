@@ -243,7 +243,9 @@ namespace Airi
 
         private void _UpdateMetaData()
         {
-            Regex rx = new Regex(@"([\w]+)-([\d]+)",
+            Regex jav = new Regex(@"([\w]+)-([\d]+)",
+                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            Regex fc2 = new Regex(@"(fc2-ppv-\d+)",
                         RegexOptions.Compiled | RegexOptions.IgnoreCase);
             foreach (var e in mAiri.Videos)
             {
@@ -266,15 +268,17 @@ namespace Airi
                 {
                     string url = @"https://onejav.com/search/";
                     string title = "";
-                    if (e.strTitle.ToLower().StartsWith("fc2"))
-                    {
+
+                    MatchCollection matches = fc2.Matches(e.strTitle);
+                    if (matches.Count > 0)
+                    { 
                         url = @"https://onejav.com/torrent/";
-                        title = e.strTitle.ToLower();
+                        title = matches.First().Value.ToLower();
                     }
                     else
                     {
-                        MatchCollection matches = rx.Matches(e.strTitle);
-                        if (rx.Matches(e.strTitle).Count == 0)
+                        matches = jav.Matches(e.strTitle);
+                        if (matches.Count == 0)
                             continue;
                         title = matches.First().Value;
                     }
