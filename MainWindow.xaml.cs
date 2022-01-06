@@ -266,13 +266,13 @@ namespace Airi
 
                 if (needDownloadCoverImg || needUpdateMetadata)
                 {
-                    string url = @"https://onejav.com/search/";
+                    string url = @"https://www.141jav.com/search/";
                     string title = "";
 
                     MatchCollection matches = fc2.Matches(e.strTitle);
                     if (matches.Count > 0)
                     { 
-                        url = @"https://onejav.com/torrent/";
+                        url = @"https://www.141jav.com/torrent/";
                         title = matches.First().Value.ToLower();
                     }
                     else
@@ -280,7 +280,8 @@ namespace Airi
                         matches = jav.Matches(e.strTitle);
                         if (matches.Count == 0)
                             continue;
-                        title = matches.First().Value;
+                        title = matches.First().Groups[1].Value;
+                        title += matches.First().Groups[2].Value;
                     }
 
                     var html = url + title;
