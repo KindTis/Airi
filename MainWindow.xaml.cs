@@ -20,6 +20,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Text.RegularExpressions;
+using System.Net.Http;
 
 namespace Airi
 {
@@ -69,6 +70,13 @@ namespace Airi
             InitializeComponent();
 
             Directory.CreateDirectory("thumb");
+
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+            ServicePointManager.ServerCertificateValidationCallback +=
+                (sender, certificate, chain, errors) =>
+            {
+                return true;
+            };
 
             _AllBtnEnable(false);
             mDownloadWorker.WorkerReportsProgress = true;
@@ -247,11 +255,17 @@ namespace Airi
                         RegexOptions.Compiled | RegexOptions.IgnoreCase);
             Regex fc2 = new Regex(@"(fc2-ppv-\d+)",
                         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            foreach (var e in mAiri.Videos)
+
+            int reTryCount = 0;
+            for (int i = 0; i < mAiri.Videos.Count; ++i)
             {
+                VideoInfo e = mAiri.Videos[i];
                 Dispatcher.Invoke((Action)(() =>
                 {
-                    this.Title = "Airi [" + e.strTitle + " 갱신 중...]";
+                    this.Title = "Airi [" + e.strTitle + " 갱신 중";
+                    for (int c = 0; c < reTryCount; ++c)
+                        this.Title += ".";
+                    this.Title += "]";
                 }));
 
                 bool needDownloadCoverImg = false;
@@ -285,11 +299,33 @@ namespace Airi
                     }
 
                     var html = url + title;
-                    var htmlDoc = mWeb.Load(html);
-                    var rootNode = htmlDoc.DocumentNode;
-                    if (rootNode == null)
+                    HtmlDocument htmlDoc = null;
+                    try
+                    {
+                        htmlDoc = mWeb.Load(html);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        reTryCount++;
+                        if (reTryCount < 20)
+                        {
+                            --i;
+                        }
+                        else
+                        {
+                            reTryCount = 0;
+                        }
+                        System.Threading.Thread.Sleep(100);
                         continue;
+                    }
 
+                    Dispatcher.Invoke((Action)(() =>
+                    {
+                        this.Title = "Airi [" + e.strTitle + " 다운로딩]";
+                    }));
+
+                    reTryCount = 0;
+                    var rootNode = htmlDoc.DocumentNode;
                     if (needUpdateMetadata)
                     {
                         _UpdateActorList(rootNode, e.actors);
