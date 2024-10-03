@@ -21,119 +21,131 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Collections.ObjectModel;
+using System.Windows.Automation;
+using IronPython.Hosting;
+using Microsoft.Scripting.Hosting;
+using static IronPython.Modules._ast;
+using Microsoft.Scripting.Utils;
 
 namespace Airi
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
+    public class AiriJSON
+    {
+        public int SortType { get; set; }
+        public List<string> ParseDirectory { get; set; }
+        public List<Video> Videos { get; set; }
+    }
+
+    // json 파일의 Videos 배열의 각 요소를 나타내는 클래스
+    public class Video
+    {
+        public string strImagePath { get; set; }
+        public string strTitle { get; set; }
+        public string fullPath { get; set; }
+        public DateTime dateTime { get; set; }
+        public List<string> actors { get; set; }
+    }
+
+    public class VideoThumbnails
+    {
+        public string strImagePath { get; set; }
+        public string strTitle { get; set; }
+        public string fullPath { get; set; }
+        public DateTime dateTime { get; set; }
+    }
+
+    public enum SortType : int
+    {
+        SORT_ASC_NAME = 0,
+        SORT_DESC_NAME,
+        SORT_ASC_TIME,
+        SORT_DESC_TIME
+    }
+
     public partial class MainWindow
     {
-        HtmlWeb mWeb = new HtmlWeb();
-        private AiriJSON mAiri = null;
-        private BackgroundWorker mDownloadWorker = new BackgroundWorker();
-        private Border mPrevSelectedBorder = null;
+        AiriJSON mAiriJSON;
+        private List<string> mSortedActorsList = new List<string>();
+        private ObservableCollection<string> mActorsList = new ObservableCollection<string>();
+        private ObservableCollection<VideoThumbnails> mVideoThumbnailList = new ObservableCollection<VideoThumbnails>();
         private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
-        private List<VideoInfo> mThumbnailVideoList = new List<VideoInfo>();
-        private List<string> mActorListAll = new List<string>();
-        private Random mRandom = new Random();
-
-        public enum SortType : int
-        {
-            SORT_ASC_NAME = 0,
-            SORT_DESC_NAME,
-            SORT_ASC_TIME,
-            SORT_DESC_TIME
-        }
-
-        public class VideoInfo
-        {
-            // binded
-            public string strImagePath { get; set; }
-            public string strTitle { get; set; }
-
-            // ext
-            public string fullPath { get; set; }
-            public DateTime dateTime { get; set; }
-            public List<string> actors { get; set; }
-        }
-
-        public class AiriJSON
-        {
-            public int SortType { get; set; }
-            public List<string> ParseDirectory { get; set; }
-            public List<VideoInfo> Videos { get; set; }
-        }
+        private List<int> mUpdatedVideoIndex = new List<int>();
 
         public MainWindow()
         {
             InitializeComponent();
-
-            Directory.CreateDirectory("thumb");
-
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
-            ServicePointManager.ServerCertificateValidationCallback +=
-                (sender, certificate, chain, errors) =>
-            {
-                return true;
-            };
-
-            _AllBtnEnable(false);
-            mDownloadWorker.WorkerReportsProgress = true;
-            mDownloadWorker.WorkerSupportsCancellation = true;
-            mDownloadWorker.DoWork += new DoWorkEventHandler(_DoWork);
-            mDownloadWorker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(_WorkComplete);
-            mDownloadWorker.RunWorkerAsync();
+            lvVideoList.ItemsSource = mVideoThumbnailList;
+            lvActorList.ItemsSource = mActorsList;
+            Task.Run(() => _InitialFlowWork());
         }
 
-        private void _LoadArirJson()
+        private void _InitialFlowWork()
         {
-            if (File.Exists(@"Airi.json"))
+            _LoadAiriJSON();
+            _UpdateVideoListMap();
+            foreach (var dir in mAiriJSON.ParseDirectory)
+                _ParseVideoDirectory(dir);
+            _SortAiriJSONVideos();
+            _SaveAiriJSON();
+            _UpdateVideoListMap();
+            _UpdateThumbnails();
+            _UpdateVideoMetaData();
+            _LoadAiriJSON();
+            _UpdateUpdatedVideo();
+        }
+
+        private void _LoadAiriJSON()
+        {
+            string jsonFilePath = "Airi.json";
+            using (StreamReader reader = new StreamReader(jsonFilePath))
             {
-                mAiri = JsonConvert.DeserializeObject<AiriJSON>(File.ReadAllText(@"Airi.json"));
+                string jsonString = reader.ReadToEnd();
+                mAiriJSON = JsonConvert.DeserializeObject<AiriJSON>(jsonString);
             }
+        }
 
-            if (mAiri == null)
+        private void _UpdateVideoListMap()
+        {
+            mVideoListMap.Clear();
+            int videoListIndex = 0;
+            foreach (Video video in mAiriJSON.Videos)
             {
-                mAiri = new AiriJSON();
-                mAiri.SortType = (int)SortType.SORT_ASC_NAME;
-                mAiri.ParseDirectory = new List<string>();
-                mAiri.Videos = new List<VideoInfo>();
-                mAiri.ParseDirectory.Add(@"e:\Fascinating\Jap");
+                mVideoListMap.Add(video.fullPath, videoListIndex++);
             }
+        }
 
-            mThumbnailVideoList.Clear();
-            mActorListAll.Clear();
-            mActorListAll.Add("ALL");
+        private void _ParseVideoDirectory(string parseDir)
+        {
+            string[] extensions = { ".mp4", ".mkv", ".avi" };
+            List<string> filePaths = new DirectoryInfo(parseDir).GetFiles("*",
+                SearchOption.AllDirectories)
+                .Where(f => extensions.Contains(f.Extension)).Select(f => f.FullName).ToList();
 
-            foreach (var video in mAiri.Videos)
+            foreach (string file in filePaths)
             {
-                foreach (var actor in video.actors)
+                if (!mVideoListMap.ContainsKey(file))
                 {
-                    if (mActorListAll.Contains(actor))
-                        continue;
-                    mActorListAll.Add(actor);
+                    string _strTitle = System.IO.Path.GetFileNameWithoutExtension(file);
+                    mAiriJSON.Videos.Add(new Video()
+                    {
+                        strImagePath = @"thumb/noimage.jpg",
+                        strTitle = _strTitle,
+                        fullPath = file,
+                        dateTime = File.GetCreationTime(file),
+                        actors = new List<string>()
+                    });
                 }
             }
-
-            mActorListAll.Sort(1, mActorListAll.Count - 1, null);
-
-            Dispatcher.Invoke((Action)(() =>
-            {
-                lbThumbnailList.ItemsSource = mThumbnailVideoList;
-                lbActorList.ItemsSource = mActorListAll;
-            }));
-            
-            _VideoListMapUpdate();
         }
 
-        private void _SaveAiriJson()
+        private void _SortAiriJSONVideos()
         {
-            switch ((SortType)mAiri.SortType)
+            switch ((SortType)mAiriJSON.SortType)
             {
                 case SortType.SORT_ASC_NAME:
                     {
-                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        mAiriJSON.Videos.Sort((Video left, Video right) =>
                         {
                             return left.strTitle.CompareTo(right.strTitle);
                         });
@@ -141,7 +153,7 @@ namespace Airi
                     }
                 case SortType.SORT_DESC_NAME:
                     {
-                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        mAiriJSON.Videos.Sort((Video left, Video right) =>
                         {
                             return left.strTitle.CompareTo(right.strTitle) * -1;
                         });
@@ -149,7 +161,7 @@ namespace Airi
                     }
                 case SortType.SORT_ASC_TIME:
                     {
-                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        mAiriJSON.Videos.Sort((Video left, Video right) =>
                         {
                             return left.dateTime.CompareTo(right.dateTime);
                         });
@@ -157,427 +169,131 @@ namespace Airi
                     }
                 case SortType.SORT_DESC_TIME:
                     {
-                        mAiri.Videos.Sort((VideoInfo left, VideoInfo right) =>
+                        mAiriJSON.Videos.Sort((Video left, Video right) =>
                         {
                             return left.dateTime.CompareTo(right.dateTime) * -1;
                         });
                         break;
                     }
             }
-
-            File.WriteAllText(@"Airi.json", JsonConvert.SerializeObject(mAiri, Formatting.Indented));
         }
 
-        private void _DoWork(object sender, DoWorkEventArgs e)
+        private void _SaveAiriJSON()
         {
-            _LoadArirJson();
-            _RemoveRemovedVideo();
-            foreach (string dir in mAiri.ParseDirectory)
-            {
-                _ParseDirectory(dir);
-            }
-            _VideoListSort((SortType)mAiri.SortType);
-            _UpdateMetaData();
-            _SaveAiriJson();
+            string jsonString = JsonConvert.SerializeObject(mAiriJSON, Formatting.Indented);
+            File.WriteAllText("Airi.json", jsonString);
         }
 
-        private void _WorkComplete(object sender, RunWorkerCompletedEventArgs e)
+        private void _UpdateThumbnails()
         {
-            this.Title = "Airi";
-            _AllBtnEnable(true);
-        }
-
-        private void _RemoveRemovedVideo()
-        {
-            List<VideoInfo> removeQue = new List<VideoInfo>();
-            foreach (var e in mAiri.Videos)
-            {
-                if (!File.Exists(e.fullPath))
-                {
-                    removeQue.Add(e);
-                    continue;
-                }
-            }
-
-            foreach (var q in removeQue)
-            {
-                mVideoListMap.Remove(q.strTitle);
-                mAiri.Videos.Remove(q);
-            }
-
-            foreach (var video in mAiri.Videos)
-            {
-                mThumbnailVideoList.Add(video);
-            }
             Dispatcher.Invoke((Action)(() =>
             {
-                lbThumbnailList.Items.Refresh();
+                mActorsList.Clear();
+                mVideoThumbnailList.Clear();
             }));
-        }
 
-        private void _ParseDirectory(string path)
-        {
-            string[] fileEntries = Directory.GetFiles(path);
-            foreach (string fileName in fileEntries)
+            mSortedActorsList.Clear();
+            mSortedActorsList.Add("ALL");
+            foreach (Video video in mAiriJSON.Videos)
             {
-                string extension = System.IO.Path.GetExtension(fileName);
-                if (!string.Equals(extension, ".mp4", StringComparison.CurrentCultureIgnoreCase)
-                    && !string.Equals(extension, ".mkv", StringComparison.CurrentCultureIgnoreCase)
-                    && !string.Equals(extension, ".avi", StringComparison.CurrentCultureIgnoreCase)
-                    && !string.Equals(extension, ".wmv", StringComparison.CurrentCultureIgnoreCase))
-                    continue;
-
-                string _strTitle = System.IO.Path.GetFileNameWithoutExtension(fileName);
-                if (mVideoListMap.ContainsKey(_strTitle))
-                    continue;
-
-                mAiri.Videos.Add(new VideoInfo()
+                foreach (string actor in video.actors)
                 {
-                    strImagePath = System.IO.Path.GetFullPath(@"thumb/noimage.jpg"),
-                    strTitle = _strTitle,
-                    fullPath = fileName,
-                    dateTime = File.GetCreationTime(fileName),
-                    actors = new List<string>()
-                });
-                mThumbnailVideoList.Add(mAiri.Videos[mAiri.Videos.Count - 1]);
-
-                mVideoListMap.Add(_strTitle, mVideoListMap.Count);
-            }
-
-            string[] subdirectoryEntries = Directory.GetDirectories(path);
-            foreach (string subdirectory in subdirectoryEntries)
-                _ParseDirectory(subdirectory);
-        }
-
-        private void _UpdateMetaData()
-        {
-            Regex jav = new Regex(@"([\w]+)-([\d]+)",
-                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            Regex fc2 = new Regex(@"(fc2-ppv-\d+)",
-                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-            int reTryCount = 0;
-            for (int i = 0; i < mAiri.Videos.Count; ++i)
-            {
-                VideoInfo e = mAiri.Videos[i];
+                    if (!mSortedActorsList.Contains(actor))
+                        mSortedActorsList.Add(actor);
+                }
+                
                 Dispatcher.Invoke((Action)(() =>
                 {
-                    this.Title = "Airi [" + e.strTitle + " 갱신 중";
-                    for (int c = 0; c < reTryCount; ++c)
-                        this.Title += ".";
-                    this.Title += "]";
+                    mVideoThumbnailList.Add(new VideoThumbnails()
+                    {
+                        strImagePath = System.IO.Path.GetFullPath(video.strImagePath),
+                        strTitle = video.strTitle,
+                        fullPath = video.fullPath,
+                        dateTime = video.dateTime
+                    });
                 }));
-
-                bool needDownloadCoverImg = false;
-                bool needUpdateMetadata = false;
-                string imgName = System.IO.Path.GetFileNameWithoutExtension(e.strImagePath);
-
-                if (imgName == "noimage")
-                {
-                    needDownloadCoverImg = true;
-                    needUpdateMetadata = true;
-                }
-
-                if (needDownloadCoverImg || needUpdateMetadata)
-                {
-                    string url = @"https://www.141jav.com/search/";
-                    string title = "";
-
-                    MatchCollection matches = fc2.Matches(e.strTitle);
-                    if (matches.Count > 0)
-                    { 
-                        url = @"https://www.141jav.com/torrent/";
-                        title = matches.First().Value.ToLower();
-                    }
-                    else
-                    {
-                        matches = jav.Matches(e.strTitle);
-                        if (matches.Count == 0)
-                            continue;
-                        title = matches.First().Groups[1].Value;
-                        title += matches.First().Groups[2].Value;
-                    }
-
-                    var html = url + title;
-                    HtmlDocument htmlDoc = null;
-                    try
-                    {
-                        htmlDoc = mWeb.Load(html);
-                    }
-                    catch (System.Exception ex)
-                    {
-                        reTryCount++;
-                        if (reTryCount < 20)
-                        {
-                            --i;
-                        }
-                        else
-                        {
-                            reTryCount = 0;
-                        }
-                        System.Threading.Thread.Sleep(100);
-                        continue;
-                    }
-
-                    Dispatcher.Invoke((Action)(() =>
-                    {
-                        this.Title = "Airi [" + e.strTitle + " 다운로딩]";
-                    }));
-
-                    reTryCount = 0;
-                    var rootNode = htmlDoc.DocumentNode;
-                    if (needUpdateMetadata)
-                    {
-                        _UpdateActorList(rootNode, e.actors);
-                        foreach (var actor in e.actors)
-                        {
-                            if (mActorListAll.Contains(actor))
-                                continue;
-                            mActorListAll.Add(actor);
-                        }
-                        mActorListAll.Sort(1, mActorListAll.Count - 1, null);
-
-                        Dispatcher.Invoke((Action)(() =>
-                        {
-                            lbActorList.Items.Refresh();
-                        }));
-                    }
-
-                    if (needDownloadCoverImg)
-                    {
-                        if (_DownloadCoverImg(rootNode, e.strTitle))
-                        {
-                            e.strImagePath = System.IO.Path.GetFullPath(@"thumb/" + e.strTitle + @".jpg");
-                        }
-                        Dispatcher.Invoke((Action)(() =>
-                        {
-                            lbThumbnailList.Items.Refresh();
-                        }));
-                    }
-                }
             }
-        }
 
-        private void _UpdateActorList(HtmlNode node, List<string> list)
-        {
-            var castNode = node.SelectNodes("(//div[contains(@class, 'card-content is-flex')])[1]/div[contains(@class, 'panel')]/a[@href]");
-            if (castNode == null)
-                return;
-
-            foreach (var actor in castNode)
-            {
-                list.Add(actor.InnerText);
-            }
-        }
-
-        private bool _DownloadCoverImg(HtmlNode node, string name)
-        {
-            var selectNode = node.SelectSingleNode("(//div[contains(@class, 'card mb-3')])[1]");
-            if (selectNode == null)
-                return false;
-
-            selectNode = selectNode.SelectSingleNode("//img[contains(@class, 'image')]");
-            if (selectNode == null)
-                return false;
-
-            var imgSrc = selectNode.Attributes["src"].Value;
-            try
-            {
-                using (var imgClient = new WebClient())
-                {
-                    imgClient.DownloadFile(imgSrc, @"thumb/" + name + @".jpg");
-                    return true;
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Console.WriteLine(ex);
-                return false;
-            }
-        }
-
-        private void _VideoListMapUpdate()
-        {
-            int index = 0;
-            mVideoListMap.Clear();
-            foreach (var e in mAiri.Videos)
-            {
-                mVideoListMap.Add(e.strTitle, index++);
-            }
-        }
-
-        private void _VideoListSort(SortType sortType)
-        {
-            switch (sortType)
-            {
-                case SortType.SORT_ASC_NAME:
-                    {
-                        mThumbnailVideoList.Sort((VideoInfo left, VideoInfo right) =>
-                        {
-                            return left.strTitle.CompareTo(right.strTitle);
-                        });
-                        break;
-                    }
-                case SortType.SORT_DESC_NAME:
-                    {
-                        mThumbnailVideoList.Sort((VideoInfo left, VideoInfo right) =>
-                        {
-                            return left.strTitle.CompareTo(right.strTitle) * -1;
-                        });
-                        break;
-                    }
-                case SortType.SORT_ASC_TIME:
-                    {
-                        mThumbnailVideoList.Sort((VideoInfo left, VideoInfo right) =>
-                        {
-                            return left.dateTime.CompareTo(right.dateTime);
-                        });
-                        break;
-                    }
-                case SortType.SORT_DESC_TIME:
-                    {
-                        mThumbnailVideoList.Sort((VideoInfo left, VideoInfo right) =>
-                        {
-                            return left.dateTime.CompareTo(right.dateTime) * -1;
-                        });
-                        break;
-                    }
-            }
-            _VideoListMapUpdate();
+            mSortedActorsList.Sort(1, mSortedActorsList.Count - 1, null);
 
             Dispatcher.Invoke((Action)(() =>
             {
-                lbThumbnailList.Items.Refresh();
+                mActorsList.AddRange(mSortedActorsList);
             }));
         }
 
-        private void _AllBtnEnable(bool flag)
+        private void _UpdateVideoMetaData()
         {
-            btnUpdateList.IsEnabled = flag;
-            btnRandomPlay.IsEnabled = flag;
-            btnSortbyTitle.IsEnabled = flag;
-            btnSortbyTime.IsEnabled = flag;
-        }
+            ProcessStartInfo StartInfo = new ProcessStartInfo()
+            {
+                FileName = "python.exe",
+                Arguments = "VideoMetaDataUpdater.py",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
 
-        private void lbActorList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            var item = sender as ListViewItem;
-            string actorName = item.Content as string;
-            mThumbnailVideoList.Clear();
-            if (actorName == "ALL")
+            mUpdatedVideoIndex.Clear();
+            string pattern = @"\[(\d+)\]";
+            using (Process process = Process.Start(StartInfo))
             {
-                foreach (var video in mAiri.Videos)
+                process.OutputDataReceived += (sender, e) =>
                 {
-                    mThumbnailVideoList.Add(video);
-                }
-            }
-            else
-            {
-                foreach (var video in mAiri.Videos)
-                {
-                    if (video.actors.Contains(actorName))
+                    if (e.Data == null) { return; }
+                    Match match = Regex.Match(e.Data, pattern);
+                    if (match.Success)
                     {
-                        mThumbnailVideoList.Add(video);
-                        continue;
+                        string captured = match.Groups[1].Value;
+                        mUpdatedVideoIndex.Add(int.Parse(captured));
                     }
-                }
+                };
+                process.BeginOutputReadLine();
+                process.WaitForExit();
             }
-            lbThumbnailList.Items.Refresh();
         }
 
-        private void lbThumbnailList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void _UpdateUpdatedVideo()
         {
-            var item = sender as ListViewItem;
-            Border b = Util.FindByName("Outline", item) as Border;
-            b.BorderBrush = Brushes.Red;
-
-            if (mPrevSelectedBorder != null && mPrevSelectedBorder != b)
-                mPrevSelectedBorder.BorderBrush = Brushes.Transparent;
-
-            mPrevSelectedBorder = b;
-
-            if (e.ClickCount == 2)
+            foreach (int idx in mUpdatedVideoIndex)
             {
-                string fullPath;
-                fullPath = mThumbnailVideoList[lbThumbnailList.SelectedIndex].fullPath;
-
-                new Process
+                Dispatcher.Invoke((Action)(() =>
                 {
-                    StartInfo = new ProcessStartInfo(fullPath)
+                    mVideoThumbnailList[idx] = new VideoThumbnails()
                     {
-                        UseShellExecute = true
-                    }
-                }.Start();
-            }
-        }
+                        strImagePath = System.IO.Path.GetFullPath(mAiriJSON.Videos[idx].strImagePath),
+                        strTitle = mAiriJSON.Videos[idx].strTitle,
+                        fullPath = mAiriJSON.Videos[idx].fullPath,
+                        dateTime = mAiriJSON.Videos[idx].dateTime
+                    };
+                }));
 
-        private void lbThumbnailList_ListViewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Delete)
-            {
-                if (MessageBox.Show("파일과 함께 삭제 하시겠습니까?", "확인",
-                    MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                foreach (string actor in mAiriJSON.Videos[idx].actors)
                 {
-                    Util.MoveToRecycleBin(mThumbnailVideoList[lbThumbnailList.SelectedIndex].fullPath);
+                    if (!mSortedActorsList.Contains(actor))
+                        mSortedActorsList.Add(actor);
                 }
-
-                int index = mVideoListMap[mThumbnailVideoList[lbThumbnailList.SelectedIndex].strTitle];
-                mAiri.Videos.RemoveAt(index);
-                mThumbnailVideoList.RemoveAt(lbThumbnailList.SelectedIndex);
-                _VideoListSort((SortType)mAiri.SortType);
-                _SaveAiriJson();
             }
+
+            mSortedActorsList.Sort(1, mSortedActorsList.Count - 1, null);
+
+            Dispatcher.Invoke((Action)(() =>
+            {
+                mActorsList.Clear();
+                mActorsList.AddRange(mSortedActorsList);
+            }));
         }
 
-        private void OnBtnClickUpdateList(object sender, RoutedEventArgs e)
+        private void lvVideoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            _AllBtnEnable(false);
-            mDownloadWorker.RunWorkerAsync();
-        }
-
-        private void OnBtnClickRandomPlay(object sender, RoutedEventArgs e)
-        {
-            string fullPath;
-            int rndIdx = mRandom.Next(mThumbnailVideoList.Count);
-            fullPath = mThumbnailVideoList[rndIdx].fullPath;
-
+            var element = e.Source as ListView;
+            var selectedItem = element.SelectedValue as Video;
             new Process
             {
-                StartInfo = new ProcessStartInfo(fullPath)
+                StartInfo = new ProcessStartInfo(selectedItem.fullPath)
                 {
                     UseShellExecute = true
                 }
             }.Start();
-        }
-
-        private void OnBtnClickNameSort(object sender, RoutedEventArgs e)
-        {
-            if (mAiri.SortType == (int)SortType.SORT_ASC_NAME)
-            {
-                mAiri.SortType = (int)SortType.SORT_DESC_NAME;
-            }
-            else
-            {
-                mAiri.SortType = (int)SortType.SORT_ASC_NAME;
-            }
-
-            _VideoListSort((SortType)mAiri.SortType);
-            _SaveAiriJson();
-        }
-
-        private void OnBtnClickTimeSort(object sender, RoutedEventArgs e)
-        {
-            if (mAiri.SortType == (int)SortType.SORT_ASC_TIME)
-            {
-                mAiri.SortType = (int)SortType.SORT_DESC_TIME;
-            }
-            else
-            {
-                mAiri.SortType = (int)SortType.SORT_ASC_TIME;
-            }
-
-            _VideoListSort((SortType)mAiri.SortType);
-            _SaveAiriJson();
         }
     }
 }
