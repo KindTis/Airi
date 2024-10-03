@@ -1,3 +1,80 @@
-.vs/
+# 빌드 결과물 및 바이너리 파일
 bin/
 obj/
+[Bb]in/
+[Oo]bj/
+*.exe
+*.dll
+*.pdb
+*.app
+*.log
+
+# 패키지 폴더
+packages/
+node_modules/
+
+# 사용자별 설정 파일
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Visual Studio 임시 파일 및 캐시
+.vs/
+*.ncb
+*.cachefile
+*.log
+*.tlog
+ipch/
+*.aps
+*.ilk
+*.meta
+*.tmp
+*.temp
+
+# ReSharper 및 Rider 파일
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.sln.iml
+.idea/
+
+# 테스트 결과물
+[Tt]est[Rr]esult*/
+TestResult.xml
+nunit-*.xml
+*.coverage
+*.coveragexml
+
+# 스타일 및 분석 도구
+StyleCopReport.xml
+StyleCopViolations.xml
+
+# SQL Server 데이터베이스 파일
+*.mdf
+*.ldf
+
+# 로컬 환경 설정 및 역사
+*.localhistory/
+*.history/
+
+# Mac OS 및 Windows 시스템 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 기타 임시 파일
+*.bak
+*.old
+*.orig
+*.tmp
+*.err
+*.obj
+*.log
+
+# WPF 자동 생성 파일
+*.g.cs
+*.g.i.cs
+*.sdf
+*.opensdf
+*.sln.metaproj

@@ -1,44 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>1.0.0</Version>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
-
   <ItemGroup>
-    <Compile Remove="lib\**" />
-    <EmbeddedResource Remove="lib\**" />
-    <None Remove="lib\**" />
-    <Page Remove="lib\**" />
+    <Content Include="resources\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
-
   <ItemGroup>
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.42" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.67" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="MahApps.Metro">
-      <HintPath>lib\MahApps.Metro.dll</HintPath>
-    </Reference>
-    <Reference Include="Selen.Wpf.Core">
-      <HintPath>lib\Selen.Wpf.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="Selen.Wpf.GenericAppTree">
-      <HintPath>lib\Selen.Wpf.GenericAppTree.dll</HintPath>
-    </Reference>
-    <Reference Include="Selen.Wpf.GenericAppTree.Contracts">
-      <HintPath>lib\Selen.Wpf.GenericAppTree.Contracts.dll</HintPath>
-    </Reference>
-    <Reference Include="Selen.Wpf.SystemStyles">
-      <HintPath>lib\Selen.Wpf.SystemStyles.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Windows.Interactivity">
-      <HintPath>lib\System.Windows.Interactivity.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
 </Project>

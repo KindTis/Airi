@@ -1,62 +1,55 @@
-﻿<Controls:MetroWindow x:Class="Airi.MainWindow"
+﻿<Window x:Class="Airi.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:Controls="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
         xmlns:local="clr-namespace:Airi"
         mc:Ignorable="d"
-        ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen"
-        Title="Airi" Height="900" Width="1500">
+        Title="MainWindow" Height="800" Width="1400">
     <Grid>
+        <!-- Define the rows -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="50" />
-            <!-- 첫 번째 행의 높이를 비율로 설정합니다. -->
+            <RowDefinition Height="50"/>
+            <!-- First row with height 100px -->
             <RowDefinition Height="*"/>
-            <!-- 두 번째 행의 높이를 자동으로 설정합니다. -->
+            <!-- Second row takes the remaining space -->
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250" />
-            <!-- 첫 번째 열의 너비를 비율로 설정합니다. -->
-            <ColumnDefinition Width="1250" />
-            <!-- 두 번째 열의 너비를 자동으로 설정합니다. -->
-        </Grid.ColumnDefinitions>
-        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right">
-            <!-- 버튼 묶음 패널을 StackPanel로 설정하고 방향을 수평으로 설정합니다. -->
-            <Button Content="Button 1" Width="100" Height="40" Margin="0,0,10,0"/>
-            <!-- Button 1을 추가합니다. -->
-            <Button Content="Button 2" Width="100" Height="40" Margin="0,0,10,0" />
-            <!-- Button 2을 추가합니다. -->
-            <Button Content="Button 3" Width="100" Height="40" Margin="0,0,10,0" />
-            <!-- Button 3을 추가합니다. -->
+
+        <!-- First Row: Contains a Button and a Search Bar -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+            <TextBox x:Name="SearchTextBox" Width="200" Height="30" Margin="5"/>
+            <Button Content="Add" Width="100" Height="30" Margin="5" Click="AddButton_Click"/>
+            <Button Content="Delete" Width="100" Height="30" Margin="5" Click="DeleteButton_Click"/>
         </StackPanel>
-        <ListView x:Name="lvActorList" ItemsSource="{Binding Path=Items}" Margin="5"
-            Background="#2D2D30" Foreground="#FFFFFF" HorizontalAlignment="Stretch"
-                  Grid.Row="1" Grid.Column="0">
-        </ListView>
-        <ListView x:Name="lvVideoList" ItemsSource="{Binding imageItems}"
-                  Grid.Row="1" Grid.Column="1"
-                  Margin="5" Background="#2D2D30" Foreground="#FFFFFF" 
-                  HorizontalAlignment="Stretch" SelectionMode="Single"
-                  MouseDoubleClick="lvVideoList_MouseDoubleClick"
-                  >
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Vertical" Margin="2">
-                        <Image Source="{Binding strImagePath}" Width="290"  Height="200"
-                                Stretch="UniformToFill" VerticalAlignment="Center"
-                               HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding strTitle}" FontFamily="Arial"
-                            FontWeight="Bold" FontSize="18" Foreground="White"/>
-                    </StackPanel>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-            <ListView.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <UniformGrid Columns="4" />
-                </ItemsPanelTemplate>
-            </ListView.ItemsPanel>
-        </ListView>
+
+        <!-- Second Row: Contains two columns -->
+        <Grid Grid.Row="1">
+            <!-- Define columns -->
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130"/>
+                <!-- First column with width 100px -->
+                <ColumnDefinition Width="*"/>
+                <!-- Second column takes the remaining space -->
+            </Grid.ColumnDefinitions>
+
+            <!-- First Column: ListBox -->
+            <ListBox Grid.Column="0" VerticalAlignment="Stretch"/>
+
+            <!-- Second Column: Image Grid -->
+            <ListBox Grid.Column="1" ItemsSource="{Binding VideoItems}" SelectedItem="{Binding SelectedVideoItem, Mode=TwoWay}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" ItemWidth="370" ItemHeight="280"/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Image Source="{Binding ImagePath}" Width="370" Height="280" Margin="5"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
     </Grid>
-</Controls:MetroWindow>
+</Window>
