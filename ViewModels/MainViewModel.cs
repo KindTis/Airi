@@ -7,16 +7,22 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using Airi.Infrastructure;
+using Airi.Services;
+using Airi.Domain;
 
 namespace Airi.ViewModels
 {
     /// <summary>
-    /// Provides placeholder data and simple interactions so the app can run offline while the full pipeline is implemented.
+    /// Loads persisted library data and exposes UI-facing collections/commands.
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
         private const string AllActorsLabel = "All Actors";
         private readonly Random _random = new();
+        private readonly LibraryStore _libraryStore;
+        private readonly string _baseDirectory;
+        private readonly string _fallbackThumbnail;
+
         private string _searchQuery = string.Empty;
         private string _selectedActor = AllActorsLabel;
         private string _statusMessage = string.Empty;
@@ -30,9 +36,14 @@ namespace Airi.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public MainViewModel()
+        public MainViewModel(LibraryStore libraryStore)
         {
-            Videos = new ObservableCollection<VideoItem>(CreateStubVideos());
+            _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
+            _baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            _fallbackThumbnail = ComputeFallbackThumbnail();
+
+            var library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
+            Videos = new ObservableCollection<VideoItem>(library.Videos.Select(MapVideo));
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
 
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
@@ -117,57 +128,57 @@ namespace Airi.ViewModels
             RandomPlayCommand.RaiseCanExecuteChanged();
         }
 
-        private static IEnumerable<VideoItem> CreateStubVideos()
+        private VideoItem MapVideo(VideoEntry entry)
         {
-            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            var thumbnail = Path.Combine(baseDirectory, "resources", "noimage.jpg");
-            var thumbnailUri = File.Exists(thumbnail)
-                ? new Uri(thumbnail).AbsoluteUri
-                : string.Empty;
+            var thumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail);
+            var sourcePath = ResolveVideoPath(entry.Path);
 
-            return new[]
+            return new VideoItem
             {
-                new VideoItem
-                {
-                    Title = "Forest Gump",
-                    ReleaseDate = new DateOnly(1994, 7, 6),
-                    Actors = new[] { "Tom Hanks" },
-                    ThumbnailUri = thumbnailUri,
-                    SourcePath = "C:/Videos/forest-gump.mp4"
-                },
-                new VideoItem
-                {
-                    Title = "The Devil Wears Prada",
-                    ReleaseDate = new DateOnly(2006, 6, 30),
-                    Actors = new[] { "Meryl Streep" },
-                    ThumbnailUri = thumbnailUri,
-                    SourcePath = "C:/Videos/devil-wears-prada.mp4"
-                },
-                new VideoItem
-                {
-                    Title = "Inception",
-                    ReleaseDate = new DateOnly(2010, 7, 16),
-                    Actors = new[] { "Leonardo DiCaprio", "Tom Hardy" },
-                    ThumbnailUri = thumbnailUri,
-                    SourcePath = "C:/Videos/inception.mp4"
-                },
-                new VideoItem
-                {
-                    Title = "Black Widow",
-                    ReleaseDate = new DateOnly(2021, 7, 9),
-                    Actors = new[] { "Scarlett Johansson", "Florence Pugh" },
-                    ThumbnailUri = thumbnailUri,
-                    SourcePath = "C:/Videos/black-widow.mp4"
-                },
-                new VideoItem
-                {
-                    Title = "Fight Club",
-                    ReleaseDate = new DateOnly(1999, 10, 15),
-                    Actors = new[] { "Brad Pitt", "Edward Norton" },
-                    ThumbnailUri = thumbnailUri,
-                    SourcePath = "C:/Videos/fight-club.mp4"
-                }
+                Title = entry.Meta.Title,
+                ReleaseDate = entry.Meta.Date,
+                Actors = entry.Meta.Actors,
+                ThumbnailUri = thumbnailUri,
+                SourcePath = sourcePath
             };
+        }
+
+        private string ResolveVideoPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            if (Path.IsPathRooted(path))
+            {
+                return path;
+            }
+
+            return Path.GetFullPath(Path.Combine(_baseDirectory, path));
+        }
+
+        private string ResolveThumbnailPath(string? path)
+        {
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                var candidate = Path.IsPathRooted(path)
+                    ? path
+                    : Path.GetFullPath(Path.Combine(_baseDirectory, path));
+
+                if (File.Exists(candidate))
+                {
+                    return new Uri(candidate).AbsoluteUri;
+                }
+            }
+
+            return _fallbackThumbnail;
+        }
+
+        private string ComputeFallbackThumbnail()
+        {
+            var fallbackPath = Path.Combine(_baseDirectory, "resources", "noimage.jpg");
+            return File.Exists(fallbackPath) ? new Uri(fallbackPath).AbsoluteUri : string.Empty;
         }
 
         private static IEnumerable<string> BuildActorList(IEnumerable<VideoItem> videos)

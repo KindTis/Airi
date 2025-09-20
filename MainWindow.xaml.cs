@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using Airi.Services;
 using Airi.ViewModels;
 
 namespace Airi
@@ -10,7 +11,8 @@ namespace Airi
         public MainWindow()
         {
             InitializeComponent();
-            ViewModel = new MainViewModel();
+            var libraryStore = new LibraryStore();
+            ViewModel = new MainViewModel(libraryStore);
             DataContext = ViewModel;
         }
     }
