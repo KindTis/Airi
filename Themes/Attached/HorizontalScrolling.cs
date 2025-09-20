@@ -1,4 +1,5 @@
-﻿using System;
+#pragma warning disable CS8603, CS8600
+using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Security;

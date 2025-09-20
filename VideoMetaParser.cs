@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -11,9 +11,9 @@ namespace Airi
 {
     public class VideoMetaData
     {
-        public string strTitle { get; set; }
-        public string strImagePath { get; set; }
-        public List<string> actors { get; set; }
+        public string strTitle { get; set; } = string.Empty;
+        public string strImagePath { get; set; } = string.Empty;
+        public List<string> actors { get; set; } = new();
     }
 
     public class VideoMetaParser
@@ -151,3 +151,4 @@ namespace Airi
         }
     }
 }
+

@@ -47,7 +47,17 @@ DevPlan.md and Airi_GapAnalysis.md highlight that the current prototype lacks th
 - Acceptance: Actor selection, title/shot sorting, and random-play command operate from the UI; no business logic remains in code-behind beyond view wiring.
 - Tests: UI-level smoke test using `Microsoft.VisualStudio.TestTools.UITesting` or `WinAppDriver`; unit tests for filter logic.
 
-## Stage 5 - Thumbnail Cache and Media Launch
+## Stage 5 - Web Metadata Crawlers
+- Objectives: Integrate online metadata providers (e.g., `VideoMetaParser`) that can search remote catalogues and enrich local entries.
+- Key tasks:
+  * Define a crawler plug-in contract (`IWebVideoMetaSource`) that maps a search query or video id to structured metadata.
+  * Implement an HTTP-based provider that mirrors the current `VideoMetaParser` behaviour with throttling, user-agent configuration, and robots compliance.
+  * Cache downloaded thumbnails and JSON responses, merge the results into `ParseQueue`, and persist them back through `LibraryStore`.
+  * Add retry, backoff, and graceful degradation when the remote site fails or rate limits.
+- Acceptance: Triggering a metadata fetch populates title/date/actor/thumbnail fields from the web source without blocking the UI; repeated requests reuse cached data when appropriate.
+- Tests: Integration test hitting a mocked HTTP server; unit tests for crawler parsing and throttling logic; manual run confirming metadata enrichment.
+
+## Stage 6 - Thumbnail Cache and Media Launch
 - Objectives: Implement thumbnail download/cache pipeline and double-click playback behaviour.
 - Key tasks:
   * Add `%LocalAppData%/Airi/cache` thumbnail storage with hashing and cleanup policies.
@@ -56,7 +66,7 @@ DevPlan.md and Airi_GapAnalysis.md highlight that the current prototype lacks th
 - Acceptance: Grid displays cached thumbnails persisted across runs; missing thumbnails fall back to `noimage.jpg`; double-click opens the video in the system player.
 - Tests: Unit tests for cache naming/eviction; manual run verifying download and playback.
 
-## Stage 6 - Logging, Error Handling, and Telemetry
+## Stage 7 - Logging, Error Handling, and Telemetry
 - Objectives: Add production-grade diagnostics per DevPlan.
 - Key tasks:
   * Integrate Serilog with rolling file sinks, enrich log context with correlation ids.
@@ -65,7 +75,7 @@ DevPlan.md and Airi_GapAnalysis.md highlight that the current prototype lacks th
 - Acceptance: Logs capture scan/parse lifecycle; induced failures show toast notifications without crashing; retries obey configured limits.
 - Tests: Automated tests asserting logger calls via dependency injection; manual fault injection (rename folders, disconnect network).
 
-## Stage 7 - Performance Hardening and Release Polish
+## Stage 8 - Performance Hardening and Release Polish
 - Objectives: Validate performance on large libraries and finalise distribution assets.
 - Key tasks:
   * Enable virtualization-friendly panels (`VirtualizingWrapPanel` or `ItemsRepeater`) and measure memory/CPU with 10k items.

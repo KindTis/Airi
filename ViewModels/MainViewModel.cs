@@ -13,11 +13,12 @@ using System.Windows.Threading;
 using Airi.Domain;
 using Airi.Infrastructure;
 using Airi.Services;
+using Airi.Web;
 
 namespace Airi.ViewModels
 {
     /// <summary>
-    /// Loads persisted library data, exposes UI-facing collections, and coordinates scanning/diff logic.
+    /// Loads persisted library data, exposes UI-facing collections, and coordinates scanning/diff and web metadata enrichment.
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -25,6 +26,7 @@ namespace Airi.ViewModels
         private readonly Random _random = new();
         private readonly LibraryStore _libraryStore;
         private readonly LibraryScanner _libraryScanner;
+        private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
 
@@ -32,7 +34,9 @@ namespace Airi.ViewModels
         private string _searchQuery = string.Empty;
         private string _selectedActor = AllActorsLabel;
         private string _statusMessage = string.Empty;
+        private VideoItem? _selectedVideo;
         private bool _isScanning;
+        private bool _isFetchingMetadata;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -40,13 +44,15 @@ namespace Airi.ViewModels
 
         public RelayCommand SortByTitleCommand { get; }
         public RelayCommand RandomPlayCommand { get; }
+        public RelayCommand FetchMetadataCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public MainViewModel(LibraryStore libraryStore, LibraryScanner libraryScanner)
+        public MainViewModel(LibraryStore libraryStore, LibraryScanner libraryScanner, WebMetadataService webMetadataService)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
+            _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
             _dispatcher = Application.Current.Dispatcher;
 
             _library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
@@ -59,6 +65,7 @@ namespace Airi.ViewModels
             }
 
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
+
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
@@ -66,8 +73,13 @@ namespace Airi.ViewModels
             RandomPlayCommand = new RelayCommand(
                 _ => PickRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
+            FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false), _ => CanFetchMetadata());
+
+            _selectedActor = string.Empty;
+            SelectedActor = AllActorsLabel;
 
             UpdateStatus();
+            SelectedVideo = Videos.FirstOrDefault();
         }
 
         public string SearchQuery
@@ -96,6 +108,18 @@ namespace Airi.ViewModels
             }
         }
 
+        public VideoItem? SelectedVideo
+        {
+            get => _selectedVideo;
+            set
+            {
+                if (SetProperty(ref _selectedVideo, value))
+                {
+                    FetchMetadataCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
         public string StatusMessage
         {
             get => _statusMessage;
@@ -107,9 +131,23 @@ namespace Airi.ViewModels
             get => _isScanning;
             private set
             {
-                if (SetProperty(ref _isScanning, value, nameof(IsScanning)))
+                if (SetProperty(ref _isScanning, value))
                 {
                     UpdateStatus(updateMessage: false);
+                    FetchMetadataCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        public bool IsFetchingMetadata
+        {
+            get => _isFetchingMetadata;
+            private set
+            {
+                if (SetProperty(ref _isFetchingMetadata, value))
+                {
+                    UpdateStatus(updateMessage: false);
+                    FetchMetadataCommand.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -162,6 +200,88 @@ namespace Airi.ViewModels
             }
         }
 
+        private async Task FetchSelectedMetadataAsync()
+        {
+            if (SelectedVideo is null)
+            {
+                return;
+            }
+
+            var entry = FindEntry(SelectedVideo.LibraryPath);
+            if (entry is null)
+            {
+                AppLogger.Info($"Metadata fetch skipped. Entry not found for {SelectedVideo.LibraryPath}.");
+                return;
+            }
+
+            var query = string.IsNullOrWhiteSpace(SearchQuery) ? SelectedVideo.Title : SearchQuery;
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                AppLogger.Info("Metadata enrichment skipped: query is empty.");
+                return;
+            }
+
+            IsFetchingMetadata = true;
+            StatusMessage = $"Fetching metadata for '{SelectedVideo.Title}'...";
+
+            try
+            {
+                var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
+                if (updatedEntry is null)
+                {
+                    StatusMessage = $"No metadata found for '{query}'.";
+                    AppLogger.Info(StatusMessage);
+                    return;
+                }
+
+                UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    var normalized = LibraryPathHelper.NormalizeLibraryPath(updatedEntry.Path);
+                    var mapped = MapVideo(updatedEntry);
+
+                    if (_videoIndex.TryGetValue(normalized, out var existing))
+                    {
+                        var index = Videos.IndexOf(existing);
+                        if (index >= 0)
+                        {
+                            Videos[index] = mapped;
+                        }
+                        else
+                        {
+                            Videos.Add(mapped);
+                        }
+                    }
+                    else
+                    {
+                        Videos.Add(mapped);
+                    }
+
+                    RegisterVideo(mapped);
+                    SelectedVideo = mapped;
+                    RefreshActorList();
+                    FilteredVideos.Refresh();
+                });
+
+                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+                StatusMessage = $"Metadata updated for '{SelectedVideo.Title}'.";
+                AppLogger.Info(StatusMessage);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                StatusMessage = $"Metadata fetch failed: {ex.Message}";
+                AppLogger.Error(StatusMessage, ex);
+            }
+            finally
+            {
+                IsFetchingMetadata = false;
+                UpdateStatus(updateMessage: false);
+            }
+        }
+
+        private bool CanFetchMetadata() => SelectedVideo is not null && !IsScanning && !IsFetchingMetadata;
+
         private void ApplyScanResult(LibraryScanResult result)
         {
             var snapshotMap = result.Snapshots.ToDictionary(s => LibraryPathHelper.NormalizeLibraryPath(s.LibraryPath), StringComparer.OrdinalIgnoreCase);
@@ -177,6 +297,7 @@ namespace Airi.ViewModels
                 {
                     var absolute = LibraryPathHelper.ResolveToAbsolute(video.LibraryPath);
                     video.UpdateFileState(absolute, video.SizeBytes, video.LastModifiedUtc, VideoPresenceState.Missing);
+                    AppLogger.Info($"Marked missing: {video.LibraryPath}");
                 }
             }
 
@@ -201,7 +322,21 @@ namespace Airi.ViewModels
                 var item = MapVideo(entry);
                 RegisterVideo(item);
                 Videos.Add(item);
+                AppLogger.Info($"Added new library entry: {entry.Path}");
             }
+
+            var scanTimestamp = DateTime.UtcNow;
+            _library.Targets = _library.Targets
+                .Select(t => t with { LastScanUtc = scanTimestamp })
+                .ToList();
+
+            RefreshActorList();
+            if (SelectedVideo is null && Videos.Count > 0)
+            {
+                SelectedVideo = Videos[0];
+            }
+
+            UpdateStatus(updateMessage: false);
         }
 
         private void ApplyTitleSort()
@@ -245,7 +380,7 @@ namespace Airi.ViewModels
         {
             RandomPlayCommand.RaiseCanExecuteChanged();
 
-            if (!updateMessage || IsScanning)
+            if (!updateMessage || IsScanning || IsFetchingMetadata)
             {
                 return;
             }
@@ -277,7 +412,6 @@ namespace Airi.ViewModels
             item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available);
             return item;
         }
-
 
         private VideoEntry CreateEntryFromSnapshot(FileSnapshot snapshot)
         {
@@ -313,6 +447,30 @@ namespace Airi.ViewModels
             _videoIndex[key] = item;
         }
 
+        private VideoEntry? FindEntry(string libraryPath)
+        {
+            var normalized = LibraryPathHelper.NormalizeLibraryPath(libraryPath);
+            return _library.Videos.FirstOrDefault(v =>
+                LibraryPathHelper.NormalizeLibraryPath(v.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void RefreshActorList()
+        {
+            var snapshot = BuildActorList(Videos).ToList();
+            var previousSelection = SelectedActor;
+
+            Actors.Clear();
+            foreach (var actor in snapshot)
+            {
+                Actors.Add(actor);
+            }
+
+            if (!snapshot.Any(actor => actor.Equals(previousSelection, StringComparison.OrdinalIgnoreCase)))
+            {
+                SelectedActor = AllActorsLabel;
+            }
+        }
+
         private void UpdateLibraryEntry(string path, Func<VideoEntry, VideoEntry> updater)
         {
             var normalized = LibraryPathHelper.NormalizeLibraryPath(path);
@@ -341,7 +499,7 @@ namespace Airi.ViewModels
             }
         }
 
-        private bool SetProperty<T>(ref T field, T value, string? propertyName = null)
+        private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = "")
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
             {
@@ -349,10 +507,11 @@ namespace Airi.ViewModels
             }
 
             field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName ?? string.Empty));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
             return true;
         }
     }
 }
+
 
 

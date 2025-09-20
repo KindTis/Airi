@@ -1,4 +1,4 @@
-<Window x:Class="Airi.MainWindow"
+﻿<Window x:Class="Airi.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -34,6 +34,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBox Grid.Column="0" Height="42" Margin="0,0,16,0" Padding="12"
@@ -47,11 +48,17 @@
                         BorderBrush="Transparent"
                         Command="{Binding SortByTitleCommand}"/>
 
-                <Button Grid.Column="2" Width="140" Height="42" Padding="12"
+                <Button Grid.Column="2" Width="140" Height="42" Margin="0,0,12,0" Padding="12"
                         Content="Random Play"
                         Background="{StaticResource AccentBrush}" Foreground="White"
                         BorderBrush="Transparent"
                         Command="{Binding RandomPlayCommand}"/>
+
+                <Button Grid.Column="3" Width="160" Height="42" Padding="12"
+                        Content="Fetch Metadata"
+                        Background="{StaticResource AccentBrush}" Foreground="White"
+                        BorderBrush="Transparent"
+                        Command="{Binding FetchMetadataCommand}"/>
             </Grid>
         </Border>
 
@@ -104,57 +111,69 @@
             </Border>
 
             <!-- Video grid -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Background="Transparent">
-                <ItemsControl ItemsSource="{Binding FilteredVideos}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" Margin="0" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                            <Border Width="260" Height="250" Margin="12" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12"
-                                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Opacity" Value="1"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                                <Setter Property="Opacity" Value="0.45"/>
-                                                <Setter Property="BorderBrush" Value="#FFEF4444"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <StackPanel>
-                                    <Grid Height="150" Margin="0,0,0,10" ClipToBounds="True">
-                                        <Image Source="{Binding ThumbnailUri}" Stretch="UniformToFill"/>
-                                        <Border Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" Width="48" Height="48" CornerRadius="24">
-                                            <Polygon Points="18,15 18,33 33,24" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <TextBlock Text="Missing" Foreground="#FFEF4444" Background="#801B1B1B" Padding="6,2" Margin="8" FontWeight="SemiBold"
-                                                   HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </Grid>
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,4" Foreground="{StaticResource PrimaryTextBrush}"/>
-                                    <TextBlock Text="{Binding ReleaseLabel}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <ListBox Grid.Column="2"
+                     ItemsSource="{Binding FilteredVideos}"
+                     SelectedItem="{Binding SelectedVideo, Mode=TwoWay}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.CanContentScroll="False"
+                     BorderThickness="0"
+                     Background="Transparent">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Margin" Value="0"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" Margin="0" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="260" Height="250" Margin="12" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12"
+                                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Opacity" Value="1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                            <Setter Property="Opacity" Value="0.45"/>
+                                            <Setter Property="BorderBrush" Value="#FFEF4444"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <Grid Height="150" Margin="0,0,0,10" ClipToBounds="True">
+                                    <Image Source="{Binding ThumbnailUri}" Stretch="UniformToFill"/>
+                                    <Border Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" Width="48" Height="48" CornerRadius="24">
+                                        <Polygon Points="18,15 18,33 33,24" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Missing" Foreground="#FFEF4444" Background="#801B1B1B" Padding="6,2" Margin="8" FontWeight="SemiBold"
+                                               HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,4" Foreground="{StaticResource PrimaryTextBrush}"/>
+                                <TextBlock Text="{Binding ReleaseLabel}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </Grid>
 
         <!-- Status bar -->
@@ -163,4 +182,3 @@
         </Border>
     </Grid>
 </Window>
-
