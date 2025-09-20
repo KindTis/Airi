@@ -18,7 +18,9 @@ namespace Airi.Domain
 
     public record VideoEntry(
         string Path,
-        VideoMeta Meta);
+        VideoMeta Meta,
+        long SizeBytes = 0,
+        DateTime LastModifiedUtc = default);
 
     public class LibraryData
     {

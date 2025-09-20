@@ -1,31 +1,38 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Data;
+using System.Windows.Threading;
+using Airi.Domain;
 using Airi.Infrastructure;
 using Airi.Services;
-using Airi.Domain;
 
 namespace Airi.ViewModels
 {
     /// <summary>
-    /// Loads persisted library data and exposes UI-facing collections/commands.
+    /// Loads persisted library data, exposes UI-facing collections, and coordinates scanning/diff logic.
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
         private const string AllActorsLabel = "All Actors";
         private readonly Random _random = new();
         private readonly LibraryStore _libraryStore;
-        private readonly string _baseDirectory;
-        private readonly string _fallbackThumbnail;
+        private readonly LibraryScanner _libraryScanner;
+        private readonly Dispatcher _dispatcher;
+        private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
 
+        private LibraryData _library;
         private string _searchQuery = string.Empty;
         private string _selectedActor = AllActorsLabel;
         private string _statusMessage = string.Empty;
+        private bool _isScanning;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -36,21 +43,29 @@ namespace Airi.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public MainViewModel(LibraryStore libraryStore)
+        public MainViewModel(LibraryStore libraryStore, LibraryScanner libraryScanner)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
-            _baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            _fallbackThumbnail = ComputeFallbackThumbnail();
+            _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
+            _dispatcher = Application.Current.Dispatcher;
 
-            var library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
-            Videos = new ObservableCollection<VideoItem>(library.Videos.Select(MapVideo));
+            _library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
+            AppLogger.Info($"Library loaded. Videos: {_library.Videos.Count}.");
+
+            Videos = new ObservableCollection<VideoItem>(_library.Videos.Select(MapVideo));
+            foreach (var video in Videos)
+            {
+                RegisterVideo(video);
+            }
+
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
-
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
             SortByTitleCommand = new RelayCommand(_ => ApplyTitleSort());
-            RandomPlayCommand = new RelayCommand(_ => PickRandomVideo(), _ => FilteredVideos.Cast<VideoItem>().Any());
+            RandomPlayCommand = new RelayCommand(
+                _ => PickRandomVideo(),
+                _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
 
             UpdateStatus();
         }
@@ -87,6 +102,108 @@ namespace Airi.ViewModels
             private set => SetProperty(ref _statusMessage, value);
         }
 
+        public bool IsScanning
+        {
+            get => _isScanning;
+            private set
+            {
+                if (SetProperty(ref _isScanning, value, nameof(IsScanning)))
+                {
+                    UpdateStatus(updateMessage: false);
+                }
+            }
+        }
+
+        public async Task InitializeAsync(CancellationToken cancellationToken = default)
+        {
+            await RunInitialScanAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task RunInitialScanAsync(CancellationToken cancellationToken)
+        {
+            if (IsScanning)
+            {
+                return;
+            }
+
+            IsScanning = true;
+            StatusMessage = "Scanning library...";
+            AppLogger.Info("Initiating initial library scan.");
+
+            try
+            {
+                var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    ApplyScanResult(result);
+                    FilteredVideos.Refresh();
+                });
+
+                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+
+                StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
+                AppLogger.Info(StatusMessage);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = "Scan cancelled.";
+                AppLogger.Info(StatusMessage);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Scan failed: {ex.Message}";
+                AppLogger.Error(StatusMessage, ex);
+            }
+            finally
+            {
+                IsScanning = false;
+                UpdateStatus(updateMessage: false);
+            }
+        }
+
+        private void ApplyScanResult(LibraryScanResult result)
+        {
+            var snapshotMap = result.Snapshots.ToDictionary(s => LibraryPathHelper.NormalizeLibraryPath(s.LibraryPath), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var video in Videos)
+            {
+                var key = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
+                if (snapshotMap.TryGetValue(key, out var snapshot))
+                {
+                    video.UpdateFileState(snapshot.AbsolutePath, snapshot.SizeBytes, snapshot.LastWriteUtc, VideoPresenceState.Available);
+                }
+                else
+                {
+                    var absolute = LibraryPathHelper.ResolveToAbsolute(video.LibraryPath);
+                    video.UpdateFileState(absolute, video.SizeBytes, video.LastModifiedUtc, VideoPresenceState.Missing);
+                }
+            }
+
+            foreach (var updated in result.UpdatedEntries)
+            {
+                UpdateLibraryEntry(updated.Entry.Path, _ => updated.Entry with
+                {
+                    SizeBytes = updated.Snapshot.SizeBytes,
+                    LastModifiedUtc = updated.Snapshot.LastWriteUtc
+                });
+
+                if (_videoIndex.TryGetValue(LibraryPathHelper.NormalizeLibraryPath(updated.Entry.Path), out var video))
+                {
+                    video.UpdateFileState(updated.Snapshot.AbsolutePath, updated.Snapshot.SizeBytes, updated.Snapshot.LastWriteUtc, VideoPresenceState.Available);
+                }
+            }
+
+            foreach (var newFile in result.NewFiles)
+            {
+                var entry = CreateEntryFromSnapshot(newFile);
+                _library.Videos.Add(entry);
+                var item = MapVideo(entry);
+                RegisterVideo(item);
+                Videos.Add(item);
+            }
+        }
+
         private void ApplyTitleSort()
         {
             FilteredVideos.SortDescriptions.Clear();
@@ -96,13 +213,16 @@ namespace Airi.ViewModels
 
         private void PickRandomVideo()
         {
-            var snapshot = FilteredVideos.Cast<VideoItem>().ToList();
-            if (snapshot.Count == 0)
+            var candidates = FilteredVideos.Cast<VideoItem>()
+                .Where(v => v.Presence == VideoPresenceState.Available)
+                .ToList();
+
+            if (candidates.Count == 0)
             {
                 return;
             }
 
-            var choice = snapshot[_random.Next(snapshot.Count)];
+            var choice = candidates[_random.Next(candidates.Count)];
             StatusMessage = $"Random pick: {choice.Title}";
         }
 
@@ -121,64 +241,90 @@ namespace Airi.ViewModels
             return matchesActor && matchesSearch;
         }
 
-        private void UpdateStatus()
+        private void UpdateStatus(bool updateMessage = true)
         {
-            var visibleCount = FilteredVideos.Cast<VideoItem>().Count();
-            StatusMessage = $"Showing {visibleCount} videos";
             RandomPlayCommand.RaiseCanExecuteChanged();
+
+            if (!updateMessage || IsScanning)
+            {
+                return;
+            }
+
+            var visibleAvailable = FilteredVideos.Cast<VideoItem>().Count(v => v.Presence == VideoPresenceState.Available);
+            var totalAvailable = Videos.Count(v => v.Presence == VideoPresenceState.Available);
+            StatusMessage = $"Showing {visibleAvailable} of {totalAvailable} available videos";
         }
 
         private VideoItem MapVideo(VideoEntry entry)
         {
-            var thumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail);
-            var sourcePath = ResolveVideoPath(entry.Path);
+            var libraryPath = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
+            var absolutePath = LibraryPathHelper.ResolveToAbsolute(libraryPath);
+            var lastModified = entry.LastModifiedUtc.Kind == DateTimeKind.Utc
+                ? entry.LastModifiedUtc
+                : entry.LastModifiedUtc == default
+                    ? DateTime.MinValue
+                    : DateTime.SpecifyKind(entry.LastModifiedUtc, DateTimeKind.Utc);
 
-            return new VideoItem
+            var item = new VideoItem
             {
+                LibraryPath = libraryPath,
                 Title = entry.Meta.Title,
                 ReleaseDate = entry.Meta.Date,
                 Actors = entry.Meta.Actors,
-                ThumbnailUri = thumbnailUri,
-                SourcePath = sourcePath
+                ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail)
             };
+
+            item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available);
+            return item;
         }
 
-        private string ResolveVideoPath(string path)
+
+        private VideoEntry CreateEntryFromSnapshot(FileSnapshot snapshot)
         {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return string.Empty;
-            }
+            var title = Path.GetFileNameWithoutExtension(snapshot.LibraryPath);
+            var meta = new VideoMeta(
+                string.IsNullOrWhiteSpace(title) ? "Untitled" : title,
+                null,
+                Array.Empty<string>(),
+                "resources/noimage.jpg",
+                Array.Empty<string>());
 
-            if (Path.IsPathRooted(path))
-            {
-                return path;
-            }
-
-            return Path.GetFullPath(Path.Combine(_baseDirectory, path));
+            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc);
         }
 
         private string ResolveThumbnailPath(string? path)
         {
             if (!string.IsNullOrWhiteSpace(path))
             {
-                var candidate = Path.IsPathRooted(path)
-                    ? path
-                    : Path.GetFullPath(Path.Combine(_baseDirectory, path));
-
+                var candidate = LibraryPathHelper.ResolveToAbsolute(path);
                 if (File.Exists(candidate))
                 {
                     return new Uri(candidate).AbsoluteUri;
                 }
             }
 
-            return _fallbackThumbnail;
+            var fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "noimage.jpg");
+            return File.Exists(fallbackPath) ? new Uri(fallbackPath).AbsoluteUri : string.Empty;
         }
 
-        private string ComputeFallbackThumbnail()
+        private void RegisterVideo(VideoItem item)
         {
-            var fallbackPath = Path.Combine(_baseDirectory, "resources", "noimage.jpg");
-            return File.Exists(fallbackPath) ? new Uri(fallbackPath).AbsoluteUri : string.Empty;
+            var key = LibraryPathHelper.NormalizeLibraryPath(item.LibraryPath);
+            _videoIndex[key] = item;
+        }
+
+        private void UpdateLibraryEntry(string path, Func<VideoEntry, VideoEntry> updater)
+        {
+            var normalized = LibraryPathHelper.NormalizeLibraryPath(path);
+            for (var i = 0; i < _library.Videos.Count; i++)
+            {
+                var current = _library.Videos[i];
+                if (LibraryPathHelper.NormalizeLibraryPath(current.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    _library.Videos[i] = updater(current);
+                    return;
+                }
+            }
         }
 
         private static IEnumerable<string> BuildActorList(IEnumerable<VideoItem> videos)
@@ -195,7 +341,7 @@ namespace Airi.ViewModels
             }
         }
 
-        private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        private bool SetProperty<T>(ref T field, T value, string? propertyName = null)
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
             {
@@ -203,8 +349,10 @@ namespace Airi.ViewModels
             }
 
             field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName ?? string.Empty));
             return true;
         }
     }
 }
+
+
