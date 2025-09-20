@@ -3,53 +3,138 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Airi"
         mc:Ignorable="d"
-        Title="MainWindow" Height="800" Width="1400">
-    <Grid>
-        <!-- Define the rows -->
+        Title="Airi" Height="820" Width="1440"
+        Background="{DynamicResource ShellBackgroundBrush}">
+    <Window.Resources>
+        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#121212"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#1E1E1E"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#1C1C1E"/>
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#A0A0A0"/>
+        <SolidColorBrush x:Key="ListHoverBrush" Color="#2C3E50"/>
+        <SolidColorBrush x:Key="ListSelectedBrush" Color="#374151"/>
+        <SolidColorBrush x:Key="CommandBarBrush" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="StatusBarBrush" Color="#181818"/>
+    </Window.Resources>
+
+    <Grid Background="{DynamicResource ShellBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="50"/>
-            <!-- First row with height 100px -->
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <!-- Second row takes the remaining space -->
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- First Row: Contains a Button and a Search Bar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
-            <TextBox x:Name="SearchTextBox" Width="200" Height="30" Margin="5"/>
-            <Button Content="Add" Width="100" Height="30" Margin="5" Click="AddButton_Click"/>
-            <Button Content="Delete" Width="100" Height="30" Margin="5" Click="DeleteButton_Click"/>
-        </StackPanel>
+        <!-- Top command bar -->
+        <Border Grid.Row="0" Background="{StaticResource CommandBarBrush}" Margin="24" Padding="20" CornerRadius="16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <!-- Second Row: Contains two columns -->
-        <Grid Grid.Row="1">
-            <!-- Define columns -->
+                <TextBox Grid.Column="0" Height="42" Margin="0,0,16,0" Padding="12"
+                         Background="#232323" BorderBrush="#2F2F2F" Foreground="{StaticResource PrimaryTextBrush}"
+                         CaretBrush="{StaticResource PrimaryTextBrush}" VerticalContentAlignment="Center"
+                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
+
+                <Button Grid.Column="1" Width="140" Height="42" Margin="0,0,12,0" Padding="12"
+                        Content="Sort by Title"
+                        Background="{StaticResource AccentBrush}" Foreground="White"
+                        BorderBrush="Transparent"
+                        Command="{Binding SortByTitleCommand}"/>
+
+                <Button Grid.Column="2" Width="140" Height="42" Padding="12"
+                        Content="Random Play"
+                        Background="{StaticResource AccentBrush}" Foreground="White"
+                        BorderBrush="Transparent"
+                        Command="{Binding RandomPlayCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Main layout -->
+        <Grid Grid.Row="1" Margin="24,0,24,24">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="130"/>
-                <!-- First column with width 100px -->
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="24"/>
                 <ColumnDefinition Width="*"/>
-                <!-- Second column takes the remaining space -->
             </Grid.ColumnDefinitions>
 
-            <!-- First Column: ListBox -->
-            <ListBox Grid.Column="0" VerticalAlignment="Stretch"/>
+            <!-- Actor list -->
+            <Border Grid.Column="0" CornerRadius="16" Background="{StaticResource PanelBrush}">
+                <ListBox ItemsSource="{Binding Actors}"
+                         SelectedItem="{Binding SelectedActor, Mode=TwoWay}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="16"
+                         Foreground="{StaticResource SecondaryTextBrush}"
+                         HorizontalContentAlignment="Stretch"
+                         VerticalContentAlignment="Center">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Margin" Value="0,4"/>
+                            <Setter Property="Padding" Value="16"/>
+                            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Border" CornerRadius="12" Background="{TemplateBinding Background}" Padding="0">
+                                            <ContentPresenter VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource ListHoverBrush}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource ListSelectedBrush}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </Border>
 
-            <!-- Second Column: Image Grid -->
-            <ListBox Grid.Column="1" ItemsSource="{Binding VideoItems}" SelectedItem="{Binding SelectedVideoItem, Mode=TwoWay}"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" ItemWidth="370" ItemHeight="280"/>
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Image Source="{Binding ImagePath}" Width="370" Height="280" Margin="5"/>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <!-- Video grid -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Background="Transparent">
+                <ItemsControl ItemsSource="{Binding FilteredVideos}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" Margin="0" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="260" Height="250" Margin="12" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12"
+                                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
+                                <StackPanel>
+                                    <Grid Height="150" Margin="0,0,0,10" ClipToBounds="True">
+                                        <Image Source="{Binding ThumbnailUri}" Stretch="UniformToFill"/>
+                                        <Border Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" Width="48" Height="48" CornerRadius="24">
+                                            <Polygon Points="18,15 18,33 33,24" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,4" Foreground="{StaticResource PrimaryTextBrush}"/>
+                                    <TextBlock Text="{Binding ReleaseLabel}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Background="{StaticResource StatusBarBrush}" Padding="16" Margin="24" CornerRadius="12">
+            <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource PrimaryTextBrush}"/>
+        </Border>
     </Grid>
 </Window>
