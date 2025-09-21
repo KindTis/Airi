@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -52,6 +52,7 @@ namespace Airi.ViewModels
         public RelayCommand FetchMetadataCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
+        public event Action<VideoItem>? PlayVideoRequested;
 
         public MainViewModel(LibraryStore libraryStore, LibraryScanner libraryScanner, WebMetadataService webMetadataService)
         {
@@ -75,7 +76,7 @@ namespace Airi.ViewModels
 
             SortByTitleCommand = new RelayCommand(_ => ApplyTitleSort());
             RandomPlayCommand = new RelayCommand(
-                _ => PickRandomVideo(),
+                _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false), _ => CanFetchMetadata());
 
@@ -484,7 +485,7 @@ namespace Airi.ViewModels
             UpdateStatus();
         }
 
-        private void PickRandomVideo()
+        private void PlayRandomVideo()
         {
             var candidates = FilteredVideos.Cast<VideoItem>()
                 .Where(v => v.Presence == VideoPresenceState.Available)
@@ -496,9 +497,10 @@ namespace Airi.ViewModels
             }
 
             var choice = candidates[_random.Next(candidates.Count)];
+            SelectedVideo = choice;
             StatusMessage = $"Random pick: {choice.Title}";
+            PlayVideoRequested?.Invoke(choice);
         }
-
         private bool FilterVideo(object? obj)
         {
             if (obj is not VideoItem video)
@@ -668,3 +670,5 @@ namespace Airi.ViewModels
         }
     }
 }
+
+
