@@ -30,7 +30,7 @@
 
         <!-- Top command bar -->
         <Border Grid.Row="0" Background="{StaticResource CommandBarBrush}" Margin="24" Padding="20" CornerRadius="16">
-            <Grid>
+            <Grid IsEnabled="{Binding CanUseCommandBar}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -185,3 +185,4 @@
         </Border>
     </Grid>
 </Window>
+

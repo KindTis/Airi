@@ -42,6 +42,7 @@ namespace Airi.ViewModels
         private VideoItem? _selectedVideo;
         private bool _isScanning;
         private bool _isFetchingMetadata;
+        private bool _canUseCommandBar = true;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -78,7 +79,7 @@ namespace Airi.ViewModels
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
-            FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false), _ => CanFetchMetadata());
+            FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
 
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
 
@@ -123,13 +124,7 @@ namespace Airi.ViewModels
         public VideoItem? SelectedVideo
         {
             get => _selectedVideo;
-            set
-            {
-                if (SetProperty(ref _selectedVideo, value))
-                {
-                    FetchMetadataCommand.RaiseCanExecuteChanged();
-                }
-            }
+            set => SetProperty(ref _selectedVideo, value);
         }
 
         public string StatusMessage
@@ -157,9 +152,16 @@ namespace Airi.ViewModels
             {
                 if (SetProperty(ref _isFetchingMetadata, value))
                 {
+                    CanUseCommandBar = !value;
                     UpdateStatus(updateMessage: false);
                 }
             }
+        }
+
+        public bool CanUseCommandBar
+        {
+            get => _canUseCommandBar;
+            private set => SetProperty(ref _canUseCommandBar, value);
         }
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -670,5 +672,9 @@ namespace Airi.ViewModels
         }
     }
 }
+
+
+
+
 
 
