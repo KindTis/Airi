@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.IO;
 using System.Threading;
@@ -54,22 +55,40 @@ namespace Airi.Web
                 return null;
             }
 
-            var titleNode = resultNode.SelectSingleNode(".//a[contains(@class,'has-text-weight-bold')]");
-            var title = titleNode?.InnerText?.Trim() ?? query.Trim();
+            var titleNode = resultNode.SelectSingleNode(".//div[contains(@class,'card-content')]//h3[contains(@class,'title')]/a");
+            var title = titleNode?.InnerText?.Trim();
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                title = query.Trim();
+            }
 
             var imageNode = resultNode.SelectSingleNode(".//img[@class='cover']");
             var imageUrl = imageNode?.GetAttributeValue("src", null);
 
             var actorNodes = doc.DocumentNode.SelectNodes("//div[@class='mb-2 buttons are-small']//a");
+            var tagNodes = resultNode.SelectNodes(".//div[contains(@class,'card-content')]//div[contains(@class,'tags')]//a");
             var actors = new List<string>();
+            var tags = new List<string>();
             if (actorNodes is not null)
             {
                 foreach (var node in actorNodes)
                 {
-                    var actor = Regex.Replace(node.InnerText ?? string.Empty, "\\s+", " ").Trim();
+                    var actor = Regex.Replace(node.InnerText ?? string.Empty, @"\s+", " " ).Trim();
                     if (!string.IsNullOrWhiteSpace(actor))
                     {
                         actors.Add(actor);
+                    }
+                }
+            }
+
+            if (tagNodes is not null)
+            {
+                foreach (var node in tagNodes)
+                {
+                    var tag = Regex.Replace(node.InnerText ?? string.Empty, @"\s+", " " ).Trim();
+                    if (!string.IsNullOrWhiteSpace(tag))
+                    {
+                        tags.Add(tag);
                     }
                 }
             }
@@ -90,12 +109,41 @@ namespace Airi.Web
                 }
             }
 
+            DateOnly? releaseDate = null;
+            var releaseNodes = resultNode.SelectNodes(".//div[contains(@class,'card-content')]//p[contains(@class,'subtitle')]");
+            if (releaseNodes is not null)
+            {
+                foreach (var paragraph in releaseNodes)
+                {
+                    var labelSpan = paragraph.SelectSingleNode(".//span[contains(@class,'has-text-info') and contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'release date')]");
+                    if (labelSpan is null)
+                    {
+                        continue;
+                    }
+
+                    var rawText = Regex.Replace(paragraph.InnerText ?? string.Empty, @"\s+", " " ).Trim();
+                    var labelText = Regex.Replace(labelSpan.InnerText ?? string.Empty, @"\s+", " " ).Trim();
+                    if (!string.IsNullOrEmpty(labelText) && rawText.StartsWith(labelText, StringComparison.OrdinalIgnoreCase))
+                    {
+                        rawText = rawText[labelText.Length..].Trim();
+                    }
+                    rawText = rawText.TrimStart(':').Trim();
+
+                    if (DateTime.TryParse(rawText, CultureInfo.GetCultureInfo("en-US"), DateTimeStyles.None, out var parsed) ||
+                        DateTime.TryParse(rawText, CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
+                    {
+                        releaseDate = DateOnly.FromDateTime(parsed.Date);
+                        break;
+                    }
+                }
+            }
+
             var meta = new VideoMeta(
                 title,
-                null,
+                releaseDate,
                 actors,
                 string.Empty,
-                Array.Empty<string>());
+                tags);
 
             return new WebVideoMetaResult(meta, thumbnailBytes, thumbnailExtension);
         }

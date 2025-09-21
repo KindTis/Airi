@@ -27,23 +27,24 @@ namespace Airi.Services
                 throw new ArgumentNullException(nameof(entry));
             }
 
-            if (string.IsNullOrWhiteSpace(query))
+            var normalizedQuery = NormalizeQuery(query);
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
             {
-                AppLogger.Info("Metadata enrichment skipped: query is empty.");
+                AppLogger.Info("Metadata enrichment skipped: query is empty after normalization.");
                 return null;
             }
 
             foreach (var source in _sources)
             {
-                if (!source.CanHandle(query))
+                if (!source.CanHandle(normalizedQuery))
                 {
                     continue;
                 }
 
                 try
                 {
-                    AppLogger.Info($"Requesting metadata from {source.Name} for '{query}'.");
-                    var result = await source.FetchAsync(query, cancellationToken).ConfigureAwait(false);
+                    AppLogger.Info($"Requesting metadata from {source.Name} for '{normalizedQuery}'.");
+                    var result = await source.FetchAsync(normalizedQuery, cancellationToken).ConfigureAwait(false);
                     if (result is null)
                     {
                         continue;
@@ -63,7 +64,7 @@ namespace Airi.Services
 
                     meta = meta with { Thumbnail = string.IsNullOrWhiteSpace(thumbnail) ? meta.Thumbnail : thumbnail };
 
-                    AppLogger.Info($"Metadata enrichment succeeded via {source.Name} for '{query}'.");
+                    AppLogger.Info($"Metadata enrichment succeeded via {source.Name} for '{normalizedQuery}'.");
                     return entry with { Meta = meta };
                 }
                 catch (OperationCanceledException)
@@ -77,8 +78,19 @@ namespace Airi.Services
                 }
             }
 
-            AppLogger.Info($"No metadata providers returned results for '{query}'.");
+            AppLogger.Info($"No metadata providers returned results for '{normalizedQuery}'.");
             return null;
+        }
+
+        private static string NormalizeQuery(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var cleaned = new string(value.Where(char.IsLetterOrDigit).ToArray());
+            return cleaned.ToUpperInvariant();
         }
 
         private static VideoMeta MergeMeta(VideoMeta original, VideoMeta incoming)

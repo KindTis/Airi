@@ -29,6 +29,11 @@ namespace Airi.ViewModels
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _metadataQueueLock = new();
+        private readonly Queue<string> _pendingMetadata = new();
+        private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
+        private Task _metadataProcessingTask = Task.CompletedTask;
+        private readonly string _fallbackThumbnailUri;
 
         private LibraryData _library;
         private string _searchQuery = string.Empty;
@@ -65,7 +70,6 @@ namespace Airi.ViewModels
             }
 
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
-
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
@@ -75,8 +79,9 @@ namespace Airi.ViewModels
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false), _ => CanFetchMetadata());
 
-            SelectedActor = AllActorsLabel;
+            _fallbackThumbnailUri = GetFallbackThumbnailUri();
 
+            SelectedActor = AllActorsLabel;
             UpdateStatus();
             SelectedVideo = Videos.FirstOrDefault();
         }
@@ -140,7 +145,6 @@ namespace Airi.ViewModels
                 if (SetProperty(ref _isScanning, value))
                 {
                     UpdateStatus(updateMessage: false);
-                    FetchMetadataCommand.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -153,17 +157,16 @@ namespace Airi.ViewModels
                 if (SetProperty(ref _isFetchingMetadata, value))
                 {
                     UpdateStatus(updateMessage: false);
-                    FetchMetadataCommand.RaiseCanExecuteChanged();
                 }
             }
         }
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
-            await RunInitialScanAsync(cancellationToken).ConfigureAwait(false);
+            await RunStartupScanAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task RunInitialScanAsync(CancellationToken cancellationToken)
+        private async Task RunStartupScanAsync(CancellationToken cancellationToken)
         {
             if (IsScanning)
             {
@@ -202,6 +205,12 @@ namespace Airi.ViewModels
             finally
             {
                 IsScanning = false;
+
+                if (!IsFetchingMetadata)
+                {
+                    StatusMessage = BuildLibrarySummary();
+                }
+
                 UpdateStatus(updateMessage: false);
             }
         }
@@ -213,80 +222,30 @@ namespace Airi.ViewModels
                 return;
             }
 
-            var entry = FindEntry(SelectedVideo.LibraryPath);
-            if (entry is null)
-            {
-                AppLogger.Info($"Metadata fetch skipped. Entry not found for {SelectedVideo.LibraryPath}.");
-                return;
-            }
+            var normalized = LibraryPathHelper.NormalizeLibraryPath(SelectedVideo.LibraryPath);
+            RemoveFromMetadataQueue(normalized);
 
-            var query = string.IsNullOrWhiteSpace(SearchQuery) ? SelectedVideo.Title : SearchQuery;
-            if (string.IsNullOrWhiteSpace(query))
+            var shouldToggleFetching = !IsFetchingMetadata;
+            if (shouldToggleFetching)
             {
-                AppLogger.Info("Metadata enrichment skipped: query is empty.");
-                return;
+                IsFetchingMetadata = true;
             }
-
-            IsFetchingMetadata = true;
-            StatusMessage = $"Fetching metadata for '{SelectedVideo.Title}'...";
 
             try
             {
-                var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
-                if (updatedEntry is null)
-                {
-                    StatusMessage = $"No metadata found for '{query}'.";
-                    AppLogger.Info(StatusMessage);
-                    return;
-                }
-
-                UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    var normalized = LibraryPathHelper.NormalizeLibraryPath(updatedEntry.Path);
-                    var mapped = MapVideo(updatedEntry);
-
-                    if (_videoIndex.TryGetValue(normalized, out var existing))
-                    {
-                        var index = Videos.IndexOf(existing);
-                        if (index >= 0)
-                        {
-                            Videos[index] = mapped;
-                        }
-                        else
-                        {
-                            Videos.Add(mapped);
-                        }
-                    }
-                    else
-                    {
-                        Videos.Add(mapped);
-                    }
-
-                    RegisterVideo(mapped);
-                    SelectedVideo = mapped;
-                    RefreshActorList();
-                    FilteredVideos.Refresh();
-                });
-
-                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
-                StatusMessage = $"Metadata updated for '{SelectedVideo.Title}'.";
-                AppLogger.Info(StatusMessage);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                StatusMessage = $"Metadata fetch failed: {ex.Message}";
-                AppLogger.Error(StatusMessage, ex);
+                await ProcessMetadataForPathAsync(normalized).ConfigureAwait(false);
             }
             finally
             {
-                IsFetchingMetadata = false;
-                UpdateStatus(updateMessage: false);
+                if (shouldToggleFetching)
+                {
+                    IsFetchingMetadata = false;
+                    StatusMessage = BuildLibrarySummary();
+                }
             }
         }
 
-        private bool CanFetchMetadata() => SelectedVideo is not null && !IsScanning && !IsFetchingMetadata;
+        private bool CanFetchMetadata() => SelectedVideo is not null && !IsScanning;
 
         private void ApplyScanResult(LibraryScanResult result)
         {
@@ -329,6 +288,7 @@ namespace Airi.ViewModels
                 RegisterVideo(item);
                 Videos.Add(item);
                 AppLogger.Info($"Added new library entry: {entry.Path}");
+                EnqueueMetadataForProcessing(entry.Path);
             }
 
             var scanTimestamp = DateTime.UtcNow;
@@ -337,12 +297,184 @@ namespace Airi.ViewModels
                 .ToList();
 
             RefreshActorList();
-            if (SelectedVideo is null && Videos.Count > 0)
+            UpdateStatus(updateMessage: false);
+            RequestMetadataProcessing();
+        }
+
+        private async Task ProcessMetadataQueueAsync()
+        {
+            bool hasItems;
+            lock (_metadataQueueLock)
             {
-                SelectedVideo = Videos[0];
+                hasItems = _pendingMetadata.Count > 0;
             }
 
-            UpdateStatus(updateMessage: false);
+            if (!hasItems)
+            {
+                return;
+            }
+
+            await _dispatcher.InvokeAsync(() => IsFetchingMetadata = true);
+
+            try
+            {
+                while (true)
+                {
+                    string normalizedPath;
+                    lock (_metadataQueueLock)
+                    {
+                        if (_pendingMetadata.Count == 0)
+                        {
+                            break;
+                        }
+
+                        normalizedPath = _pendingMetadata.Dequeue();
+                        _metadataScheduled.Remove(normalizedPath);
+                    }
+
+                    await ProcessMetadataForPathAsync(normalizedPath).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    IsFetchingMetadata = false;
+                    StatusMessage = BuildLibrarySummary();
+                });
+            }
+        }
+
+        private async Task ProcessMetadataForPathAsync(string normalizedPath)
+        {
+            var entry = FindEntry(normalizedPath);
+            if (entry is null)
+            {
+                return;
+            }
+
+            var displayName = Path.GetFileName(LibraryPathHelper.ResolveToAbsolute(normalizedPath));
+
+            await _dispatcher.InvokeAsync(() =>
+            {
+                StatusMessage = $"Fetching metadata for {displayName}...";
+            });
+
+            var query = string.IsNullOrWhiteSpace(entry.Meta.Title)
+                ? Path.GetFileNameWithoutExtension(normalizedPath)
+                : entry.Meta.Title;
+
+            try
+            {
+                var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
+                if (updatedEntry is null)
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        StatusMessage = $"No metadata found for {displayName}.";
+                    });
+                    return;
+                }
+
+                UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    ApplyMetadataToCollections(updatedEntry);
+                    StatusMessage = $"Metadata updated for {displayName}.";
+                });
+
+                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"Metadata enrichment failed for {normalizedPath}", ex);
+            }
+        }
+
+        private void ApplyMetadataToCollections(VideoEntry updatedEntry)
+        {
+            var normalized = LibraryPathHelper.NormalizeLibraryPath(updatedEntry.Path);
+            var mapped = MapVideo(updatedEntry);
+
+            if (_videoIndex.TryGetValue(normalized, out var existing))
+            {
+                var index = Videos.IndexOf(existing);
+                if (index >= 0)
+                {
+                    Videos[index] = mapped;
+                }
+                else
+                {
+                    Videos.Add(mapped);
+                }
+            }
+            else
+            {
+                Videos.Add(mapped);
+            }
+
+            RegisterVideo(mapped);
+
+            if (SelectedVideo?.LibraryPath == normalized)
+            {
+                SelectedVideo = mapped;
+            }
+
+            RefreshActorList();
+            FilteredVideos.Refresh();
+        }
+
+        private void EnqueueMetadataForProcessing(string path)
+        {
+            var normalized = LibraryPathHelper.NormalizeLibraryPath(path);
+
+            lock (_metadataQueueLock)
+            {
+                if (_metadataScheduled.Add(normalized))
+                {
+                    _pendingMetadata.Enqueue(normalized);
+                }
+            }
+        }
+
+        private void RemoveFromMetadataQueue(string normalizedPath)
+        {
+            lock (_metadataQueueLock)
+            {
+                if (_pendingMetadata.Count == 0)
+                {
+                    _metadataScheduled.Remove(normalizedPath);
+                    return;
+                }
+
+                var remaining = new Queue<string>(_pendingMetadata.Where(p => !p.Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)));
+                _pendingMetadata.Clear();
+                foreach (var item in remaining)
+                {
+                    _pendingMetadata.Enqueue(item);
+                }
+
+                _metadataScheduled.Remove(normalizedPath);
+            }
+        }
+
+        private void RequestMetadataProcessing()
+        {
+            lock (_metadataQueueLock)
+            {
+                if (_pendingMetadata.Count == 0)
+                {
+                    return;
+                }
+
+                if (_metadataProcessingTask is not null && !_metadataProcessingTask.IsCompleted)
+                {
+                    return;
+                }
+
+                _metadataProcessingTask = Task.Run(ProcessMetadataQueueAsync);
+            }
         }
 
         private void ApplyTitleSort()
@@ -391,9 +523,22 @@ namespace Airi.ViewModels
                 return;
             }
 
-            var visibleAvailable = FilteredVideos.Cast<VideoItem>().Count(v => v.Presence == VideoPresenceState.Available);
-            var totalAvailable = Videos.Count(v => v.Presence == VideoPresenceState.Available);
-            StatusMessage = $"Showing {visibleAvailable} of {totalAvailable} available videos";
+            StatusMessage = BuildLibrarySummary();
+        }
+
+        private string BuildLibrarySummary()
+        {
+            var total = Videos.Count;
+            var missing = Videos.Count(IsMetadataIncomplete);
+            return $"All videos updated. {total} videos. Missing metadata {missing}.";
+        }
+
+        private bool IsMetadataIncomplete(VideoItem item)
+        {
+            var missingTitle = string.IsNullOrWhiteSpace(item.Title) || string.Equals(item.Title, "Untitled", StringComparison.OrdinalIgnoreCase);
+            var missingActors = item.Actors.Count == 0;
+            var missingThumbnail = string.IsNullOrWhiteSpace(item.ThumbnailUri) || string.Equals(item.ThumbnailUri, _fallbackThumbnailUri, StringComparison.OrdinalIgnoreCase);
+            return missingTitle || missingActors || missingThumbnail;
         }
 
         private VideoItem MapVideo(VideoEntry entry)
@@ -443,6 +588,11 @@ namespace Airi.ViewModels
                 }
             }
 
+            return _fallbackThumbnailUri;
+        }
+
+        private string GetFallbackThumbnailUri()
+        {
             var fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "noimage.jpg");
             return File.Exists(fallbackPath) ? new Uri(fallbackPath).AbsoluteUri : string.Empty;
         }
@@ -518,6 +668,3 @@ namespace Airi.ViewModels
         }
     }
 }
-
-
-
