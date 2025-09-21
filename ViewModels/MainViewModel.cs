@@ -75,7 +75,6 @@ namespace Airi.ViewModels
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false), _ => CanFetchMetadata());
 
-            _selectedActor = string.Empty;
             SelectedActor = AllActorsLabel;
 
             UpdateStatus();
@@ -100,9 +99,16 @@ namespace Airi.ViewModels
             get => _selectedActor;
             set
             {
-                if (SetProperty(ref _selectedActor, value))
+                var normalized = string.IsNullOrWhiteSpace(value) ? AllActorsLabel : value;
+
+                if (Actors is not null && !Actors.Any(actor => actor.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
                 {
-                    FilteredVideos.Refresh();
+                    normalized = AllActorsLabel;
+                }
+
+                if (SetProperty(ref _selectedActor, normalized))
+                {
+                    FilteredVideos?.Refresh();
                     UpdateStatus();
                 }
             }
