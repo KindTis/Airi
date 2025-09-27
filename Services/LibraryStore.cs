@@ -112,7 +112,7 @@ namespace Airi.Services
                         new[] { "Tom Hanks" },
                         "resources/noimage.jpg",
                         Array.Empty<string>(),
-                        string.Empty)),,
+                        string.Empty)),
                 new VideoEntry("./Videos/devil-wears-prada.mp4",
                     new VideoMeta(
                         "The Devil Wears Prada",
@@ -120,7 +120,7 @@ namespace Airi.Services
                         new[] { "Meryl Streep" },
                         "resources/noimage.jpg",
                         Array.Empty<string>(),
-                        string.Empty)),,
+                        string.Empty)),
                 new VideoEntry("./Videos/inception.mp4",
                     new VideoMeta(
                         "Inception",
@@ -128,7 +128,7 @@ namespace Airi.Services
                         new[] { "Leonardo DiCaprio", "Tom Hardy" },
                         "resources/noimage.jpg",
                         Array.Empty<string>(),
-                        string.Empty)),,
+                        string.Empty)),
                 new VideoEntry("./Videos/black-widow.mp4",
                     new VideoMeta(
                         "Black Widow",
@@ -136,7 +136,7 @@ namespace Airi.Services
                         new[] { "Scarlett Johansson", "Florence Pugh" },
                         "resources/noimage.jpg",
                         Array.Empty<string>(),
-                        string.Empty)),,
+                        string.Empty)),
                 new VideoEntry("./Videos/fight-club.mp4",
                     new VideoMeta(
                         "Fight Club",
@@ -144,7 +144,7 @@ namespace Airi.Services
                         new[] { "Brad Pitt", "Edward Norton" },
                         "resources/noimage.jpg",
                         Array.Empty<string>(),
-                        string.Empty)))))
+                        string.Empty))
             });
 #endif
 
@@ -249,4 +249,5 @@ namespace Airi.Services
         }
     }
 }
+
 
