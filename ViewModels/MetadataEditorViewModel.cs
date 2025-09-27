@@ -169,8 +169,7 @@ namespace Airi.ViewModels
             }
 
             var tokens = source
-                .Split(new[] { '', '
-', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(token => token.Trim())
                 .Where(token => token.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)

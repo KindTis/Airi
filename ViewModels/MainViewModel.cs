@@ -560,7 +560,7 @@ namespace Airi.ViewModels
 
         private static string BuildSortLabel(string field, bool descending)
         {
-            var arrow = descending ? " ¡é" : " ¡è";
+            var arrow = descending ? "⬆️" : "⬇️";
             return $"{field} {arrow}";
         }
 

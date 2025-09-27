@@ -9,19 +9,19 @@
         Title="Airi" Height="1000" Width="1510"
         Background="{DynamicResource ShellBackgroundBrush}">
     <Window.Resources>
-        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#121212"/>
-        <SolidColorBrush x:Key="PanelBrush" Color="#1E1E1E"/>
+        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#0F111C"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#151828"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
-        <SolidColorBrush x:Key="CardBrush" Color="#1C1C1E"/>
-        <SolidColorBrush x:Key="CardBorderBrush" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#151828"/>
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#2E3350"/>
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#A0A0A0"/>
-        <SolidColorBrush x:Key="ListHoverBrush" Color="#2C3E50"/>
-        <SolidColorBrush x:Key="ListSelectedBrush" Color="#374151"/>
-        <SolidColorBrush x:Key="CommandBarBrush" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="StatusBarBrush" Color="#181818"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#96A1C2"/>
+        <SolidColorBrush x:Key="ListHoverBrush" Color="#1E2234"/>
+        <SolidColorBrush x:Key="ListSelectedBrush" Color="#2E3350"/>
+        <SolidColorBrush x:Key="CommandBarBrush" Color="#151828"/>
+        <SolidColorBrush x:Key="StatusBarBrush" Color="#151828"/>
                         <DataTemplate x:Key="VideoTooltipTemplate" DataType="{x:Type local:VideoItem}">
-            <Border Background="#1E1F29" CornerRadius="20" Padding="20" BorderBrush="#2A3350" BorderThickness="1">
+            <Border Background="#151828" CornerRadius="20" Padding="20" BorderBrush="#2E3350" BorderThickness="1">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="28" ShadowDepth="0" Opacity="0.45"/>
                 </Border.Effect>
@@ -30,7 +30,7 @@
                         <Image Source="{Binding ThumbnailUri}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
-                    <TextBlock Margin="0,6,0,8" Foreground="#AEB8CC" FontSize="14">
+                    <TextBlock Margin="0,6,0,8" Foreground="#96A1C2" FontSize="14">
                         <Run Text="출시일: "/>
                         <Run Text="{Binding ReleaseLabel, Mode=OneWay}"/>
                     </TextBlock>
@@ -49,12 +49,12 @@
                             </Style>
                         </StackPanel.Style>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <TextBlock Text="&#xE8D2;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
-                            <TextBlock Text="내용" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                            <TextBlock Text="&#xE8D2;" FontFamily="Segoe MDL2 Assets" Foreground="#4D8FFF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="내용" Foreground="#C7CEE4" FontWeight="SemiBold"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E9ECF5" FontSize="14"/>
+                        <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E8ECF9" FontSize="14"/>
                     </StackPanel>
-                    <Separator Background="#33FFFFFF" Margin="0,0,0,16" Height="1"/>
+                    <Separator Background="#2E3350" Margin="0,0,0,16" Height="1"/>
                     <StackPanel Margin="0,0,0,12">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -67,10 +67,10 @@
                             </Style>
                         </StackPanel.Style>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
-                            <TextBlock Text="배우" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                            <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" Foreground="#4D8FFF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="배우" Foreground="#C7CEE4" FontWeight="SemiBold"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding ActorsLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E9ECF5" FontSize="14"/>
+                        <TextBlock Text="{Binding ActorsLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E8ECF9" FontSize="14"/>
                     </StackPanel>
                     <StackPanel>
                         <StackPanel.Style>
@@ -84,8 +84,8 @@
                             </Style>
                         </StackPanel.Style>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
-                            <TextBlock Text="태그" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                            <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" Foreground="#4D8FFF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="태그" Foreground="#C7CEE4" FontWeight="SemiBold"/>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding Tags, Mode=OneWay}">
                             <ItemsControl.ItemsPanel>
@@ -95,8 +95,8 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Background="#2D3B58" CornerRadius="12" Padding="10,4" Margin="0,0,8,8">
-                                        <TextBlock Foreground="#A7C6FF" FontSize="13">
+                                    <Border Background="#1E2234" CornerRadius="12" Padding="10,4" Margin="0,0,8,8">
+                                        <TextBlock Foreground="#E8ECF9" FontSize="13">
                                             <Run Text="#"/>
                                             <Run Text="{Binding Mode=OneWay}"/>
                                         </TextBlock>
@@ -129,7 +129,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBox Grid.Column="0" Height="42" Margin="0,0,16,0" Padding="12"
-                         Background="#232323" BorderBrush="#2F2F2F" Foreground="{StaticResource PrimaryTextBrush}"
+                         Background="#1E2234" BorderBrush="#2E3350" Foreground="{StaticResource PrimaryTextBrush}"
                          CaretBrush="{StaticResource PrimaryTextBrush}" VerticalContentAlignment="Center"
                          Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
 
