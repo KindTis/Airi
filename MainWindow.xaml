@@ -36,6 +36,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBox Grid.Column="0" Height="42" Margin="0,0,16,0" Padding="12"
@@ -44,18 +45,23 @@
                          Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
 
                 <Button Grid.Column="1" Width="140" Height="42" Margin="0,0,12,0" Padding="12"
-                        Content="Sort by Title"
+                        Content="{Binding TitleSortLabel}"
                         Background="{StaticResource AccentBrush}" Foreground="White"
                         BorderBrush="Transparent"
                         Command="{Binding SortByTitleCommand}"/>
 
                 <Button Grid.Column="2" Width="140" Height="42" Margin="0,0,12,0" Padding="12"
+                        Content="{Binding DateSortLabel}"
+                        Background="{StaticResource AccentBrush}" Foreground="White"
+                        BorderBrush="Transparent"
+                        Command="{Binding SortByDateCommand}"/>
+                <Button Grid.Column="3" Width="140" Height="42" Margin="0,0,12,0" Padding="12"
                         Content="Random Play"
                         Background="{StaticResource AccentBrush}" Foreground="White"
                         BorderBrush="Transparent"
                         Command="{Binding RandomPlayCommand}"/>
 
-                <Button Grid.Column="3" Width="160" Height="42" Padding="12"
+                <Button Grid.Column="4" Width="160" Height="42" Padding="12"
                         Content="Fetch Metadata"
                         Background="{StaticResource AccentBrush}" Foreground="White"
                         BorderBrush="Transparent"
@@ -185,4 +191,5 @@
         </Border>
     </Grid>
 </Window>
+
 

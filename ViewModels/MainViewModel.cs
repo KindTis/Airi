@@ -34,6 +34,12 @@ namespace Airi.ViewModels
         private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
         private Task _metadataProcessingTask = Task.CompletedTask;
         private readonly string _fallbackThumbnailUri;
+        private enum SortField
+        {
+            Title,
+            Date
+        }
+
 
         private LibraryData _library;
         private string _searchQuery = string.Empty;
@@ -43,14 +49,32 @@ namespace Airi.ViewModels
         private bool _isScanning;
         private bool _isFetchingMetadata;
         private bool _canUseCommandBar = true;
+        private SortField _activeSortField = SortField.Title;
+        private bool _titleSortDescending = true;
+        private bool _dateSortDescending = true;
+        private string _titleSortLabel = string.Empty;
+        private string _dateSortLabel = string.Empty;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
         public ICollectionView FilteredVideos { get; }
 
         public RelayCommand SortByTitleCommand { get; }
+        public RelayCommand SortByDateCommand { get; }
         public RelayCommand RandomPlayCommand { get; }
         public RelayCommand FetchMetadataCommand { get; }
+        public string TitleSortLabel
+        {
+            get => _titleSortLabel;
+            private set => SetProperty(ref _titleSortLabel, value);
+        }
+
+        public string DateSortLabel
+        {
+            get => _dateSortLabel;
+            private set => SetProperty(ref _dateSortLabel, value);
+        }
+
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<VideoItem>? PlayVideoRequested;
@@ -75,13 +99,15 @@ namespace Airi.ViewModels
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
-            SortByTitleCommand = new RelayCommand(_ => ApplyTitleSort());
+            SortByTitleCommand = new RelayCommand(_ => OnSortByTitle());
+            SortByDateCommand = new RelayCommand(_ => OnSortByDate());
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
 
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
+            ApplySort(SortField.Title, _titleSortDescending, updateStatus: false);
 
             SelectedActor = AllActorsLabel;
             UpdateStatus();
@@ -248,7 +274,6 @@ namespace Airi.ViewModels
             }
         }
 
-        private bool CanFetchMetadata() => SelectedVideo is not null && !IsScanning;
 
         private void ApplyScanResult(LibraryScanResult result)
         {
@@ -480,11 +505,63 @@ namespace Airi.ViewModels
             }
         }
 
-        private void ApplyTitleSort()
+        private void OnSortByTitle()
         {
+            if (_activeSortField == SortField.Title)
+            {
+                _titleSortDescending = !_titleSortDescending;
+            }
+            else
+            {
+                _titleSortDescending = true;
+            }
+
+            ApplySort(SortField.Title, _titleSortDescending);
+        }
+
+        private void OnSortByDate()
+        {
+            if (_activeSortField == SortField.Date)
+            {
+                _dateSortDescending = !_dateSortDescending;
+            }
+            else
+            {
+                _dateSortDescending = true;
+            }
+
+            ApplySort(SortField.Date, _dateSortDescending);
+        }
+
+        private void ApplySort(SortField field, bool descending, bool updateStatus = true)
+        {
+            _activeSortField = field;
+
+            var direction = descending ? ListSortDirection.Descending : ListSortDirection.Ascending;
+            var property = field == SortField.Title ? nameof(VideoItem.Title) : nameof(VideoItem.ReleaseDate);
+
             FilteredVideos.SortDescriptions.Clear();
-            FilteredVideos.SortDescriptions.Add(new SortDescription(nameof(VideoItem.Title), ListSortDirection.Ascending));
-            UpdateStatus();
+            FilteredVideos.SortDescriptions.Add(new SortDescription(property, direction));
+            FilteredVideos.Refresh();
+
+            UpdateSortLabels();
+
+            if (updateStatus)
+            {
+                UpdateStatus();
+            }
+        }
+
+        private void UpdateSortLabels()
+        {
+            TitleSortLabel = BuildSortLabel("Title", _titleSortDescending);
+            DateSortLabel = BuildSortLabel("Date", _dateSortDescending);
+        }
+
+        private static string BuildSortLabel(string field, bool descending)
+        {
+            var arrow = descending ? " ↓" : " ↑";
+            return $"{field} {arrow}";
         }
 
         private void PlayRandomVideo()
@@ -672,9 +749,4 @@ namespace Airi.ViewModels
         }
     }
 }
-
-
-
-
-
 
