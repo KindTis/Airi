@@ -17,6 +17,7 @@ namespace Airi.ViewModels
         private readonly string _thumbnailKey;
         private readonly string _initialThumbnailPath;
         private readonly string _initialThumbnailPreviewUri;
+        private readonly string _fallbackThumbnailPath;
         private readonly string _fallbackThumbnailPreviewUri;
 
         private string _title = string.Empty;
@@ -37,6 +38,7 @@ namespace Airi.ViewModels
 
             _thumbnailCache = new ThumbnailCache();
             _thumbnailKey = DetermineThumbnailKey(item);
+            _fallbackThumbnailPath = LibraryPathHelper.NormalizeLibraryPath(@".\resources\noimage.jpg");
             _fallbackThumbnailPreviewUri = GetFallbackPreviewUri();
 
             _title = item.Title;
@@ -132,7 +134,7 @@ namespace Airi.ViewModels
 
         public void ResetThumbnail()
         {
-            ThumbnailPath = string.Empty;
+            ThumbnailPath = _fallbackThumbnailPath;
             ThumbnailPreviewUri = _fallbackThumbnailPreviewUri;
             ThumbnailDisplayName = BuildDisplayName(string.Empty);
         }
