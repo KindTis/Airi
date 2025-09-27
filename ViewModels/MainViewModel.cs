@@ -53,6 +53,7 @@ namespace Airi.ViewModels
         private bool _isFetchingMetadata;
         private bool _canUseCommandBar = true;
         private SortOption _selectedSortOption;
+        private bool _showMissingMetadataOnly;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -159,6 +160,19 @@ namespace Airi.ViewModels
                 if (SetProperty(ref _selectedActor, normalized))
                 {
                     FilteredVideos?.Refresh();
+                    UpdateStatus();
+                }
+            }
+        }
+
+        public bool ShowMissingMetadataOnly
+        {
+            get => _showMissingMetadataOnly;
+            set
+            {
+                if (SetProperty(ref _showMissingMetadataOnly, value))
+                {
+                    FilteredVideos.Refresh();
                     UpdateStatus();
                 }
             }
@@ -622,8 +636,9 @@ namespace Airi.ViewModels
             var matchesSearch = string.IsNullOrWhiteSpace(SearchQuery) ||
                                 video.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ||
                                 video.Actors.Any(actor => actor.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase));
+            var matchesMetadata = !ShowMissingMetadataOnly || IsMetadataIncomplete(video);
 
-            return matchesActor && matchesSearch;
+            return matchesActor && matchesSearch && matchesMetadata;
         }
 
         private void ClearSearch()
@@ -658,10 +673,8 @@ namespace Airi.ViewModels
 
         private bool IsMetadataIncomplete(VideoItem item)
         {
-            var missingTitle = string.IsNullOrWhiteSpace(item.Title) || string.Equals(item.Title, "Untitled", StringComparison.OrdinalIgnoreCase);
-            var missingActors = item.Actors.Count == 0;
             var missingThumbnail = string.IsNullOrWhiteSpace(item.ThumbnailUri) || string.Equals(item.ThumbnailUri, _fallbackThumbnailUri, StringComparison.OrdinalIgnoreCase);
-            return missingTitle || missingActors || missingThumbnail;
+            return missingThumbnail;
         }
 
         private VideoItem MapVideo(VideoEntry entry)
