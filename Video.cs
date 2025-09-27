@@ -27,6 +27,7 @@ namespace Airi
         public IReadOnlyList<string> Actors { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
         public string ThumbnailUri { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
 
         public string SourcePath
         {

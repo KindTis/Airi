@@ -41,7 +41,7 @@ namespace Airi.Tests
         {
             var entry = new VideoEntry(
                 Path.Combine(_root, "missing.mp4"),
-                new VideoMeta("Missing", null, Array.Empty<string>(), string.Empty, Array.Empty<string>()));
+                new VideoMeta("Missing", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty));
 
             var library = CreateLibrary();
             library.Videos.Add(entry);
@@ -63,7 +63,7 @@ namespace Airi.Tests
 
             var entry = new VideoEntry(
                 filePath,
-                new VideoMeta("Update", null, Array.Empty<string>(), string.Empty, Array.Empty<string>()),
+                new VideoMeta("Update", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
                 SizeBytes: 0,
                 LastModifiedUtc: DateTime.UtcNow.AddDays(-1));
 

@@ -50,7 +50,7 @@ namespace Airi.Tests
             await File.WriteAllTextAsync(absolutePath, "stub");
 
             library.Videos.Add(new VideoEntry(relativePath,
-                new VideoMeta("Test Title", DateOnly.FromDateTime(DateTime.Today), Array.Empty<string>(), "resources/noimage.jpg", Array.Empty<string>()),
+                new VideoMeta("Test Title", DateOnly.FromDateTime(DateTime.Today), Array.Empty<string>(), "resources/noimage.jpg", Array.Empty<string>(), string.Empty),
                 0,
                 DateTime.UtcNow));
 

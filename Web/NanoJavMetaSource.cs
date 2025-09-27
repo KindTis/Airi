@@ -138,12 +138,16 @@ namespace Airi.Web
                 }
             }
 
+            var descriptionNode = resultNode.SelectSingleNode(".//div[contains(@class,'card-content')]//div[contains(@class,'tags')]/following-sibling::p[contains(@class,'subtitle')]");
+            var description = descriptionNode?.InnerText?.Trim() ?? string.Empty;
+
             var meta = new VideoMeta(
                 title,
                 releaseDate,
                 actors,
                 string.Empty,
-                tags);
+                tags,
+                description);
 
             return new WebVideoMetaResult(meta, thumbnailBytes, thumbnailExtension);
         }

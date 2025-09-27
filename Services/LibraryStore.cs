@@ -109,35 +109,40 @@ namespace Airi.Services
                         new DateOnly(1994, 7, 6),
                         new[] { "Tom Hanks" },
                         "resources/noimage.jpg",
-                        Array.Empty<string>())),
+                        Array.Empty<string>(),
+                        string.Empty)),,
                 new VideoEntry("./Videos/devil-wears-prada.mp4",
                     new VideoMeta(
                         "The Devil Wears Prada",
                         new DateOnly(2006, 6, 30),
                         new[] { "Meryl Streep" },
                         "resources/noimage.jpg",
-                        Array.Empty<string>())),
+                        Array.Empty<string>(),
+                        string.Empty)),,
                 new VideoEntry("./Videos/inception.mp4",
                     new VideoMeta(
                         "Inception",
                         new DateOnly(2010, 7, 16),
                         new[] { "Leonardo DiCaprio", "Tom Hardy" },
                         "resources/noimage.jpg",
-                        Array.Empty<string>())),
+                        Array.Empty<string>(),
+                        string.Empty)),,
                 new VideoEntry("./Videos/black-widow.mp4",
                     new VideoMeta(
                         "Black Widow",
                         new DateOnly(2021, 7, 9),
                         new[] { "Scarlett Johansson", "Florence Pugh" },
                         "resources/noimage.jpg",
-                        Array.Empty<string>())),
+                        Array.Empty<string>(),
+                        string.Empty)),,
                 new VideoEntry("./Videos/fight-club.mp4",
                     new VideoMeta(
                         "Fight Club",
                         new DateOnly(1999, 10, 15),
                         new[] { "Brad Pitt", "Edward Norton" },
                         "resources/noimage.jpg",
-                        Array.Empty<string>()))
+                        Array.Empty<string>(),
+                        string.Empty)))))
             });
 #endif
 
@@ -228,6 +233,7 @@ namespace Airi.Services
             var thumbnail = string.IsNullOrWhiteSpace(meta.Thumbnail)
                 ? string.Empty
                 : LibraryPathHelper.NormalizeLibraryPath(meta.Thumbnail);
+            var description = string.IsNullOrWhiteSpace(meta.Description) ? string.Empty : meta.Description.Trim();
 
             return meta with
             {
@@ -235,7 +241,8 @@ namespace Airi.Services
                 Date = meta.Date,
                 Actors = actors,
                 Thumbnail = thumbnail,
-                Tags = tags
+                Tags = tags,
+                Description = description
             };
         }
     }

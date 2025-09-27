@@ -14,7 +14,8 @@ namespace Airi.Domain
         DateOnly? Date,
         IReadOnlyList<string> Actors,
         string Thumbnail,
-        IReadOnlyList<string> Tags);
+        IReadOnlyList<string> Tags,
+        string Description);
 
     public record VideoEntry(
         string Path,

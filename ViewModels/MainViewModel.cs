@@ -639,6 +639,7 @@ namespace Airi.ViewModels
                 ReleaseDate = entry.Meta.Date,
                 Actors = entry.Meta.Actors,
                 Tags = entry.Meta.Tags,
+                Description = entry.Meta.Description,
                 ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail)
             };
 
@@ -654,7 +655,8 @@ namespace Airi.ViewModels
                 null,
                 Array.Empty<string>(),
                 "resources/noimage.jpg",
-                Array.Empty<string>());
+                Array.Empty<string>(),
+                string.Empty);
 
             return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc);
         }

@@ -20,7 +20,7 @@ namespace Airi.Tests
 
             var original = new VideoEntry(
                 "./Videos/sample.mp4",
-                new VideoMeta("Original Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>()),
+                new VideoMeta("Original Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
                 123,
                 DateTime.UtcNow);
 
@@ -39,7 +39,7 @@ namespace Airi.Tests
         public async Task EnrichAsync_NoProviders_ReturnsNull()
         {
             var service = new WebMetadataService(Array.Empty<IWebVideoMetaSource>(), new ThumbnailCache());
-            var original = new VideoEntry("./Videos/sample.mp4", new VideoMeta("Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>()), 0, DateTime.UtcNow);
+            var original = new VideoEntry("./Videos/sample.mp4", new VideoMeta("Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty), 0, DateTime.UtcNow);
 
             var updated = await service.EnrichAsync(original, "Sample", CancellationToken.None);
 
@@ -59,7 +59,8 @@ namespace Airi.Tests
                     null,
                     new[] { "Actor One", "Actor Two" },
                     string.Empty,
-                    Array.Empty<string>());
+                    Array.Empty<string>(),
+                    string.Empty);
                 var bytes = new byte[] { 1, 2, 3 };
                 return Task.FromResult<WebVideoMetaResult?>(new WebVideoMetaResult(meta, bytes, ".jpg"));
             }

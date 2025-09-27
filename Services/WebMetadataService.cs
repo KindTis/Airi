@@ -99,8 +99,9 @@ namespace Airi.Services
             var actors = incoming.Actors.Count > 0 ? incoming.Actors : original.Actors;
             var tags = incoming.Tags.Count > 0 ? incoming.Tags : original.Tags;
             var thumbnail = string.IsNullOrWhiteSpace(incoming.Thumbnail) ? original.Thumbnail : incoming.Thumbnail;
+            var description = string.IsNullOrWhiteSpace(incoming.Description) ? original.Description : incoming.Description;
 
-            return new VideoMeta(title, date, actors, thumbnail, tags);
+            return new VideoMeta(title, date, actors, thumbnail, tags, description);
         }
     }
 }
