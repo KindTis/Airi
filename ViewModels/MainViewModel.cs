@@ -50,7 +50,7 @@ namespace Airi.ViewModels
         private bool _isFetchingMetadata;
         private bool _canUseCommandBar = true;
         private SortField _activeSortField = SortField.Title;
-        private bool _titleSortDescending = true;
+        private bool _titleSortDescending = false;
         private bool _dateSortDescending = true;
         private string _titleSortLabel = string.Empty;
         private string _dateSortLabel = string.Empty;
@@ -513,7 +513,7 @@ namespace Airi.ViewModels
             }
             else
             {
-                _titleSortDescending = true;
+                _titleSortDescending = false;
             }
 
             ApplySort(SortField.Title, _titleSortDescending);
@@ -560,7 +560,7 @@ namespace Airi.ViewModels
 
         private static string BuildSortLabel(string field, bool descending)
         {
-            var arrow = descending ? "⬆️" : "⬇️";
+            var arrow = descending ? "⬇️" : "⬆️";
             return $"{field} {arrow}";
         }
 
