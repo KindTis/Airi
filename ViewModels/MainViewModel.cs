@@ -34,11 +34,14 @@ namespace Airi.ViewModels
         private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
         private Task _metadataProcessingTask = Task.CompletedTask;
         private readonly string _fallbackThumbnailUri;
-        private enum SortField
+        public enum SortField
         {
             Title,
-            Date
+            ReleaseDate,
+            CreatedUtc
         }
+
+        public sealed record SortOption(string Label, SortField Field, ListSortDirection Direction);
 
 
         private LibraryData _library;
@@ -49,31 +52,32 @@ namespace Airi.ViewModels
         private bool _isScanning;
         private bool _isFetchingMetadata;
         private bool _canUseCommandBar = true;
-        private SortField _activeSortField = SortField.Date;
-        private bool _titleSortDescending = false;
-        private bool _dateSortDescending = true;
-        private string _titleSortLabel = string.Empty;
-        private string _dateSortLabel = string.Empty;
+        private SortOption _selectedSortOption;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
         public ICollectionView FilteredVideos { get; }
 
-        public RelayCommand SortByTitleCommand { get; }
-        public RelayCommand SortByDateCommand { get; }
-        public RelayCommand RandomPlayCommand { get; }
-        public RelayCommand FetchMetadataCommand { get; }
-        public string TitleSortLabel
+        public ObservableCollection<SortOption> SortOptions { get; }
+        public SortOption SelectedSortOption
         {
-            get => _titleSortLabel;
-            private set => SetProperty(ref _titleSortLabel, value);
+            get => _selectedSortOption;
+            set
+            {
+                if (value is null)
+                {
+                    return;
+                }
+
+                if (SetProperty(ref _selectedSortOption, value))
+                {
+                    ApplySort(value.Field, value.Direction);
+                }
+            }
         }
 
-        public string DateSortLabel
-        {
-            get => _dateSortLabel;
-            private set => SetProperty(ref _dateSortLabel, value);
-        }
+        public RelayCommand RandomPlayCommand { get; }
+        public RelayCommand FetchMetadataCommand { get; }
 
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -99,15 +103,26 @@ namespace Airi.ViewModels
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
-            SortByTitleCommand = new RelayCommand(_ => OnSortByTitle());
-            SortByDateCommand = new RelayCommand(_ => OnSortByDate());
+            SortOptions = new ObservableCollection<SortOption>(new[]
+            {
+                new SortOption("제목 내림차순", SortField.Title, ListSortDirection.Descending),
+                new SortOption("제목 오름차순", SortField.Title, ListSortDirection.Ascending),
+                new SortOption("출시일 내림차순", SortField.ReleaseDate, ListSortDirection.Descending),
+                new SortOption("출시일 오름차순", SortField.ReleaseDate, ListSortDirection.Ascending),
+                new SortOption("생성일 내림차순", SortField.CreatedUtc, ListSortDirection.Descending),
+                new SortOption("생성일 오름차순", SortField.CreatedUtc, ListSortDirection.Ascending)
+            });
+
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
 
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
-            ApplySort(SortField.Date, _dateSortDescending, updateStatus: false);
+            var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
+            _selectedSortOption = defaultSort;
+            ApplySort(defaultSort.Field, defaultSort.Direction, updateStatus: false);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedSortOption)));
 
             SelectedActor = AllActorsLabel;
             UpdateStatus();
@@ -284,27 +299,28 @@ namespace Airi.ViewModels
                 var key = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
                 if (snapshotMap.TryGetValue(key, out var snapshot))
                 {
-                    video.UpdateFileState(snapshot.AbsolutePath, snapshot.SizeBytes, snapshot.LastWriteUtc, VideoPresenceState.Available);
+                    video.UpdateFileState(snapshot.AbsolutePath, snapshot.SizeBytes, snapshot.LastWriteUtc, VideoPresenceState.Available, snapshot.CreatedUtc);
                 }
                 else
                 {
                     var absolute = LibraryPathHelper.ResolveToAbsolute(video.LibraryPath);
-                    video.UpdateFileState(absolute, video.SizeBytes, video.LastModifiedUtc, VideoPresenceState.Missing);
+                    video.UpdateFileState(absolute, video.SizeBytes, video.LastModifiedUtc, VideoPresenceState.Missing, video.CreatedUtc);
                     AppLogger.Info($"Marked missing: {video.LibraryPath}");
                 }
             }
 
             foreach (var updated in result.UpdatedEntries)
             {
-                UpdateLibraryEntry(updated.Entry.Path, _ => updated.Entry with
+                UpdateLibraryEntry(updated.Entry.Path, current => current with
                 {
                     SizeBytes = updated.Snapshot.SizeBytes,
-                    LastModifiedUtc = updated.Snapshot.LastWriteUtc
+                    LastModifiedUtc = updated.Snapshot.LastWriteUtc,
+                    CreatedUtc = updated.Snapshot.CreatedUtc != default ? updated.Snapshot.CreatedUtc : current.CreatedUtc
                 });
 
                 if (_videoIndex.TryGetValue(LibraryPathHelper.NormalizeLibraryPath(updated.Entry.Path), out var video))
                 {
-                    video.UpdateFileState(updated.Snapshot.AbsolutePath, updated.Snapshot.SizeBytes, updated.Snapshot.LastWriteUtc, VideoPresenceState.Available);
+                    video.UpdateFileState(updated.Snapshot.AbsolutePath, updated.Snapshot.SizeBytes, updated.Snapshot.LastWriteUtc, VideoPresenceState.Available, updated.Snapshot.CreatedUtc);
                 }
             }
 
@@ -505,63 +521,24 @@ namespace Airi.ViewModels
             }
         }
 
-        private void OnSortByTitle()
+        private void ApplySort(SortField field, ListSortDirection direction, bool updateStatus = true)
         {
-            if (_activeSortField == SortField.Title)
+            var property = field switch
             {
-                _titleSortDescending = !_titleSortDescending;
-            }
-            else
-            {
-                _titleSortDescending = false;
-            }
-
-            ApplySort(SortField.Title, _titleSortDescending);
-        }
-
-        private void OnSortByDate()
-        {
-            if (_activeSortField == SortField.Date)
-            {
-                _dateSortDescending = !_dateSortDescending;
-            }
-            else
-            {
-                _dateSortDescending = true;
-            }
-
-            ApplySort(SortField.Date, _dateSortDescending);
-        }
-
-        private void ApplySort(SortField field, bool descending, bool updateStatus = true)
-        {
-            _activeSortField = field;
-
-            var direction = descending ? ListSortDirection.Descending : ListSortDirection.Ascending;
-            var property = field == SortField.Title ? nameof(VideoItem.Title) : nameof(VideoItem.ReleaseDate);
+                SortField.Title => nameof(VideoItem.Title),
+                SortField.ReleaseDate => nameof(VideoItem.ReleaseDate),
+                SortField.CreatedUtc => nameof(VideoItem.CreatedUtc),
+                _ => nameof(VideoItem.Title)
+            };
 
             FilteredVideos.SortDescriptions.Clear();
             FilteredVideos.SortDescriptions.Add(new SortDescription(property, direction));
             FilteredVideos.Refresh();
 
-            UpdateSortLabels();
-
             if (updateStatus)
             {
                 UpdateStatus();
             }
-        }
-
-        private void UpdateSortLabels()
-        {
-            TitleSortLabel = BuildSortLabel("Title", _titleSortDescending);
-            DateSortLabel = BuildSortLabel("Date", _dateSortDescending);
-        }
-
-        private static string BuildSortLabel(string field, bool descending)
-        {
-            var arrow = descending ? "⬇️" : "⬆️";
-            return $"{field} {arrow}";
         }
 
         private void PlayRandomVideo()
@@ -684,6 +661,17 @@ namespace Airi.ViewModels
                     ? DateTime.MinValue
                     : DateTime.SpecifyKind(entry.LastModifiedUtc, DateTimeKind.Utc);
 
+            var createdUtc = entry.CreatedUtc;
+            if (createdUtc != default && createdUtc.Kind != DateTimeKind.Utc)
+            {
+                createdUtc = DateTime.SpecifyKind(createdUtc, DateTimeKind.Utc);
+            }
+
+            if (createdUtc == default)
+            {
+                createdUtc = lastModified;
+            }
+
             var item = new VideoItem
             {
                 LibraryPath = libraryPath,
@@ -696,7 +684,7 @@ namespace Airi.ViewModels
                 ThumbnailPath = entry.Meta.Thumbnail
             };
 
-            item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available);
+            item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available, createdUtc);
             return item;
         }
 
@@ -711,7 +699,7 @@ namespace Airi.ViewModels
                 Array.Empty<string>(),
                 string.Empty);
 
-            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc);
+            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc, snapshot.CreatedUtc);
         }
 
         private string ResolveThumbnailPath(string? path)

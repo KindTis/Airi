@@ -6,5 +6,6 @@ namespace Airi.Services
         string LibraryPath,
         string AbsolutePath,
         long SizeBytes,
-        DateTime LastWriteUtc);
+        DateTime LastWriteUtc,
+        DateTime CreatedUtc);
 }

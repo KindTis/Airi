@@ -21,7 +21,8 @@ namespace Airi.Domain
         string Path,
         VideoMeta Meta,
         long SizeBytes = 0,
-        DateTime LastModifiedUtc = default);
+        DateTime LastModifiedUtc = default,
+        DateTime CreatedUtc = default);
 
     public class LibraryData
     {

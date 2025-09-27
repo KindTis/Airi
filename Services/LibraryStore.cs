@@ -212,12 +212,24 @@ namespace Airi.Services
                 lastModified = DateTime.SpecifyKind(lastModified, DateTimeKind.Utc);
             }
 
+            var created = entry.CreatedUtc;
+            if (created != default && created.Kind != DateTimeKind.Utc)
+            {
+                created = DateTime.SpecifyKind(created, DateTimeKind.Utc);
+            }
+
+            if (created == default)
+            {
+                created = lastModified;
+            }
+
             return entry with
             {
                 Path = normalizedPath,
                 Meta = normalizedMeta,
                 SizeBytes = size,
-                LastModifiedUtc = lastModified
+                LastModifiedUtc = lastModified,
+                CreatedUtc = created
             };
         }
 

@@ -85,7 +85,8 @@ namespace Airi.Services
                         libraryPath,
                         info.FullName,
                         info.Length,
-                        info.LastWriteTimeUtc));
+                        info.LastWriteTimeUtc,
+                        info.CreationTimeUtc));
                 }
             }
 

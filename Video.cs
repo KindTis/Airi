@@ -19,6 +19,7 @@ namespace Airi
         private string _sourcePath = string.Empty;
         private long _sizeBytes;
         private DateTime _lastModifiedUtc;
+        private DateTime _createdUtc;
         private VideoPresenceState _presence = VideoPresenceState.Available;
         private string _title = string.Empty;
         private DateOnly? _releaseDate;
@@ -110,6 +111,12 @@ namespace Airi
             private set => SetField(ref _lastModifiedUtc, value);
         }
 
+        public DateTime CreatedUtc
+        {
+            get => _createdUtc;
+            private set => SetField(ref _createdUtc, value);
+        }
+
         public VideoPresenceState Presence
         {
             get => _presence;
@@ -130,12 +137,13 @@ namespace Airi
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public void UpdateFileState(string sourcePath, long sizeBytes, DateTime lastModifiedUtc, VideoPresenceState presence)
+        public void UpdateFileState(string sourcePath, long sizeBytes, DateTime lastModifiedUtc, VideoPresenceState presence, DateTime createdUtc)
         {
             SourcePath = sourcePath;
             SizeBytes = sizeBytes;
             LastModifiedUtc = lastModifiedUtc;
             Presence = presence;
+            CreatedUtc = createdUtc;
         }
 
         protected void OnPropertyChanged(string propertyName)
