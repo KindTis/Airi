@@ -17,6 +17,7 @@ namespace Airi.ViewModels
         private readonly string _thumbnailKey;
         private readonly string _initialThumbnailPath;
         private readonly string _initialThumbnailPreviewUri;
+        private readonly string _fallbackThumbnailPreviewUri;
 
         private string _title = string.Empty;
         private DateTime? _releaseDate;
@@ -36,6 +37,7 @@ namespace Airi.ViewModels
 
             _thumbnailCache = new ThumbnailCache();
             _thumbnailKey = DetermineThumbnailKey(item);
+            _fallbackThumbnailPreviewUri = GetFallbackPreviewUri();
 
             _title = item.Title;
             _releaseDate = item.ReleaseDate?.ToDateTime(TimeOnly.MinValue);
@@ -45,7 +47,7 @@ namespace Airi.ViewModels
 
             _initialThumbnailPath = item.ThumbnailPath ?? string.Empty;
             _initialThumbnailPreviewUri = string.IsNullOrWhiteSpace(item.ThumbnailUri)
-                ? GetFallbackPreviewUri()
+                ? _fallbackThumbnailPreviewUri
                 : item.ThumbnailUri;
 
             ThumbnailPath = _initialThumbnailPath;
@@ -130,9 +132,9 @@ namespace Airi.ViewModels
 
         public void ResetThumbnail()
         {
-            ThumbnailPath = _initialThumbnailPath;
-            ThumbnailPreviewUri = _initialThumbnailPreviewUri;
-            ThumbnailDisplayName = BuildDisplayName(_initialThumbnailPath);
+            ThumbnailPath = string.Empty;
+            ThumbnailPreviewUri = _fallbackThumbnailPreviewUri;
+            ThumbnailDisplayName = BuildDisplayName(string.Empty);
         }
 
         public bool TryBuildResult(out MetadataEditResult result, out string? error)
