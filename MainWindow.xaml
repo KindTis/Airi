@@ -368,7 +368,7 @@
                                 </Style>
                             </Border.Style>
                             <StackPanel>
-                                <Grid Height="150" Margin="0,0,0,10" ClipToBounds="True">
+                                <Grid Height="160" Margin="0,0,0,10" ClipToBounds="True">
                                     <Image Source="{Binding ThumbnailUri}" Stretch="UniformToFill"/>
                                     <TextBlock Text="Missing" Foreground="#FFEF4444" Background="#801B1B1B" Padding="6,2" Margin="8" FontWeight="SemiBold"
                                                HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
