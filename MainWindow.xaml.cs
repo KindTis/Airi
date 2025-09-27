@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Airi.Infrastructure;
 using Airi.Services;
@@ -54,6 +55,40 @@ namespace Airi
 
             e.Handled = true;
             TryPlayVideo(video);
+        }
+
+        private void OnVideoItemMouseEnter(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
+            {
+                tooltip.PlacementTarget = item;
+                tooltip.Placement = PlacementMode.Relative;
+                UpdateTooltipPosition(item, tooltip, e);
+                tooltip.IsOpen = true;
+            }
+        }
+
+        private void OnVideoItemMouseMove(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip && tooltip.IsOpen)
+            {
+                UpdateTooltipPosition(item, tooltip, e);
+            }
+        }
+
+        private void OnVideoItemMouseLeave(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
+            {
+                tooltip.IsOpen = false;
+            }
+        }
+
+        private static void UpdateTooltipPosition(UIElement item, ToolTip tooltip, MouseEventArgs e)
+        {
+            var position = e.GetPosition(item);
+            tooltip.HorizontalOffset = position.X + 5;
+            tooltip.VerticalOffset = position.Y + 5;
         }
 
         private void OnPlayVideoRequested(VideoItem video)
@@ -110,6 +145,8 @@ namespace Airi
         }
     }
 }
+
+
 
 
 

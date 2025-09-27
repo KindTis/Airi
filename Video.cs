@@ -25,6 +25,7 @@ namespace Airi
         public string Title { get; init; } = string.Empty;
         public DateOnly? ReleaseDate { get; init; }
         public IReadOnlyList<string> Actors { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
         public string ThumbnailUri { get; init; } = string.Empty;
 
         public string SourcePath
@@ -60,6 +61,7 @@ namespace Airi
         public bool IsMissing => Presence == VideoPresenceState.Missing;
 
         public string ActorsLabel => Actors.Count == 0 ? string.Empty : string.Join(", ", Actors);
+        public string TagsLabel => Tags.Count == 0 ? string.Empty : string.Join(", ", Tags);
         public string ReleaseLabel => ReleaseDate?.ToString("yyyy-MM-dd") ?? "Date TBD";
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -90,3 +92,4 @@ namespace Airi
         }
     }
 }
+

@@ -638,6 +638,7 @@ namespace Airi.ViewModels
                 Title = entry.Meta.Title,
                 ReleaseDate = entry.Meta.Date,
                 Actors = entry.Meta.Actors,
+                Tags = entry.Meta.Tags,
                 ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail)
             };
 
@@ -749,4 +750,5 @@ namespace Airi.ViewModels
         }
     }
 }
+
 

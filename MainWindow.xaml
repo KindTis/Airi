@@ -2,6 +2,7 @@
         WindowStartupLocation="CenterScreen"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Airi"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -19,6 +20,74 @@
         <SolidColorBrush x:Key="ListSelectedBrush" Color="#374151"/>
         <SolidColorBrush x:Key="CommandBarBrush" Color="#1A1A1A"/>
         <SolidColorBrush x:Key="StatusBarBrush" Color="#181818"/>
+                        <DataTemplate x:Key="VideoTooltipTemplate" DataType="{x:Type local:VideoItem}">
+            <Border Background="#1E1F29" CornerRadius="20" Padding="20" BorderBrush="#2A3350" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="0" Opacity="0.45"/>
+                </Border.Effect>
+                <StackPanel MaxWidth="480">
+                    <Border Height="350" CornerRadius="18" ClipToBounds="True" Margin="0,0,0,16">
+                        <Image Source="{Binding ThumbnailUri}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                    <TextBlock Margin="0,6,0,16" Foreground="#AEB8CC" FontSize="14">
+                        <Run Text="출시일: "/>
+                        <Run Text="{Binding ReleaseLabel, Mode=OneWay}"/>
+                    </TextBlock>
+                    <Separator Background="#33FFFFFF" Margin="0,0,0,16" Height="1"/>
+                    <StackPanel Margin="0,0,0,12">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActorsLabel, Mode=OneWay}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="배우" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding ActorsLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E9ECF5" FontSize="14"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Path=Tags.Count, Mode=OneWay}" Value="0">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="태그" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Tags, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#2D3B58" CornerRadius="12" Padding="10,4" Margin="0,0,8,8">
+                                        <TextBlock Foreground="#A7C6FF" FontSize="13">
+                                            <Run Text="#"/>
+                                            <Run Text="{Binding Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid Background="{DynamicResource ShellBackgroundBrush}">
@@ -130,6 +199,16 @@
                      Background="Transparent">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
+                        <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                        <Setter Property="ToolTipService.ShowDuration" Value="2147483647"/>
+                        <Setter Property="ToolTip">
+                            <Setter.Value>
+                                <ToolTip Placement="Relative" Content="{Binding Mode=OneWay}" ContentTemplate="{StaticResource VideoTooltipTemplate}"/>
+                            </Setter.Value>
+                        </Setter>
+                        <EventSetter Event="MouseEnter" Handler="OnVideoItemMouseEnter"/>
+                        <EventSetter Event="MouseLeave" Handler="OnVideoItemMouseLeave"/>
+                        <EventSetter Event="MouseMove" Handler="OnVideoItemMouseMove"/>
                         <Setter Property="Margin" Value="0"/>
                         <Setter Property="Padding" Value="0"/>
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -188,5 +267,17 @@
         </Border>
     </Grid>
 </Window>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
