@@ -49,7 +49,7 @@ namespace Airi.ViewModels
         private bool _isScanning;
         private bool _isFetchingMetadata;
         private bool _canUseCommandBar = true;
-        private SortField _activeSortField = SortField.Title;
+        private SortField _activeSortField = SortField.Date;
         private bool _titleSortDescending = false;
         private bool _dateSortDescending = true;
         private string _titleSortLabel = string.Empty;
@@ -107,7 +107,7 @@ namespace Airi.ViewModels
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
 
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
-            ApplySort(SortField.Title, _titleSortDescending, updateStatus: false);
+            ApplySort(SortField.Date, _dateSortDescending, updateStatus: false);
 
             SelectedActor = AllActorsLabel;
             UpdateStatus();
