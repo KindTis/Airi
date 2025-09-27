@@ -93,7 +93,7 @@
     </Window.Resources>
 
     <Grid Background="#0F111C">
-        <Border Style="{StaticResource CardBorderStyle}" Margin="24">
+        <Border Style="{StaticResource CardBorderStyle}" Margin="12">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -101,14 +101,14 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <StackPanel Orientation="Vertical" Margin="0,0,0,18">
+                <StackPanel Orientation="Vertical" Margin="0,0,0,12">
                     <TextBlock Text="메타데이터 편집" Style="{StaticResource HeadingTextStyle}"/>
                 </StackPanel>
 
                 <Grid Grid.Row="1" Margin="0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Orientation="Vertical">
-                            <Border Background="#1A1E2F" CornerRadius="16" Padding="16" ClipToBounds="True" Margin="0,0,0,18">
+                            <Border Background="#1A1E2F" CornerRadius="16" Padding="16" ClipToBounds="True" Margin="0,0,0,12">
                                 <Grid Height="350">
                                     <Image Source="{Binding ThumbnailPreviewUri}" Stretch="UniformToFill"/>
                                     <Border Background="#990F111C" CornerRadius="12" VerticalAlignment="Top" HorizontalAlignment="Left" Padding="10 6">
@@ -117,7 +117,7 @@
                                 </Grid>
                             </Border>
 
-                            <Border Background="#1A1E2F" CornerRadius="14" Padding="16" Margin="0,0,0,18">
+                            <Border Background="#1A1E2F" CornerRadius="14" Padding="16" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="썸네일 이미지" Style="{StaticResource FieldLabelStyle}"/>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
@@ -133,19 +133,19 @@
 
                             <Border Background="#1A1E2F" CornerRadius="14" Padding="16">
                                 <StackPanel Orientation="Vertical">
-                                    <StackPanel Margin="0,0,0,16">
+                                    <StackPanel Margin="0,0,0,12">
                                         <TextBlock Text="제목" Style="{StaticResource FieldLabelStyle}"/>
                                         <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
                                                  Style="{StaticResource InputBoxStyle}"/>
                                     </StackPanel>
 
-                                    <StackPanel Margin="0,0,0,16">
+                                    <StackPanel Margin="0,0,0,12">
                                         <TextBlock Text="출시일" Style="{StaticResource FieldLabelStyle}"/>
                                         <DatePicker SelectedDate="{Binding ReleaseDate}" DisplayDateStart="1900-01-01"
                                                     Style="{StaticResource DatePickerStyle}"/>
                                     </StackPanel>
 
-                                    <StackPanel Margin="0,0,0,16">
+                                    <StackPanel Margin="0,0,0,12">
                                         <TextBlock Text="내용" Style="{StaticResource FieldLabelStyle}"/>
                                         <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
                                                  Style="{StaticResource InputBoxStyle}" AcceptsReturn="True"
@@ -155,7 +155,7 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="12"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
@@ -183,10 +183,10 @@
                     </ScrollViewer>
                 </Grid>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
-                    <Button Content="취소" Width="116" Style="{StaticResource GhostButtonStyle}"
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button Content="취소" Width="116" Height="24" Style="{StaticResource GhostButtonStyle}"
                             Click="OnCancelClick"/>
-                    <Button Content="저장" Width="116" Style="{StaticResource PrimaryButtonStyle}"
+                    <Button Content="저장" Width="116" Height="24" Style="{StaticResource PrimaryButtonStyle}"
                             Margin="12,0,0,0" IsDefault="True" Click="OnSaveClick"/>
                 </StackPanel>
             </Grid>
