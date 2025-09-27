@@ -129,10 +129,39 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBox Grid.Column="0" Height="42" Margin="0,0,16,0" Padding="12"
-                         Background="#1E2234" BorderBrush="#2E3350" Foreground="{StaticResource PrimaryTextBrush}"
-                         CaretBrush="{StaticResource PrimaryTextBrush}" VerticalContentAlignment="Center"
-                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
+                <Grid Grid.Column="0" Height="42" Margin="0,0,16,0">
+                    <TextBox x:Name="SearchTextBox" Height="42" Padding="12,0,42,0"
+                             Background="#1E2234" BorderBrush="#2E3350" Foreground="{StaticResource PrimaryTextBrush}"
+                             CaretBrush="{StaticResource PrimaryTextBrush}" VerticalContentAlignment="Center"
+                             Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Width="28" Height="28" Margin="0,0,8,0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Background="#2E3350" Foreground="White" BorderBrush="Transparent"
+                            Padding="0" Focusable="False"
+                            Command="{Binding ClearSearchCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SearchQuery}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="&#xE894;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                    </Button>
+                </Grid>
 
                 <ComboBox Grid.Column="1" Width="180" Height="42" Margin="0,0,12,0" Padding="12,0"
                           ItemsSource="{Binding SortOptions}"

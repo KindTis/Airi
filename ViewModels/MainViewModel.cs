@@ -78,6 +78,7 @@ namespace Airi.ViewModels
 
         public RelayCommand RandomPlayCommand { get; }
         public RelayCommand FetchMetadataCommand { get; }
+        public RelayCommand ClearSearchCommand { get; }
 
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -117,6 +118,7 @@ namespace Airi.ViewModels
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
+            ClearSearchCommand = new RelayCommand(_ => ClearSearch());
 
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
             var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
@@ -622,6 +624,17 @@ namespace Airi.ViewModels
                                 video.Actors.Any(actor => actor.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase));
 
             return matchesActor && matchesSearch;
+        }
+
+        private void ClearSearch()
+        {
+            if (string.IsNullOrWhiteSpace(SearchQuery) && string.Equals(SelectedActor, AllActorsLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            SelectedActor = AllActorsLabel;
+            SearchQuery = string.Empty;
         }
 
         private void UpdateStatus(bool updateMessage = true)
