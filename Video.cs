@@ -25,6 +25,7 @@ namespace Airi
         private IReadOnlyList<string> _actors = Array.Empty<string>();
         private IReadOnlyList<string> _tags = Array.Empty<string>();
         private string _thumbnailUri = string.Empty;
+        private string _thumbnailPath = string.Empty;
         private string _description = string.Empty;
 
         public string LibraryPath { get; init; } = string.Empty;
@@ -77,6 +78,12 @@ namespace Airi
         {
             get => _thumbnailUri;
             set => SetField(ref _thumbnailUri, value ?? string.Empty);
+        }
+
+        public string ThumbnailPath
+        {
+            get => _thumbnailPath;
+            set => SetField(ref _thumbnailPath, value ?? string.Empty);
         }
 
         public string Description

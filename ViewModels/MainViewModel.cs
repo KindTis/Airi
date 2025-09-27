@@ -560,7 +560,7 @@ namespace Airi.ViewModels
 
         private static string BuildSortLabel(string field, bool descending)
         {
-            var arrow = descending ? " ก้" : " ก่";
+            var arrow = descending ? " ยกรฉ" : " ยกรจ";
             return $"{field} {arrow}";
         }
 
@@ -591,6 +591,8 @@ namespace Airi.ViewModels
             var tags = result.Tags ?? Array.Empty<string>();
             var description = result.Description ?? string.Empty;
             var title = string.IsNullOrWhiteSpace(result.Title) ? item.Title : result.Title.Trim();
+            var thumbnailPath = string.IsNullOrWhiteSpace(result.ThumbnailPath) ? item.ThumbnailPath : result.ThumbnailPath;
+            var thumbnailUri = ResolveThumbnailPath(thumbnailPath);
 
             await _dispatcher.InvokeAsync(() =>
             {
@@ -599,6 +601,8 @@ namespace Airi.ViewModels
                 item.Actors = actors;
                 item.Tags = tags;
                 item.Description = description;
+                item.ThumbnailPath = thumbnailPath;
+                item.ThumbnailUri = thumbnailUri;
             });
 
             UpdateLibraryEntry(item.LibraryPath, entry =>
@@ -609,7 +613,8 @@ namespace Airi.ViewModels
                     Date = result.ReleaseDate,
                     Actors = actors,
                     Tags = tags,
-                    Description = description
+                    Description = description,
+                    Thumbnail = thumbnailPath
                 };
                 return entry with { Meta = updatedMeta };
             });
@@ -687,7 +692,8 @@ namespace Airi.ViewModels
                 Actors = entry.Meta.Actors,
                 Tags = entry.Meta.Tags,
                 Description = entry.Meta.Description,
-                ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail)
+                ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail),
+                ThumbnailPath = entry.Meta.Thumbnail
             };
 
             item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available);
