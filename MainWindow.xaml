@@ -6,7 +6,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Airi" Height="1000" Width="1510"
+        Title="Airi" Height="1000" Width="1500"
         Background="{DynamicResource ShellBackgroundBrush}">
     <Window.Resources>
         <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#0F111C"/>
@@ -20,7 +20,21 @@
         <SolidColorBrush x:Key="ListSelectedBrush" Color="#2E3350"/>
         <SolidColorBrush x:Key="CommandBarBrush" Color="#151828"/>
         <SolidColorBrush x:Key="StatusBarBrush" Color="#151828"/>
-                        <DataTemplate x:Key="VideoTooltipTemplate" DataType="{x:Type local:VideoItem}">
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="Transparent" BorderThickness="0" Padding="0">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="VideoTooltipTemplate" DataType="{x:Type local:VideoItem}">
             <Border Background="#151828" CornerRadius="20" Padding="20" BorderBrush="#2E3350" BorderThickness="1">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="28" ShadowDepth="0" Opacity="0.45"/>
@@ -120,7 +134,7 @@
         </Grid.RowDefinitions>
 
         <!-- Top command bar -->
-        <Border Grid.Row="0" Background="{StaticResource CommandBarBrush}" Margin="24" Padding="20" CornerRadius="16">
+        <Border Grid.Row="0" Background="{StaticResource CommandBarBrush}" Margin="24, 12, 24, 12" Padding="20" CornerRadius="16">
             <Grid IsEnabled="{Binding CanUseCommandBar}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -224,10 +238,10 @@
         </Border>
 
         <!-- Main layout -->
-        <Grid Grid.Row="1" Margin="24,0,24,24">
+        <Grid Grid.Row="1" Margin="24,0,12,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="24"/>
+                <ColumnDefinition Width="12"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -347,7 +361,7 @@
         </Grid>
 
         <!-- Status bar -->
-        <Border Grid.Row="2" Background="{StaticResource StatusBarBrush}" Padding="16" Margin="24" CornerRadius="12">
+        <Border Grid.Row="2" Background="{StaticResource StatusBarBrush}" Padding="16" Margin="24, 0, 24, 12" CornerRadius="12">
             <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource PrimaryTextBrush}"/>
         </Border>
     </Grid>
