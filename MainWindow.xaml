@@ -1,4 +1,4 @@
-﻿<Window x:Class="Airi.MainWindow"
+<Window x:Class="Airi.MainWindow"
         WindowStartupLocation="CenterScreen" PreviewKeyDown="OnPreviewKeyDown"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -133,6 +133,26 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+                    <StackPanel Margin="0,12,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SourcePath, Mode=OneWay}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SourcePath, Mode=OneWay}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="&#xE707;" FontFamily="Segoe MDL2 Assets" Foreground="#4D8FFF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="위치" Foreground="#C7CEE4" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding SourcePath, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E8ECF9" FontSize="14"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
