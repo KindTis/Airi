@@ -13,11 +13,19 @@ namespace Airi.Services
     {
         private readonly IReadOnlyList<IWebVideoMetaSource> _sources;
         private readonly ThumbnailCache _thumbnailCache;
+        private readonly ITextTranslationService _translationService;
+        private readonly string _translationTargetLanguageCode;
 
-        public WebMetadataService(IEnumerable<IWebVideoMetaSource> sources, ThumbnailCache thumbnailCache)
+        public WebMetadataService(
+            IEnumerable<IWebVideoMetaSource> sources,
+            ThumbnailCache thumbnailCache,
+            ITextTranslationService? translationService = null,
+            string translationTargetLanguageCode = "KO")
         {
             _sources = sources?.ToList() ?? throw new ArgumentNullException(nameof(sources));
             _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
+            _translationService = translationService ?? NullTranslationService.Instance;
+            _translationTargetLanguageCode = translationTargetLanguageCode ?? string.Empty;
         }
 
         public async Task<VideoEntry?> EnrichAsync(VideoEntry entry, string query, CancellationToken cancellationToken)
@@ -63,6 +71,7 @@ namespace Airi.Services
                     }
 
                     meta = meta with { Thumbnail = string.IsNullOrWhiteSpace(thumbnail) ? meta.Thumbnail : thumbnail };
+                    meta = await TranslateDescriptionAsync(meta, cancellationToken).ConfigureAwait(false);
 
                     AppLogger.Info($"Metadata enrichment succeeded via {source.Name} for '{normalizedQuery}'.");
                     return entry with { Meta = meta };
@@ -80,6 +89,46 @@ namespace Airi.Services
 
             AppLogger.Info($"No metadata providers returned results for '{normalizedQuery}'.");
             return null;
+        }
+
+        private async Task<VideoMeta> TranslateDescriptionAsync(VideoMeta meta, CancellationToken cancellationToken)
+        {
+            if (!_translationService.IsEnabled || string.IsNullOrWhiteSpace(_translationTargetLanguageCode))
+            {
+                AppLogger.Info("Description translation skipped: translation service disabled or target not set.");
+                return meta;
+            }
+
+            if (string.IsNullOrWhiteSpace(meta.Description))
+            {
+                AppLogger.Info("Description translation skipped: description is empty.");
+                return meta;
+            }
+
+            AppLogger.Info($"Translating description to {_translationTargetLanguageCode} (length {meta.Description.Length}).");
+
+            try
+            {
+                var translated = await _translationService.TranslateAsync(meta.Description, null, _translationTargetLanguageCode, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(translated) && !string.Equals(translated, meta.Description, StringComparison.Ordinal))
+                {
+                    AppLogger.Info("Description translation succeeded.");
+                    return meta with { Description = translated };
+                }
+
+                AppLogger.Info("Description translation returned original content.");
+            }
+            catch (OperationCanceledException)
+            {
+                AppLogger.Info("Description translation cancelled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"Description translation failed for target '{_translationTargetLanguageCode}'.", ex);
+            }
+
+            return meta;
         }
 
         private static string NormalizeQuery(string value)

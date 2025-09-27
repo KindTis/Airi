@@ -36,6 +36,32 @@ namespace Airi.Tests
         }
 
         [Fact]
+        public async Task EnrichAsync_TranslatesDescription_WhenTranslatorEnabled()
+        {
+            var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
+            var translation = new StubTranslationService();
+            var service = new WebMetadataService(new[] { new StubSourceWithDescription() }, cache, translation, "EN");
+
+            var original = new VideoEntry(
+                "./Videos/sample.mp4",
+                new VideoMeta(
+                    "Original Title",
+                    null,
+                    Array.Empty<string>(),
+                    string.Empty,
+                    Array.Empty<string>(),
+                    "원본 설명"),
+                123,
+                DateTime.UtcNow);
+
+            var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
+
+            Assert.NotNull(updated);
+            Assert.Equal("Translated Description", updated!.Meta.Description);
+            Assert.True(translation.Invoked);
+        }
+
+        [Fact]
         public async Task EnrichAsync_NoProviders_ReturnsNull()
         {
             var service = new WebMetadataService(Array.Empty<IWebVideoMetaSource>(), new ThumbnailCache());
@@ -63,6 +89,38 @@ namespace Airi.Tests
                     string.Empty);
                 var bytes = new byte[] { 1, 2, 3 };
                 return Task.FromResult<WebVideoMetaResult?>(new WebVideoMetaResult(meta, bytes, ".jpg"));
+            }
+        }
+
+        private sealed class StubSourceWithDescription : IWebVideoMetaSource
+        {
+            public string Name => "StubWithDescription";
+
+            public bool CanHandle(string query) => true;
+
+            public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken)
+            {
+                var meta = new VideoMeta(
+                    "Stub Title",
+                    null,
+                    new[] { "Actor One", "Actor Two" },
+                    string.Empty,
+                    Array.Empty<string>(),
+                    "원본 설명");
+                return Task.FromResult<WebVideoMetaResult?>(new WebVideoMetaResult(meta, Array.Empty<byte>(), ".jpg"));
+            }
+        }
+
+        private sealed class StubTranslationService : ITextTranslationService
+        {
+            public bool Invoked { get; private set; }
+
+            public bool IsEnabled => true;
+
+            public Task<string?> TranslateAsync(string text, string? sourceLanguageCode, string targetLanguageCode, CancellationToken cancellationToken)
+            {
+                Invoked = true;
+                return Task.FromResult<string?>("Translated Description");
             }
         }
     }

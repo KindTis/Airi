@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Windows;
@@ -15,6 +16,7 @@ namespace Airi
     public partial class MainWindow : Window
     {
         private readonly HttpClient _httpClient = new();
+        private readonly ITextTranslationService _translationService;
         public MainViewModel ViewModel { get; }
 
         public MainWindow()
@@ -22,11 +24,28 @@ namespace Airi
             InitializeComponent();
             AppLogger.Info("Initializing MainWindow.");
 
+            var deeplAuthKey = Environment.GetEnvironmentVariable("DEEPL_AUTH_KEY");
+            if (string.IsNullOrWhiteSpace(deeplAuthKey))
+            {
+                _translationService = NullTranslationService.Instance;
+                AppLogger.Info("DeepL translation disabled: DEEPL_AUTH_KEY not set.");
+            }
+            else
+            {
+                _translationService = new DeepLTranslationService(deeplAuthKey);
+                AppLogger.Info("DeepL translation enabled.");
+            }
+
+            var translationTarget = Environment.GetEnvironmentVariable("DEEPL_TARGET_LANG");
             var libraryStore = new LibraryStore();
             var libraryScanner = new LibraryScanner(new FileSystemScanner());
             var metadataSources = new IWebVideoMetaSource[] { new NanoJavMetaSource(_httpClient) };
             var thumbnailCache = new ThumbnailCache();
-            var webMetadataService = new WebMetadataService(metadataSources, thumbnailCache);
+            var webMetadataService = new WebMetadataService(
+                metadataSources,
+                thumbnailCache,
+                _translationService,
+                string.IsNullOrWhiteSpace(translationTarget) ? "KO" : translationTarget);
 
             ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService);
             DataContext = ViewModel;
@@ -142,6 +161,10 @@ namespace Airi
             base.OnClosed(e);
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
             _httpClient.Dispose();
+            if (_translationService is IDisposable disposableTranslation)
+            {
+                disposableTranslation.Dispose();
+            }
         }
     }
 }

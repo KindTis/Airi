@@ -30,10 +30,30 @@
                         <Image Source="{Binding ThumbnailUri}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
-                    <TextBlock Margin="0,6,0,16" Foreground="#AEB8CC" FontSize="14">
+                    <TextBlock Margin="0,6,0,8" Foreground="#AEB8CC" FontSize="14">
                         <Run Text="출시일: "/>
                         <Run Text="{Binding ReleaseLabel, Mode=OneWay}"/>
                     </TextBlock>
+                    <StackPanel Margin="0,0,0,16">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Description, Mode=OneWay}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Description, Mode=OneWay}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="&#xE8D2;" FontFamily="Segoe MDL2 Assets" Foreground="#7CA7FF" FontSize="16" Margin="0,0,6,0"/>
+                            <TextBlock Text="내용" Foreground="#D8E0F0" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Description, Mode=OneWay}" TextWrapping="Wrap" Foreground="#E9ECF5" FontSize="14"/>
+                    </StackPanel>
                     <Separator Background="#33FFFFFF" Margin="0,0,0,16" Height="1"/>
                     <StackPanel Margin="0,0,0,12">
                         <StackPanel.Style>
