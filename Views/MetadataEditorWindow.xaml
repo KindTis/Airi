@@ -35,10 +35,82 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style x:Key="DatePickerStyle" TargetType="DatePicker">
+            <Style.Resources>
+                <Style TargetType="{x:Type DatePickerTextBox}">
+                    <Setter Property="Background" Value="#1E2234"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Padding" Value="2"/>
+                    <Setter Property="SelectionBrush" Value="#3B82F6"/>
+                    <Setter Property="SelectionOpacity" Value="0.6"/>
+                </Style>
+            </Style.Resources>
             <Setter Property="Background" Value="#1E2234"/>
             <Setter Property="BorderBrush" Value="#2E3350"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
             <Setter Property="Padding" Value="8"/>
+            <Setter Property="CalendarStyle">
+                <Setter.Value>
+                    <Style TargetType="Calendar">
+                        <Setter Property="Background" Value="#1E2234"/>
+                        <Setter Property="Foreground" Value="#E8ECF9"/>
+                        <Setter Property="BorderBrush" Value="#2E3350"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="CalendarItemStyle">
+                            <Setter.Value>
+                                <Style TargetType="CalendarItem">
+                                    <Setter Property="Background" Value="#1E2234"/>
+                                    <Setter Property="BorderBrush" Value="#2E3350"/>
+                                    <Setter Property="Foreground" Value="#E8ECF9"/>
+                                </Style>
+                            </Setter.Value>
+                        </Setter>
+                        <Setter Property="CalendarButtonStyle">
+                            <Setter.Value>
+                                <Style TargetType="CalendarButton">
+                                    <Setter Property="Foreground" Value="#E8ECF9"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Setter Property="Padding" Value="4"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#2B3149"/>
+                                            <Setter Property="BorderBrush" Value="#4D5675"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Setter.Value>
+                        </Setter>
+                        <Setter Property="CalendarDayButtonStyle">
+                            <Setter.Value>
+                                <Style TargetType="CalendarDayButton">
+                                    <Setter Property="Foreground" Value="#E8ECF9"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Setter Property="FontWeight" Value="Normal"/>
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#2B3149"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#3B82F6"/>
+                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter Property="BorderBrush" Value="#4D8FFF"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                        </Trigger>
+                                        <Trigger Property="IsInactive" Value="True">
+                                            <Setter Property="Foreground" Value="#627091"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#3B82F6"/>
