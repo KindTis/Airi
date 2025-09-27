@@ -89,8 +89,7 @@ namespace Airi.Services
                 return string.Empty;
             }
 
-            var cleaned = new string(value.Where(char.IsLetterOrDigit).ToArray());
-            return cleaned.ToUpperInvariant();
+            return LibraryPathHelper.NormalizeCode(value);
         }
 
         private static VideoMeta MergeMeta(VideoMeta original, VideoMeta incoming)
@@ -105,3 +104,4 @@ namespace Airi.Services
         }
     }
 }
+
