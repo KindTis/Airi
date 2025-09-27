@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -6,10 +6,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Threading.Tasks;
 using Airi.Infrastructure;
 using Airi.Services;
 using Airi.ViewModels;
 using Airi.Web;
+using Airi.Views;
 
 namespace Airi
 {
@@ -52,6 +54,35 @@ namespace Airi
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
             Loaded += OnLoaded;
         }
+
+        private async void OnPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F1 && !e.IsRepeat)
+            {
+                e.Handled = true;
+                await OpenMetadataEditorAsync();
+            }
+        }
+
+        private async Task OpenMetadataEditorAsync()
+        {
+            if (ViewModel.SelectedVideo is null)
+            {
+                return;
+            }
+
+            var dialog = new MetadataEditorWindow(ViewModel.SelectedVideo)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
+            {
+                await ViewModel.ApplyMetadataEditAsync(ViewModel.SelectedVideo, result);
+            }
+        }
+
+
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
@@ -168,6 +199,8 @@ namespace Airi
         }
     }
 }
+
+
 
 
 

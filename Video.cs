@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -20,19 +20,75 @@ namespace Airi
         private long _sizeBytes;
         private DateTime _lastModifiedUtc;
         private VideoPresenceState _presence = VideoPresenceState.Available;
+        private string _title = string.Empty;
+        private DateOnly? _releaseDate;
+        private IReadOnlyList<string> _actors = Array.Empty<string>();
+        private IReadOnlyList<string> _tags = Array.Empty<string>();
+        private string _thumbnailUri = string.Empty;
+        private string _description = string.Empty;
 
         public string LibraryPath { get; init; } = string.Empty;
-        public string Title { get; init; } = string.Empty;
-        public DateOnly? ReleaseDate { get; init; }
-        public IReadOnlyList<string> Actors { get; init; } = Array.Empty<string>();
-        public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
-        public string ThumbnailUri { get; init; } = string.Empty;
-        public string Description { get; init; } = string.Empty;
+
+        public string Title
+        {
+            get => _title;
+            set => SetField(ref _title, value ?? string.Empty);
+        }
+
+        public DateOnly? ReleaseDate
+        {
+            get => _releaseDate;
+            set
+            {
+                if (SetField(ref _releaseDate, value))
+                {
+                    OnPropertyChanged(nameof(ReleaseLabel));
+                }
+            }
+        }
+
+        public IReadOnlyList<string> Actors
+        {
+            get => _actors;
+            set
+            {
+                var sanitized = value ?? Array.Empty<string>();
+                if (SetField(ref _actors, sanitized))
+                {
+                    OnPropertyChanged(nameof(ActorsLabel));
+                }
+            }
+        }
+
+        public IReadOnlyList<string> Tags
+        {
+            get => _tags;
+            set
+            {
+                var sanitized = value ?? Array.Empty<string>();
+                if (SetField(ref _tags, sanitized))
+                {
+                    OnPropertyChanged(nameof(TagsLabel));
+                }
+            }
+        }
+
+        public string ThumbnailUri
+        {
+            get => _thumbnailUri;
+            set => SetField(ref _thumbnailUri, value ?? string.Empty);
+        }
+
+        public string Description
+        {
+            get => _description;
+            set => SetField(ref _description, value ?? string.Empty);
+        }
 
         public string SourcePath
         {
             get => _sourcePath;
-            private set => SetField(ref _sourcePath, value);
+            private set => SetField(ref _sourcePath, value ?? string.Empty);
         }
 
         public long SizeBytes
@@ -93,4 +149,3 @@ namespace Airi
         }
     }
 }
-

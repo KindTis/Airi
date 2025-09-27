@@ -1,4 +1,4 @@
-ï»¿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -560,7 +560,7 @@ namespace Airi.ViewModels
 
         private static string BuildSortLabel(string field, bool descending)
         {
-            var arrow = descending ? " â†“" : " â†‘";
+            var arrow = descending ? " ¡é" : " ¡è";
             return $"{field} {arrow}";
         }
 
@@ -580,6 +580,53 @@ namespace Airi.ViewModels
             StatusMessage = $"Random pick: {choice.Title}";
             PlayVideoRequested?.Invoke(choice);
         }
+        public async Task ApplyMetadataEditAsync(VideoItem item, MetadataEditResult result)
+        {
+            if (item is null)
+            {
+                return;
+            }
+
+            var actors = result.Actors ?? Array.Empty<string>();
+            var tags = result.Tags ?? Array.Empty<string>();
+            var description = result.Description ?? string.Empty;
+            var title = string.IsNullOrWhiteSpace(result.Title) ? item.Title : result.Title.Trim();
+
+            await _dispatcher.InvokeAsync(() =>
+            {
+                item.Title = title;
+                item.ReleaseDate = result.ReleaseDate;
+                item.Actors = actors;
+                item.Tags = tags;
+                item.Description = description;
+            });
+
+            UpdateLibraryEntry(item.LibraryPath, entry =>
+            {
+                var updatedMeta = entry.Meta with
+                {
+                    Title = title,
+                    Date = result.ReleaseDate,
+                    Actors = actors,
+                    Tags = tags,
+                    Description = description
+                };
+                return entry with { Meta = updatedMeta };
+            });
+
+            await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+
+            await _dispatcher.InvokeAsync(() =>
+            {
+                RefreshActorList();
+                FilteredVideos.Refresh();
+                UpdateStatus();
+                StatusMessage = $"Metadata updated for '{title}'.";
+            });
+
+            AppLogger.Info($"Metadata updated for '{title}'.");
+        }
+
         private bool FilterVideo(object? obj)
         {
             if (obj is not VideoItem video)
@@ -752,5 +799,6 @@ namespace Airi.ViewModels
         }
     }
 }
+
 
 
