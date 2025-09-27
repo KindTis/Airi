@@ -108,7 +108,13 @@ namespace Airi
         public DateTime LastModifiedUtc
         {
             get => _lastModifiedUtc;
-            private set => SetField(ref _lastModifiedUtc, value);
+            private set
+            {
+                if (SetField(ref _lastModifiedUtc, value))
+                {
+                    OnPropertyChanged(nameof(CreatedLabel));
+                }
+            }
         }
 
         public DateTime CreatedUtc
@@ -134,7 +140,9 @@ namespace Airi
         public string ActorsLabel => Actors.Count == 0 ? string.Empty : string.Join(", ", Actors);
         public string TagsLabel => Tags.Count == 0 ? string.Empty : string.Join(", ", Tags);
         public string ReleaseLabel => ReleaseDate?.ToString("yyyy-MM-dd") ?? "Date TBD";
-
+        public string CreatedLabel => _lastModifiedUtc == default
+            ? "Unknown"
+            : _lastModifiedUtc.ToLocalTime().ToString("yyyy-MM-dd");
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public void UpdateFileState(string sourcePath, long sizeBytes, DateTime lastModifiedUtc, VideoPresenceState presence, DateTime createdUtc)

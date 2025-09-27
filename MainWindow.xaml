@@ -30,10 +30,12 @@
                         <Image Source="{Binding ThumbnailUri}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
-                    <TextBlock Margin="0,6,0,8" Foreground="#96A1C2" FontSize="14">
-                        <Run Text="출시일: "/>
-                        <Run Text="{Binding ReleaseLabel, Mode=OneWay}"/>
-                    </TextBlock>
+                    <StackPanel Margin="0,6,0,8">
+                        <TextBlock Foreground="#96A1C2" FontSize="14"
+                                   Text="{Binding ReleaseLabel, Mode=OneWay, StringFormat='출시일: {0}'}"/>
+                        <TextBlock Foreground="#96A1C2" FontSize="14" Margin="0,2,0,0"
+                                   Text="{Binding CreatedLabel, Mode=OneWay, StringFormat='생성일: {0}'}"/>
+                    </StackPanel>
                     <StackPanel Margin="0,0,0,16">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
