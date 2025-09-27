@@ -54,7 +54,7 @@ Airi는 로컬 폴더의 동영상 파일을 인덱싱하고, 웹에서 메타�
   "targets": [
     {
       "root": "./Videos",      // 스캔할 루트 폴더
-      "includePatterns": ["*.mp4", "*.mkv", "*.avi"],
+      "includePatterns": ["*.mp4", "*.mkv", "*.avi", "*.wmv"],
       "excludePatterns": [""],
       "lastScanUtc": "2025-09-20T12:00:00Z"
     }

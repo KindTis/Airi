@@ -16,7 +16,7 @@ namespace Airi.Services
         private const int CurrentVersion = 1;
         private static readonly TargetFolder DefaultTarget = new(
             "./Videos",
-            new[] { "*.mp4", "*.mkv", "*.avi" },
+            new[] { "*.mp4", "*.mkv", "*.avi", "*.wmv" },
             Array.Empty<string>(),
             null);
 
