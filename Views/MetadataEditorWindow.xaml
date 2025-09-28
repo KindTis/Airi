@@ -263,10 +263,8 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <Button x:Name="SearchIn141JavButton" Content="Search In 141Jav" Width="116" Height="24"
-                                Style="{StaticResource GhostButtonStyle}" Click="On141JavClick"/>
-                        <Button x:Name="ParseButton" Content="Parse" Width="116" Height="24"
-                                Style="{StaticResource GhostButtonStyle}" Margin="12,0,0,0" Click="OnParseClick"/>
+                        <Button x:Name="TryParseOn141JavButton" Content="Try Parse On 141Jav" Width="140" Height="24"
+                                Style="{StaticResource GhostButtonStyle}" Click="OnTryParseOn141JavClick"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">

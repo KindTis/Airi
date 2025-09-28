@@ -94,7 +94,7 @@ namespace Airi.Views
             }
         }
 
-        private async void On141JavClick(object sender, RoutedEventArgs e)
+        private async void OnTryParseOn141JavClick(object sender, RoutedEventArgs e)
         {
             if (DataContext is not MetadataEditorViewModel vm)
             {
@@ -123,99 +123,10 @@ namespace Airi.Views
                 if (!navigated)
                 {
                     MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            finally
-            {
-                SetInteractionInProgress(false);
-            }
-        }
-
-        private async void OnParseClick(object sender, RoutedEventArgs e)
-        {
-            if (Owner is not MainWindow mainWindow)
-            {
-                return;
-            }
-
-            if (DataContext is not MetadataEditorViewModel vm)
-            {
-                return;
-            }
-
-            SetInteractionInProgress(true);
-            try
-            {
-                var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
-                if (crawlerMetadata is not null)
-                {
-                    if (crawlerMetadata.ReleaseDate is DateTime releaseDate)
-                    {
-                        vm.ReleaseDate = releaseDate;
-                    }
-
-                    if (crawlerMetadata.Tags.Count > 0)
-                    {
-                        vm.TagsText = string.Join(Environment.NewLine, crawlerMetadata.Tags);
-                    }
-
-                    if (crawlerMetadata.Actors.Count > 0)
-                    {
-                        vm.ActorsText = string.Join(Environment.NewLine, crawlerMetadata.Actors);
-                    }
-
-                    vm.Description = crawlerMetadata.Description;
+                    return;
                 }
 
-                var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
-                if (string.IsNullOrWhiteSpace(imageUrl))
-                {
-                    MessageBox.Show(this, "크롤러 페이지에서 이미지를 찾지 못했습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    byte[] imageBytes = Array.Empty<byte>();
-                    var downloadFailed = false;
-
-                    try
-                    {
-                        imageBytes = await ThumbnailHttpClient.GetByteArrayAsync(imageUrl);
-                    }
-                    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-                    {
-                        downloadFailed = true;
-                        MessageBox.Show(this, $"이미지를 다운로드하지 못했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-
-                    if (imageBytes.Length == 0)
-                    {
-                        if (!downloadFailed)
-                        {
-                            MessageBox.Show(this, "다운로드한 이미지가 비어 있습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
-                    }
-                    else
-                    {
-                        var extension = ".jpg";
-                        string? fileName = null;
-
-                        if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
-                        {
-                            fileName = Path.GetFileName(uri.LocalPath);
-                            var candidate = Path.GetExtension(fileName);
-                            if (!string.IsNullOrWhiteSpace(candidate))
-                            {
-                                extension = candidate;
-                            }
-                        }
-
-                        var updated = await vm.UpdateThumbnailFromBytesAsync(imageBytes, extension, string.IsNullOrWhiteSpace(fileName) ? null : fileName);
-                        if (!updated)
-                        {
-                            MessageBox.Show(this, "쌍네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        }
-                    }
-                }
+                await ParseCrawlerResultAsync(mainWindow, vm);
             }
             catch (Exception ex)
             {
@@ -227,11 +138,84 @@ namespace Airi.Views
             }
         }
 
+        private async Task ParseCrawlerResultAsync(MainWindow mainWindow, MetadataEditorViewModel vm)
+        {
+            var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
+            if (crawlerMetadata is not null)
+            {
+                if (crawlerMetadata.ReleaseDate is DateTime releaseDate)
+                {
+                    vm.ReleaseDate = releaseDate;
+                }
+
+                if (crawlerMetadata.Tags.Count > 0)
+                {
+                    vm.TagsText = string.Join(Environment.NewLine, crawlerMetadata.Tags);
+                }
+
+                if (crawlerMetadata.Actors.Count > 0)
+                {
+                    vm.ActorsText = string.Join(Environment.NewLine, crawlerMetadata.Actors);
+                }
+
+                vm.Description = crawlerMetadata.Description;
+            }
+
+            var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
+            if (string.IsNullOrWhiteSpace(imageUrl))
+            {
+                MessageBox.Show(this, "크롤러 페이지에서 이미지를 찾지 못했습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                byte[] imageBytes = Array.Empty<byte>();
+                var downloadFailed = false;
+
+                try
+                {
+                    imageBytes = await ThumbnailHttpClient.GetByteArrayAsync(imageUrl);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                {
+                    downloadFailed = true;
+                    MessageBox.Show(this, $"이미지를 다운로드하지 못했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                if (imageBytes.Length == 0)
+                {
+                    if (!downloadFailed)
+                    {
+                        MessageBox.Show(this, "다운로드한 이미지가 비어 있습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+                else
+                {
+                    var extension = ".jpg";
+                    string? fileName = null;
+
+                    if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+                    {
+                        fileName = Path.GetFileName(uri.LocalPath);
+                        var candidate = Path.GetExtension(fileName);
+                        if (!string.IsNullOrWhiteSpace(candidate))
+                        {
+                            extension = candidate;
+                        }
+                    }
+
+                    var updated = await vm.UpdateThumbnailFromBytesAsync(imageBytes, extension, string.IsNullOrWhiteSpace(fileName) ? null : fileName);
+                    if (!updated)
+                    {
+                        MessageBox.Show(this, "쌍네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+            }
+        }
+
         private void SetInteractionInProgress(bool isInProgress)
         {
             var isEnabled = !isInProgress;
-            SearchIn141JavButton.IsEnabled = isEnabled;
-            ParseButton.IsEnabled = isEnabled;
+            TryParseOn141JavButton.IsEnabled = isEnabled;
             CancelButton.IsEnabled = isEnabled;
             SaveButton.IsEnabled = isEnabled;
         }
