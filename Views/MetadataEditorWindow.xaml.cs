@@ -2,6 +2,7 @@ using Airi;
 using System;
 using System.Windows;
 using Airi.ViewModels;
+using Airi.Infrastructure;
 using Microsoft.Win32;
 
 namespace Airi.Views
@@ -75,6 +76,47 @@ namespace Airi.Views
         private void OnCancelClick(object sender, RoutedEventArgs e)
         {
             DialogResult = false;
+        }
+
+        private async void OnJavLibraryClick(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MetadataEditorViewModel vm)
+            {
+                return;
+            }
+
+            var normalized = LibraryPathHelper.NormalizeCode(vm.Title);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                MessageBox.Show(this, "검색에 사용할 제목이 없습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (Owner is not MainWindow mainWindow)
+            {
+                MessageBox.Show(this, "크롤러에 접근할 수 없습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var url = $"https://www.javlibrary.com/en/vl_searchbyid.php?keyword={Uri.EscapeDataString(normalized)}";
+            var navigated = await mainWindow.ViewModel.NavigateCrawlerToAsync(url);
+            if (!navigated)
+            {
+                MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void OnParseClick(object sender, RoutedEventArgs e)
+        {
+            if (Owner is not MainWindow mainWindow)
+            {
+                return;
+            }
+
+            if (mainWindow.ViewModel.FetchMetadataCommand.CanExecute(null))
+            {
+                mainWindow.ViewModel.FetchMetadataCommand.Execute(null);
+            }
         }
     }
 }
