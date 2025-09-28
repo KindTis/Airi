@@ -31,6 +31,7 @@ namespace Airi.ViewModels
         private readonly LibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
+        private readonly OneFourOneJavCrawler _oneFourOneJavCrawler;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
@@ -93,11 +94,16 @@ namespace Airi.ViewModels
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<VideoItem>? PlayVideoRequested;
 
-        public MainViewModel(LibraryStore libraryStore, LibraryScanner libraryScanner, WebMetadataService webMetadataService)
+        public MainViewModel(
+            LibraryStore libraryStore,
+            LibraryScanner libraryScanner,
+            WebMetadataService webMetadataService,
+            OneFourOneJavCrawler oneFourOneJavCrawler)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
+            _oneFourOneJavCrawler = oneFourOneJavCrawler ?? throw new ArgumentNullException(nameof(oneFourOneJavCrawler));
             _dispatcher = Application.Current.Dispatcher;
 
             _library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
@@ -430,7 +436,7 @@ namespace Airi.ViewModels
         }
 
 
-        public async Task<string?> TryGetCrawlerThumbnailUrlAsync()
+        public async Task<string?> TryGetCrawlerThumbnailUrlAsync(CancellationToken cancellationToken = default)
         {
             var driver = _crawlerDriver;
             if (driver is null)
@@ -442,20 +448,26 @@ namespace Airi.ViewModels
                 return null;
             }
 
-            try
+            return await _oneFourOneJavCrawler
+                .TryGetThumbnailUrlAsync(driver, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<OneFourOneJavCrawler.CrawlerMetadata?> TryGetCrawlerMetadataAsync(CancellationToken cancellationToken = default)
+        {
+            var driver = _crawlerDriver;
+            if (driver is null)
             {
-                var crawler = new OneFourOneJavCrawler();
-                return await Task.Run(() => crawler.TryGetThumbnailUrl(driver)).ConfigureAwait(false);
-            }
-            catch (NoSuchElementException)
-            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = "Crawler is not running. Start the crawler first.";
+                });
                 return null;
             }
-            catch (WebDriverException ex)
-            {
-                AppLogger.Error("Crawler failed to extract thumbnail image.", ex);
-                return null;
-            }
+
+            return await _oneFourOneJavCrawler
+                .TryParseMetadataAsync(driver, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         public async Task<bool> NavigateCrawlerToAsync(string url)

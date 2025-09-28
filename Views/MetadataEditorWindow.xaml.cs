@@ -125,6 +125,27 @@ namespace Airi.Views
 
             try
             {
+                var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
+                if (crawlerMetadata is not null)
+                {
+                    if (crawlerMetadata.ReleaseDate is DateTime releaseDate)
+                    {
+                        vm.ReleaseDate = releaseDate;
+                    }
+
+                    if (crawlerMetadata.Tags.Count > 0)
+                    {
+                        vm.TagsText = string.Join(Environment.NewLine, crawlerMetadata.Tags);
+                    }
+
+                    if (crawlerMetadata.Actors.Count > 0)
+                    {
+                        vm.ActorsText = string.Join(Environment.NewLine, crawlerMetadata.Actors);
+                    }
+
+                    vm.Description = crawlerMetadata.Description;
+                }
+
                 var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
                 if (string.IsNullOrWhiteSpace(imageUrl))
                 {
