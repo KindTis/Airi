@@ -39,6 +39,7 @@ namespace Airi
             }
 
             var translationTarget = Environment.GetEnvironmentVariable("DEEPL_TARGET_LANG");
+            var translationTargetLanguageCode = string.IsNullOrWhiteSpace(translationTarget) ? "KO" : translationTarget;
             var libraryStore = new LibraryStore();
             var libraryScanner = new LibraryScanner(new FileSystemScanner());
             var metadataSources = new IWebVideoMetaSource[] { new NanoJavMetaSource(_httpClient) };
@@ -47,9 +48,11 @@ namespace Airi
                 metadataSources,
                 thumbnailCache,
                 _translationService,
-                string.IsNullOrWhiteSpace(translationTarget) ? "KO" : translationTarget);
+                translationTargetLanguageCode);
 
-            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService);
+            var oneFourOneJavCrawler = new OneFourOneJavCrawler(_translationService, translationTargetLanguageCode);
+
+            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService, oneFourOneJavCrawler);
             DataContext = ViewModel;
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
             Loaded += OnLoaded;

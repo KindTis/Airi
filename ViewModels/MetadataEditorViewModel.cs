@@ -107,6 +107,26 @@ namespace Airi.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        public async Task<bool> UpdateThumbnailFromBytesAsync(byte[] bytes, string? extension = null, string? displayName = null, CancellationToken cancellationToken = default)
+        {
+            if (bytes is null || bytes.Length == 0)
+            {
+                return false;
+            }
+
+            var relativePath = await _thumbnailCache.SaveAsync(bytes, extension ?? string.Empty, _thumbnailKey, cancellationToken).ConfigureAwait(false);
+            var absolutePath = LibraryPathHelper.ResolveToAbsolute(relativePath);
+            var previewUri = File.Exists(absolutePath) ? new Uri(absolutePath).AbsoluteUri : ThumbnailPreviewUri;
+
+            ThumbnailPath = relativePath;
+            ThumbnailPreviewUri = previewUri;
+            ThumbnailDisplayName = string.IsNullOrWhiteSpace(displayName)
+                ? BuildDisplayName(relativePath)
+                : displayName;
+
+            return true;
+        }
+
         public async Task<bool> UpdateThumbnailFromFileAsync(string filePath, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -198,6 +218,7 @@ namespace Airi.ViewModels
         {
             return string.IsNullOrWhiteSpace(path) ? "기본 이미지 사용 중" : Path.GetFileName(path);
         }
+
 
         private static string GetFallbackPreviewUri()
         {
