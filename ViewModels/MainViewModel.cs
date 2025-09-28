@@ -444,39 +444,8 @@ namespace Airi.ViewModels
 
             try
             {
-                return await Task.Run(() =>
-                {
-                    var card = driver.FindElements(By.CssSelector("div.card.mb-3")).FirstOrDefault();
-                    if (card is null)
-                    {
-                        return null;
-                    }
-
-                    var image = card.FindElements(By.CssSelector("img.image")).FirstOrDefault();
-                    if (image is null)
-                    {
-                        return null;
-                    }
-
-                    var source = image.GetAttribute("src");
-                    if (string.IsNullOrWhiteSpace(source))
-                    {
-                        source = image.GetAttribute("data-src");
-                    }
-
-                    if (string.IsNullOrWhiteSpace(source))
-                    {
-                        var srcset = image.GetAttribute("srcset");
-                        if (!string.IsNullOrWhiteSpace(srcset))
-                        {
-                            source = srcset
-                                .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries)
-                                .FirstOrDefault(token => token.StartsWith("http", StringComparison.OrdinalIgnoreCase));
-                        }
-                    }
-
-                    return string.IsNullOrWhiteSpace(source) ? null : source;
-                }).ConfigureAwait(false);
+                var crawler = new OneFourOneJavCrawler();
+                return await Task.Run(() => crawler.TryGetThumbnailUrl(driver)).ConfigureAwait(false);
             }
             catch (NoSuchElementException)
             {

@@ -128,7 +128,7 @@ namespace Airi.Views
                 var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
                 if (string.IsNullOrWhiteSpace(imageUrl))
                 {
-                    MessageBox.Show(this, "\uD06C\uB864\uB7EC \uD398\uC774\uC9C0\uC5D0\uC11C \uC774\uBBF8\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.", "\uC548\uB0B4", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(this, "크롤러 페이지에서 이미지를 찾지 못했습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
@@ -142,14 +142,14 @@ namespace Airi.Views
                     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
                     {
                         downloadFailed = true;
-                        MessageBox.Show(this, $"\uC774\uBBF8\uC9C0\uB97C \uB2E4\uC6B4\uB85C\uB4DC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.\n{ex.Message}", "\uC624\uB958", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show(this, $"이미지를 다운로드하지 못했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
 
                     if (imageBytes.Length == 0)
                     {
                         if (!downloadFailed)
                         {
-                            MessageBox.Show(this, "\uB2E4\uC6B4\uB85C\uB4DC\uD55C \uC774\uBBF8\uC9C0\uAC00 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.", "\uC548\uB0B4", MessageBoxButton.OK, MessageBoxImage.Information);
+                            MessageBox.Show(this, "다운로드한 이미지가 비어 있습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
                         }
                     }
                     else
@@ -170,14 +170,14 @@ namespace Airi.Views
                         var updated = await vm.UpdateThumbnailFromBytesAsync(imageBytes, extension, string.IsNullOrWhiteSpace(fileName) ? null : fileName);
                         if (!updated)
                         {
-                            MessageBox.Show(this, "\uC30D\uB124\uC77C\uC744 \uAC31\uC2E0\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.", "\uACBD\uACE0", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            MessageBox.Show(this, "쌍네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"\uD398\uC774\uC9C0\uB97C \uD30C\uC2F1\uD558\uB294 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.\n{ex.Message}", "\uC624\uB958", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, $"페이지를 파싱하는 중 오류가 발생했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

@@ -216,7 +216,7 @@ namespace Airi.ViewModels
 
         private static string BuildDisplayName(string path)
         {
-            return string.IsNullOrWhiteSpace(path) ? "\uAE30\uBCF8 \uC774\uBBF8\uC9C0 \uC0AC\uC6A9 \uC911" : Path.GetFileName(path);
+            return string.IsNullOrWhiteSpace(path) ? "기본 이미지 사용 중" : Path.GetFileName(path);
         }
 
 
