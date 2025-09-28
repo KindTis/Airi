@@ -115,12 +115,12 @@ namespace Airi.ViewModels
 
             SortOptions = new ObservableCollection<SortOption>(new[]
             {
-                new SortOption("?쒕ぉ ?대┝李⑥닚", SortField.Title, ListSortDirection.Descending),
-                new SortOption("?쒕ぉ ?ㅻ쫫李⑥닚", SortField.Title, ListSortDirection.Ascending),
-                new SortOption("異쒖떆???대┝李⑥닚", SortField.ReleaseDate, ListSortDirection.Descending),
-                new SortOption("異쒖떆???ㅻ쫫李⑥닚", SortField.ReleaseDate, ListSortDirection.Ascending),
-                new SortOption("?앹꽦???대┝李⑥닚", SortField.CreatedUtc, ListSortDirection.Descending),
-                new SortOption("?앹꽦???ㅻ쫫李⑥닚", SortField.CreatedUtc, ListSortDirection.Ascending)
+                new SortOption("제목 내림차순", SortField.Title, ListSortDirection.Descending),
+                new SortOption("제목 오름차순", SortField.Title, ListSortDirection.Ascending),
+                new SortOption("출시일 내림차순", SortField.ReleaseDate, ListSortDirection.Descending),
+                new SortOption("출시일 오름차순", SortField.ReleaseDate, ListSortDirection.Ascending),
+                new SortOption("생성일 내림차순", SortField.CreatedUtc, ListSortDirection.Descending),
+                new SortOption("생성일 오름차순", SortField.CreatedUtc, ListSortDirection.Ascending)
             });
 
             RandomPlayCommand = new RelayCommand(
@@ -429,6 +429,65 @@ namespace Airi.ViewModels
             }
         }
 
+
+        public async Task<string?> TryGetCrawlerThumbnailUrlAsync()
+        {
+            var driver = _crawlerDriver;
+            if (driver is null)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = "Crawler is not running. Start the crawler first.";
+                });
+                return null;
+            }
+
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    var card = driver.FindElements(By.CssSelector("div.card.mb-3")).FirstOrDefault();
+                    if (card is null)
+                    {
+                        return null;
+                    }
+
+                    var image = card.FindElements(By.CssSelector("img.image")).FirstOrDefault();
+                    if (image is null)
+                    {
+                        return null;
+                    }
+
+                    var source = image.GetAttribute("src");
+                    if (string.IsNullOrWhiteSpace(source))
+                    {
+                        source = image.GetAttribute("data-src");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(source))
+                    {
+                        var srcset = image.GetAttribute("srcset");
+                        if (!string.IsNullOrWhiteSpace(srcset))
+                        {
+                            source = srcset
+                                .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                .FirstOrDefault(token => token.StartsWith("http", StringComparison.OrdinalIgnoreCase));
+                        }
+                    }
+
+                    return string.IsNullOrWhiteSpace(source) ? null : source;
+                }).ConfigureAwait(false);
+            }
+            catch (NoSuchElementException)
+            {
+                return null;
+            }
+            catch (WebDriverException ex)
+            {
+                AppLogger.Error("Crawler failed to extract thumbnail image.", ex);
+                return null;
+            }
+        }
 
         public async Task<bool> NavigateCrawlerToAsync(string url)
         {
