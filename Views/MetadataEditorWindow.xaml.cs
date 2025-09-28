@@ -110,11 +110,14 @@ namespace Airi.Views
 
             if (Owner is not MainWindow mainWindow)
             {
+                AppLogger.Info("[MetadataEditor] Unable to access crawler from metadata editor window owner.");
                 MessageBox.Show(this, "크롤러에 접근할 수 없습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             var url = $"https://www.141jav.com/search/{Uri.EscapeDataString(normalized)}";
+
+            AppLogger.Info($"[MetadataEditor] Initiating crawler parse for '{vm.Title}' (normalized: '{normalized}').");
 
             SetInteractionInProgress(true);
             try
@@ -122,15 +125,17 @@ namespace Airi.Views
                 var navigated = await mainWindow.ViewModel.NavigateCrawlerToAsync(url);
                 if (!navigated)
                 {
+                    AppLogger.Info("[MetadataEditor] Crawler navigation request was not executed (crawler inactive).");
                     MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
                 await ParseCrawlerResultAsync(mainWindow, vm);
+                AppLogger.Info("[MetadataEditor] Crawler parse completed.");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"페이지를 파싱하는 중 오류가 발생했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppLogger.Error("[MetadataEditor] Unexpected exception while parsing crawler page.", ex);
             }
             finally
             {
@@ -140,31 +145,40 @@ namespace Airi.Views
 
         private async Task ParseCrawlerResultAsync(MainWindow mainWindow, MetadataEditorViewModel vm)
         {
+            AppLogger.Info("[MetadataEditor] Parsing crawler metadata result.");
             var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
             if (crawlerMetadata is not null)
             {
                 if (crawlerMetadata.ReleaseDate is DateTime releaseDate)
                 {
+                    AppLogger.Info($"[MetadataEditor] Applying release date from crawler: {releaseDate:yyyy-MM-dd}.");
                     vm.ReleaseDate = releaseDate;
                 }
 
                 if (crawlerMetadata.Tags.Count > 0)
                 {
+                    AppLogger.Info($"[MetadataEditor] Applying {crawlerMetadata.Tags.Count} tags from crawler.");
                     vm.TagsText = string.Join(Environment.NewLine, crawlerMetadata.Tags);
                 }
 
                 if (crawlerMetadata.Actors.Count > 0)
                 {
+                    AppLogger.Info($"[MetadataEditor] Applying {crawlerMetadata.Actors.Count} actors from crawler.");
                     vm.ActorsText = string.Join(Environment.NewLine, crawlerMetadata.Actors);
                 }
 
                 vm.Description = crawlerMetadata.Description;
+                AppLogger.Info("[MetadataEditor] Applied crawler description to metadata editor.");
+            }
+            else
+            {
+                AppLogger.Info("[MetadataEditor] No metadata payload was returned from crawler.");
             }
 
             var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
             if (string.IsNullOrWhiteSpace(imageUrl))
             {
-                MessageBox.Show(this, "크롤러 페이지에서 이미지를 찾지 못했습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                AppLogger.Info("[MetadataEditor] No thumbnail URL discovered on crawler page.");
             }
             else
             {
@@ -178,14 +192,18 @@ namespace Airi.Views
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
                 {
                     downloadFailed = true;
-                    MessageBox.Show(this, $"이미지를 다운로드하지 못했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                    AppLogger.Error($"[MetadataEditor] Failed to download crawler thumbnail from {imageUrl}.", ex);
                 }
 
                 if (imageBytes.Length == 0)
                 {
                     if (!downloadFailed)
                     {
-                        MessageBox.Show(this, "다운로드한 이미지가 비어 있습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                        AppLogger.Info("[MetadataEditor] Downloaded crawler thumbnail was empty.");
+                    }
+                    else
+                    {
+                        AppLogger.Info("[MetadataEditor] Skipping empty thumbnail update due to earlier download failure.");
                     }
                 }
                 else
@@ -206,7 +224,12 @@ namespace Airi.Views
                     var updated = await vm.UpdateThumbnailFromBytesAsync(imageBytes, extension, string.IsNullOrWhiteSpace(fileName) ? null : fileName);
                     if (!updated)
                     {
-                        MessageBox.Show(this, "쌍네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        AppLogger.Info("[MetadataEditor] Thumbnail update from crawler image was not applied.");
+                        MessageBox.Show(this, "썸네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    else
+                    {
+                        AppLogger.Info("[MetadataEditor] Thumbnail updated from crawler image.");
                     }
                 }
             }
