@@ -123,6 +123,7 @@ namespace Airi.Views
                 return;
             }
 
+            SetParsingInProgress(true);
             try
             {
                 var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
@@ -200,6 +201,19 @@ namespace Airi.Views
             {
                 MessageBox.Show(this, $"페이지를 파싱하는 중 오류가 발생했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            finally
+            {
+                SetParsingInProgress(false);
+            }
+        }
+
+        private void SetParsingInProgress(bool isInProgress)
+        {
+            var isEnabled = !isInProgress;
+            SearchIn141JavButton.IsEnabled = isEnabled;
+            ParseButton.IsEnabled = isEnabled;
+            CancelButton.IsEnabled = isEnabled;
+            SaveButton.IsEnabled = isEnabled;
         }
     }
 }

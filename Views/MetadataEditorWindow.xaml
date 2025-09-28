@@ -263,17 +263,18 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <Button Content="Search In 141Jav" Width="116" Height="24" Style="{StaticResource GhostButtonStyle}"
-                                Click="On141JavClick"/>
-                        <Button Content="Parse" Width="116" Height="24" Style="{StaticResource GhostButtonStyle}"
-                                Margin="12,0,0,0" Click="OnParseClick"/>
+                        <Button x:Name="SearchIn141JavButton" Content="Search In 141Jav" Width="116" Height="24"
+                                Style="{StaticResource GhostButtonStyle}" Click="On141JavClick"/>
+                        <Button x:Name="ParseButton" Content="Parse" Width="116" Height="24"
+                                Style="{StaticResource GhostButtonStyle}" Margin="12,0,0,0" Click="OnParseClick"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="취소" Width="116" Height="24" Style="{StaticResource GhostButtonStyle}"
-                                Click="OnCancelClick"/>
-                        <Button Content="저장" Width="116" Height="24" Style="{StaticResource PrimaryButtonStyle}"
-                                Margin="12,0,0,0" IsDefault="True" Click="OnSaveClick"/>
+                        <Button x:Name="CancelButton" Content="취소" Width="116" Height="24"
+                                Style="{StaticResource GhostButtonStyle}" Click="OnCancelClick"/>
+                        <Button x:Name="SaveButton" Content="저장" Width="116" Height="24"
+                                Style="{StaticResource PrimaryButtonStyle}" Margin="12,0,0,0" IsDefault="True"
+                                Click="OnSaveClick"/>
                     </StackPanel>
                 </Grid>
             </Grid>
