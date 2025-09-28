@@ -27,6 +27,16 @@ namespace Airi.Web
             _targetLanguageCode = string.IsNullOrWhiteSpace(targetLanguageCode) ? string.Empty : targetLanguageCode;
         }
 
+        public CrawlerSession CreateSession(IWebDriver driver)
+        {
+            if (driver is null)
+            {
+                throw new ArgumentNullException(nameof(driver));
+            }
+
+            return new CrawlerSession(this, driver);
+        }
+
         public sealed record CrawlerMetadata(DateTime? ReleaseDate, IReadOnlyList<string> Tags, IReadOnlyList<string> Actors, string Description);
 
         public async Task<CrawlerMetadata?> TryParseMetadataAsync(IWebDriver driver, CancellationToken cancellationToken = default)
@@ -276,6 +286,28 @@ namespace Airi.Web
             {
                 AppLogger.Error("[141Jav] Failed to translate description.", ex);
                 return description;
+            }
+        }
+
+        public sealed class CrawlerSession
+        {
+            private readonly OneFourOneJavCrawler _crawler;
+            private readonly IWebDriver _driver;
+
+            internal CrawlerSession(OneFourOneJavCrawler crawler, IWebDriver driver)
+            {
+                _crawler = crawler;
+                _driver = driver ?? throw new ArgumentNullException(nameof(driver));
+            }
+
+            public Task<string?> TryGetThumbnailUrlAsync(CancellationToken cancellationToken = default)
+            {
+                return _crawler.TryGetThumbnailUrlAsync(_driver, cancellationToken);
+            }
+
+            public Task<CrawlerMetadata?> TryGetMetadataAsync(CancellationToken cancellationToken = default)
+            {
+                return _crawler.TryParseMetadataAsync(_driver, cancellationToken);
             }
         }
     }

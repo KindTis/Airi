@@ -40,6 +40,7 @@ namespace Airi.ViewModels
         private readonly string _fallbackThumbnailUri;
         private ChromeDriverService? _crawlerService;
         private IWebDriver? _crawlerDriver;
+        private OneFourOneJavCrawler.CrawlerSession? _crawlerSession;
         private Task? _crawlerMonitorTask;
         public enum SortField
         {
@@ -404,6 +405,7 @@ namespace Airi.ViewModels
                 {
                     _crawlerService = result.service;
                     _crawlerDriver = result.driver;
+                    _crawlerSession = _oneFourOneJavCrawler.CreateSession(result.driver);
                     StatusMessage = result.summary;
                 });
 
@@ -438,8 +440,8 @@ namespace Airi.ViewModels
 
         public async Task<string?> TryGetCrawlerThumbnailUrlAsync(CancellationToken cancellationToken = default)
         {
-            var driver = _crawlerDriver;
-            if (driver is null)
+            var session = _crawlerSession;
+            if (session is null)
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
@@ -448,15 +450,15 @@ namespace Airi.ViewModels
                 return null;
             }
 
-            return await _oneFourOneJavCrawler
-                .TryGetThumbnailUrlAsync(driver, cancellationToken)
+            return await session
+                .TryGetThumbnailUrlAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
 
         public async Task<OneFourOneJavCrawler.CrawlerMetadata?> TryGetCrawlerMetadataAsync(CancellationToken cancellationToken = default)
         {
-            var driver = _crawlerDriver;
-            if (driver is null)
+            var session = _crawlerSession;
+            if (session is null)
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
@@ -465,8 +467,8 @@ namespace Airi.ViewModels
                 return null;
             }
 
-            return await _oneFourOneJavCrawler
-                .TryParseMetadataAsync(driver, cancellationToken)
+            return await session
+                .TryGetMetadataAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -564,6 +566,7 @@ namespace Airi.ViewModels
 
         private void DisposeCrawler()
         {
+            _crawlerSession = null;
             var driver = _crawlerDriver;
             _crawlerDriver = null;
 
