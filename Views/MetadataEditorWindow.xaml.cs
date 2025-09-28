@@ -104,10 +104,19 @@ namespace Airi.Views
             }
 
             var url = $"https://www.141jav.com/search/{Uri.EscapeDataString(normalized)}";
-            var navigated = await mainWindow.ViewModel.NavigateCrawlerToAsync(url);
-            if (!navigated)
+
+            SetInteractionInProgress(true);
+            try
             {
-                MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                var navigated = await mainWindow.ViewModel.NavigateCrawlerToAsync(url);
+                if (!navigated)
+                {
+                    MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            finally
+            {
+                SetInteractionInProgress(false);
             }
         }
 
@@ -123,7 +132,7 @@ namespace Airi.Views
                 return;
             }
 
-            SetParsingInProgress(true);
+            SetInteractionInProgress(true);
             try
             {
                 var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
@@ -203,11 +212,11 @@ namespace Airi.Views
             }
             finally
             {
-                SetParsingInProgress(false);
+                SetInteractionInProgress(false);
             }
         }
 
-        private void SetParsingInProgress(bool isInProgress)
+        private void SetInteractionInProgress(bool isInProgress)
         {
             var isEnabled = !isInProgress;
             SearchIn141JavButton.IsEnabled = isEnabled;
