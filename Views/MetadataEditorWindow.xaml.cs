@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using Airi.ViewModels;
 using Airi.Infrastructure;
 using Microsoft.Win32;
@@ -18,6 +19,7 @@ namespace Airi.Views
         {
             InitializeComponent();
             DataContext = new MetadataEditorViewModel(item);
+            KeyDown += OnWindowKeyDown;
         }
 
         public MetadataEditResult? Result { get; private set; }
@@ -81,6 +83,15 @@ namespace Airi.Views
         private void OnCancelClick(object sender, RoutedEventArgs e)
         {
             DialogResult = false;
+        }
+
+        private void OnWindowKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                DialogResult = false;
+            }
         }
 
         private async void On141JavClick(object sender, RoutedEventArgs e)
