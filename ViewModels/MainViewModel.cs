@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,12 +27,14 @@ namespace Airi.ViewModels
     {
         private const string AllActorsLabel = "All Actors";
         private const string CrawlerSeedUrl = "https://example.com/";
+        private static readonly HttpClient CrawlerThumbnailHttpClient = new();
         private readonly Random _random = new();
         private readonly LibraryStore _libraryStore;
         private readonly LibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
         private readonly OneFourOneJavCrawler _oneFourOneJavCrawler;
+        private readonly ThumbnailCache _thumbnailCache;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
@@ -99,12 +102,14 @@ namespace Airi.ViewModels
             LibraryStore libraryStore,
             LibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
-            OneFourOneJavCrawler oneFourOneJavCrawler)
+            OneFourOneJavCrawler oneFourOneJavCrawler,
+            ThumbnailCache thumbnailCache)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
             _oneFourOneJavCrawler = oneFourOneJavCrawler ?? throw new ArgumentNullException(nameof(oneFourOneJavCrawler));
+            _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
             _dispatcher = Application.Current.Dispatcher;
 
             _library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
@@ -133,7 +138,7 @@ namespace Airi.ViewModels
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
-            FetchMetadataCommand = new RelayCommand(async _ => await FetchSelectedMetadataAsync().ConfigureAwait(false));
+            FetchMetadataCommand = new RelayCommand(async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false));
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
             StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync().ConfigureAwait(false), _ => !IsCrawlerRunning);
 
@@ -303,33 +308,288 @@ namespace Airi.ViewModels
             }
         }
 
-        private async Task FetchSelectedMetadataAsync()
+        private async Task FetchMissingMetadataWithCrawlerAsync()
         {
-            if (SelectedVideo is null)
+            if (IsFetchingMetadata)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = "Metadata fetch already in progress.";
+                });
+                return;
+            }
+
+            var missing = Videos.Where(IsMetadataIncomplete).ToList();
+            if (missing.Count == 0)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = "No videos require crawler metadata.";
+                });
+                return;
+            }
+
+            if (!await EnsureCrawlerReadyAsync().ConfigureAwait(false))
             {
                 return;
             }
 
-            var normalized = LibraryPathHelper.NormalizeLibraryPath(SelectedVideo.LibraryPath);
-            RemoveFromMetadataQueue(normalized);
-
-            var shouldToggleFetching = !IsFetchingMetadata;
-            if (shouldToggleFetching)
+            await _dispatcher.InvokeAsync(() =>
             {
                 IsFetchingMetadata = true;
+                StatusMessage = $"Crawler metadata fetch starting for {missing.Count} videos.";
+            });
+
+            AppLogger.Info($"[Crawler] Starting metadata fetch for {missing.Count} videos with missing metadata.");
+
+            try
+            {
+                var total = missing.Count;
+                var index = 0;
+
+                foreach (var video in missing)
+                {
+                    index++;
+                    var normalizedPath = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
+                    var entry = FindEntry(normalizedPath);
+                    if (entry is null)
+                    {
+                        AppLogger.Info($"[Crawler] Skipping {video.LibraryPath}; no library entry found.");
+                        continue;
+                    }
+
+                    var query = BuildCrawlerQuery(video, entry);
+                    if (string.IsNullOrWhiteSpace(query))
+                    {
+                        AppLogger.Info($"[Crawler] Skipping {video.LibraryPath}; unable to build crawler query.");
+                        await _dispatcher.InvokeAsync(() =>
+                        {
+                            StatusMessage = $"[{index}/{total}] Skipped {video.Title}: query unavailable.";
+                        });
+                        continue;
+                    }
+
+                    var displayName = string.IsNullOrWhiteSpace(video.Title)
+                        ? Path.GetFileName(video.LibraryPath)
+                        : video.Title;
+
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        StatusMessage = $"[{index}/{total}] Fetching metadata for {displayName}...";
+                    });
+
+                    var searchUrl = $"https://www.141jav.com/search/{Uri.EscapeDataString(query)}";
+                    var navigated = await NavigateCrawlerToAsync(searchUrl).ConfigureAwait(false);
+                    if (!navigated)
+                    {
+                        await _dispatcher.InvokeAsync(() =>
+                        {
+                            StatusMessage = $"[{index}/{total}] Crawler navigation failed for {displayName}.";
+                        });
+                        continue;
+                    }
+
+                    var metadata = await TryGetCrawlerMetadataAsync().ConfigureAwait(false);
+                    if (metadata is null)
+                    {
+                        AppLogger.Info($"[Crawler] No metadata returned for {displayName}.");
+                        await _dispatcher.InvokeAsync(() =>
+                        {
+                            StatusMessage = $"[{index}/{total}] No crawler metadata for {displayName}.";
+                        });
+                        continue;
+                    }
+
+                    var thumbnailUrl = await TryGetCrawlerThumbnailUrlAsync().ConfigureAwait(false);
+                    var updatedEntry = await ApplyCrawlerMetadataAsync(entry, metadata, thumbnailUrl, video).ConfigureAwait(false);
+                    if (updatedEntry is null)
+                    {
+                        await _dispatcher.InvokeAsync(() =>
+                        {
+                            StatusMessage = $"[{index}/{total}] No new metadata for {displayName}.";
+                        });
+                        continue;
+                    }
+
+                    UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
+
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        ApplyMetadataToCollections(updatedEntry);
+                        StatusMessage = $"[{index}/{total}] Metadata updated for {displayName}.";
+                    });
+
+                    await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    IsFetchingMetadata = false;
+                    StatusMessage = BuildLibrarySummary();
+                });
+
+                AppLogger.Info("[Crawler] Metadata fetch completed.");
+            }
+        }
+
+        private async Task<bool> EnsureCrawlerReadyAsync()
+        {
+            if (_crawlerDriver is not null && _crawlerSession is not null)
+            {
+                return true;
+            }
+
+            await _dispatcher.InvokeAsync(() =>
+            {
+                StatusMessage = "Crawler is not running. Start the crawler to fetch metadata.";
+                MessageBox.Show(
+                    "Start the crawler before fetching metadata. Click the Start Crawler button and wait for the browser to open.",
+                    "Crawler Not Ready",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            });
+
+            return false;
+        }
+
+        private static string BuildCrawlerQuery(VideoItem video, VideoEntry entry)
+        {
+            if (!string.IsNullOrWhiteSpace(video?.Title))
+            {
+                var normalized = LibraryPathHelper.NormalizeCode(video.Title);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    return normalized;
+                }
+            }
+
+            var fallbackSource = string.IsNullOrWhiteSpace(entry.Path)
+                ? video?.LibraryPath ?? string.Empty
+                : entry.Path;
+
+            var fileStem = Path.GetFileNameWithoutExtension(fallbackSource);
+            return LibraryPathHelper.NormalizeCode(fileStem);
+        }
+
+        private static string DetermineThumbnailKey(VideoItem video, VideoEntry entry)
+        {
+            if (video is not null)
+            {
+                var normalized = LibraryPathHelper.NormalizeCode(video.Title);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    return normalized;
+                }
+            }
+
+            var fallback = string.IsNullOrWhiteSpace(entry.Path)
+                ? video?.LibraryPath ?? "thumb"
+                : entry.Path;
+
+            var fileStem = Path.GetFileNameWithoutExtension(fallback);
+            var key = LibraryPathHelper.NormalizeCode(fileStem);
+            return string.IsNullOrWhiteSpace(key) ? "thumb" : key;
+        }
+
+        private async Task<VideoEntry?> ApplyCrawlerMetadataAsync(
+            VideoEntry entry,
+            OneFourOneJavCrawler.CrawlerMetadata metadata,
+            string? thumbnailUrl,
+            VideoItem video)
+        {
+            if (metadata is null)
+            {
+                return null;
+            }
+
+            var updatedMeta = entry.Meta;
+            var hasChanges = false;
+
+            if (metadata.ReleaseDate is DateTime releaseDate)
+            {
+                updatedMeta = updatedMeta with { Date = DateOnly.FromDateTime(releaseDate.Date) };
+                hasChanges = true;
+            }
+
+            if (metadata.Tags.Count > 0)
+            {
+                updatedMeta = updatedMeta with { Tags = metadata.Tags };
+                hasChanges = true;
+            }
+
+            if (metadata.Actors.Count > 0)
+            {
+                updatedMeta = updatedMeta with { Actors = metadata.Actors };
+                hasChanges = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.Description))
+            {
+                updatedMeta = updatedMeta with { Description = metadata.Description };
+                hasChanges = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(thumbnailUrl))
+            {
+                var cacheKey = DetermineThumbnailKey(video, entry);
+                var thumbnailPath = await DownloadCrawlerThumbnailAsync(thumbnailUrl, cacheKey).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(thumbnailPath))
+                {
+                    updatedMeta = updatedMeta with { Thumbnail = thumbnailPath };
+                    hasChanges = true;
+                }
+            }
+
+            return hasChanges ? entry with { Meta = updatedMeta } : null;
+        }
+
+        private async Task<string?> DownloadCrawlerThumbnailAsync(string imageUrl, string cacheKey)
+        {
+            if (string.IsNullOrWhiteSpace(imageUrl))
+            {
+                return null;
             }
 
             try
             {
-                await ProcessMetadataForPathAsync(normalized).ConfigureAwait(false);
-            }
-            finally
-            {
-                if (shouldToggleFetching)
+                var bytes = await CrawlerThumbnailHttpClient.GetByteArrayAsync(imageUrl).ConfigureAwait(false);
+                if (bytes.Length == 0)
                 {
-                    IsFetchingMetadata = false;
-                    StatusMessage = BuildLibrarySummary();
+                    return null;
                 }
+
+                var extension = ".jpg";
+
+                if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+                {
+                    var candidate = Path.GetExtension(uri.LocalPath);
+                    if (!string.IsNullOrWhiteSpace(candidate))
+                    {
+                        extension = candidate;
+                    }
+                }
+                else
+                {
+                    var candidate = Path.GetExtension(imageUrl);
+                    if (!string.IsNullOrWhiteSpace(candidate))
+                    {
+                        extension = candidate;
+                    }
+                }
+
+                return await _thumbnailCache.SaveAsync(bytes, extension, cacheKey).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                AppLogger.Error($"[Crawler] Failed to download thumbnail from {imageUrl}.", ex);
+                return null;
+            }
+            catch (TaskCanceledException ex)
+            {
+                AppLogger.Error($"[Crawler] Thumbnail download timed out for {imageUrl}.", ex);
+                return null;
             }
         }
 

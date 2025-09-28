@@ -52,7 +52,7 @@ namespace Airi
 
             var oneFourOneJavCrawler = new OneFourOneJavCrawler(_translationService, translationTargetLanguageCode);
 
-            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService, oneFourOneJavCrawler);
+            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService, oneFourOneJavCrawler, thumbnailCache);
             DataContext = ViewModel;
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
             Loaded += OnLoaded;
