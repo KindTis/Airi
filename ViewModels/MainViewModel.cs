@@ -39,8 +39,11 @@ namespace Airi.ViewModels
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
         private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _thumbnailUriCache = new(StringComparer.OrdinalIgnoreCase);
         private Task _metadataProcessingTask = Task.CompletedTask;
         private readonly string _fallbackThumbnailUri;
+        private bool _isInitialized;
+        private readonly SemaphoreSlim _initializationGate = new(1, 1);
         private ChromeDriverService? _crawlerService;
         private IWebDriver? _crawlerDriver;
         private OneFourOneJavCrawler.CrawlerSession? _crawlerSession;
@@ -111,16 +114,10 @@ namespace Airi.ViewModels
             _oneFourOneJavCrawler = oneFourOneJavCrawler ?? throw new ArgumentNullException(nameof(oneFourOneJavCrawler));
             _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
             _dispatcher = Application.Current.Dispatcher;
+            _library = new LibraryData();
+            _fallbackThumbnailUri = GetFallbackThumbnailUri();
 
-            _library = _libraryStore.LoadAsync().GetAwaiter().GetResult();
-            AppLogger.Info($"Library loaded. Videos: {_library.Videos.Count}.");
-
-            Videos = new ObservableCollection<VideoItem>(_library.Videos.Select(MapVideo));
-            foreach (var video in Videos)
-            {
-                RegisterVideo(video);
-            }
-
+            Videos = new ObservableCollection<VideoItem>();
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
@@ -142,7 +139,6 @@ namespace Airi.ViewModels
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
             StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync().ConfigureAwait(false), _ => !IsCrawlerRunning);
 
-            _fallbackThumbnailUri = GetFallbackThumbnailUri();
             var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
             _selectedSortOption = defaultSort;
             ApplySort(defaultSort.Field, defaultSort.Direction, updateStatus: false);
@@ -256,7 +252,55 @@ namespace Airi.ViewModels
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
-            await RunStartupScanAsync(cancellationToken).ConfigureAwait(false);
+            if (_isInitialized)
+            {
+                return;
+            }
+
+            await _initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (_isInitialized)
+                {
+                    return;
+                }
+
+                await _dispatcher.InvokeAsync(() => StatusMessage = "Loading library...");
+                var loadedLibrary = await _libraryStore.LoadAsync().ConfigureAwait(false);
+                var mappedVideos = loadedLibrary.Videos.Select(MapVideo).ToList();
+                AppLogger.Info($"Library loaded. Videos: {loadedLibrary.Videos.Count}.");
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    LoadLibraryData(loadedLibrary, mappedVideos);
+                    StatusMessage = BuildLibrarySummary();
+                });
+
+                _isInitialized = true;
+                _ = RunStartupScanAsync(cancellationToken);
+            }
+            finally
+            {
+                _initializationGate.Release();
+            }
+        }
+
+        private void LoadLibraryData(LibraryData data, IEnumerable<VideoItem> mappedVideos)
+        {
+            _library = data ?? new LibraryData();
+
+            Videos.Clear();
+            _videoIndex.Clear();
+
+            foreach (var item in mappedVideos)
+            {
+                RegisterVideo(item);
+                Videos.Add(item);
+            }
+
+            RefreshActorList();
+            FilteredVideos.Refresh();
+            SelectedVideo = Videos.FirstOrDefault();
         }
 
         private async Task RunStartupScanAsync(CancellationToken cancellationToken)
@@ -266,8 +310,11 @@ namespace Airi.ViewModels
                 return;
             }
 
-            IsScanning = true;
-            StatusMessage = "Scanning library...";
+            await _dispatcher.InvokeAsync(() =>
+            {
+                IsScanning = true;
+                StatusMessage = "Scanning library...";
+            });
             AppLogger.Info("Initiating initial library scan.");
 
             try
@@ -277,34 +324,45 @@ namespace Airi.ViewModels
                 await _dispatcher.InvokeAsync(() =>
                 {
                     ApplyScanResult(result);
-                    FilteredVideos.Refresh();
                 });
 
                 await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
 
-                StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
-                AppLogger.Info(StatusMessage);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
+                    AppLogger.Info(StatusMessage);
+                });
             }
             catch (OperationCanceledException)
             {
-                StatusMessage = "Scan cancelled.";
-                AppLogger.Info(StatusMessage);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = "Scan cancelled.";
+                    AppLogger.Info(StatusMessage);
+                });
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Scan failed: {ex.Message}";
-                AppLogger.Error(StatusMessage, ex);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = $"Scan failed: {ex.Message}";
+                    AppLogger.Error(StatusMessage, ex);
+                });
             }
             finally
             {
-                IsScanning = false;
-
-                if (!IsFetchingMetadata)
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    StatusMessage = BuildLibrarySummary();
-                }
+                    IsScanning = false;
 
-                UpdateStatus(updateMessage: false);
+                    if (!IsFetchingMetadata)
+                    {
+                        StatusMessage = BuildLibrarySummary();
+                    }
+
+                    UpdateStatus(updateMessage: false);
+                });
             }
         }
 
@@ -1283,9 +1341,16 @@ namespace Airi.ViewModels
             if (!string.IsNullOrWhiteSpace(path))
             {
                 var candidate = LibraryPathHelper.ResolveToAbsolute(path);
+                if (_thumbnailUriCache.TryGetValue(candidate, out var cachedUri))
+                {
+                    return cachedUri;
+                }
+
                 if (File.Exists(candidate))
                 {
-                    return new Uri(candidate).AbsoluteUri;
+                    var uri = new Uri(candidate).AbsoluteUri;
+                    _thumbnailUriCache[candidate] = uri;
+                    return uri;
                 }
             }
 

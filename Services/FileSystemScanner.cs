@@ -80,7 +80,6 @@ namespace Airi.Services
                     var libraryPath = LibraryPathHelper.Combine(target.Root, relativePath);
                     var info = new FileInfo(file);
 
-                    AppLogger.Info($"Discovered file: {libraryPath}");
                     results.Add(new FileSnapshot(
                         libraryPath,
                         info.FullName,
