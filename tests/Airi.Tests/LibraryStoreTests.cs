@@ -65,6 +65,23 @@ namespace Airi.Tests
             }
         }
 
+        [Fact]
+        public async Task LoadAsync_WhenJsonIsCorrupted_ResetsToDefaultLibrary()
+        {
+            await File.WriteAllTextAsync(_libraryPath, "{ invalid json");
+            var store = new LibraryStore(_libraryPath);
+
+            var library = await store.LoadAsync();
+
+            Assert.NotNull(library);
+            Assert.NotEmpty(library.Targets);
+            Assert.Equal("./Videos", LibraryPathHelper.NormalizeLibraryPath(library.Targets[0].Root));
+            Assert.Equal(1, library.Version);
+
+            var persisted = await File.ReadAllTextAsync(_libraryPath);
+            Assert.Contains("\"Targets\"", persisted, StringComparison.Ordinal);
+        }
+
         public Task InitializeAsync() => Task.CompletedTask;
 
         public Task DisposeAsync()

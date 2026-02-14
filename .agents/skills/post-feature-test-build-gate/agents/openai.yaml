@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Post-Feature Test Build Gate"
+  short_description: "기능 구현 후 테스트 추가·실행·빌드 검증 워크플로"
+  default_prompt: "Use $post-feature-test-build-gate to add tests for my recent code changes, run the tests, and verify build status in this repository."
