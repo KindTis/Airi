@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -27,6 +28,7 @@ namespace Airi.ViewModels
     {
         private const string AllActorsLabel = "All Actors";
         private const string CrawlerSeedUrl = "https://example.com/";
+        private const int InitialLoadBatchSize = 40;
         private static readonly HttpClient CrawlerThumbnailHttpClient = new();
         private readonly Random _random = new();
         private readonly LibraryStore _libraryStore;
@@ -69,6 +71,7 @@ namespace Airi.ViewModels
         private bool _canUseCommandBar = true;
         private SortOption _selectedSortOption;
         private bool _showMissingMetadataOnly;
+        private bool _isInitialLoading = true;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -118,7 +121,9 @@ namespace Airi.ViewModels
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
 
             Videos = new ObservableCollection<VideoItem>();
+            Videos.CollectionChanged += OnVideosCollectionChanged;
             Actors = new ObservableCollection<string>(BuildActorList(Videos));
+            Actors.CollectionChanged += OnActorsCollectionChanged;
             FilteredVideos = CollectionViewSource.GetDefaultView(Videos);
             FilteredVideos.Filter = FilterVideo;
 
@@ -214,6 +219,8 @@ namespace Airi.ViewModels
             {
                 if (SetProperty(ref _isScanning, value))
                 {
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowActorSkeleton)));
                     UpdateStatus(updateMessage: false);
                 }
             }
@@ -250,6 +257,22 @@ namespace Airi.ViewModels
             private set => SetProperty(ref _canUseCommandBar, value);
         }
 
+        public bool IsInitialLoading
+        {
+            get => _isInitialLoading;
+            private set
+            {
+                if (SetProperty(ref _isInitialLoading, value))
+                {
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowActorSkeleton)));
+                }
+            }
+        }
+
+        public bool ShowVideoSkeleton => IsInitialLoading || (IsScanning && Videos.Count == 0);
+        public bool ShowActorSkeleton => IsInitialLoading || (IsScanning && Actors.Count <= 1);
+
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
             if (_isInitialized)
@@ -270,11 +293,7 @@ namespace Airi.ViewModels
                 var mappedVideos = loadedLibrary.Videos.Select(MapVideo).ToList();
                 AppLogger.Info($"Library loaded. Videos: {loadedLibrary.Videos.Count}.");
 
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    LoadLibraryData(loadedLibrary, mappedVideos);
-                    StatusMessage = BuildLibrarySummary();
-                });
+                await LoadLibraryDataAsync(loadedLibrary, mappedVideos, cancellationToken).ConfigureAwait(false);
 
                 _isInitialized = true;
                 _ = RunStartupScanAsync(cancellationToken);
@@ -285,22 +304,44 @@ namespace Airi.ViewModels
             }
         }
 
-        private void LoadLibraryData(LibraryData data, IEnumerable<VideoItem> mappedVideos)
+        private async Task LoadLibraryDataAsync(LibraryData data, IReadOnlyList<VideoItem> mappedVideos, CancellationToken cancellationToken)
         {
-            _library = data ?? new LibraryData();
-
-            Videos.Clear();
-            _videoIndex.Clear();
-
-            foreach (var item in mappedVideos)
+            await _dispatcher.InvokeAsync(() =>
             {
-                RegisterVideo(item);
-                Videos.Add(item);
+                _library = data ?? new LibraryData();
+                Videos.Clear();
+                _videoIndex.Clear();
+                RefreshActorList();
+                FilteredVideos.Refresh();
+            });
+
+            for (var index = 0; index < mappedVideos.Count; index += InitialLoadBatchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var currentIndex = index;
+                var batchCount = Math.Min(InitialLoadBatchSize, mappedVideos.Count - currentIndex);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    for (var offset = 0; offset < batchCount; offset++)
+                    {
+                        var item = mappedVideos[currentIndex + offset];
+                        RegisterVideo(item);
+                        Videos.Add(item);
+                    }
+                }, DispatcherPriority.Background).Task.ConfigureAwait(false);
+
+                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
             }
 
-            RefreshActorList();
-            FilteredVideos.Refresh();
-            SelectedVideo = Videos.FirstOrDefault();
+            await _dispatcher.InvokeAsync(() =>
+            {
+                RefreshActorList();
+                FilteredVideos.Refresh();
+                SelectedVideo = Videos.FirstOrDefault();
+                IsInitialLoading = false;
+                StatusMessage = BuildLibrarySummary();
+            });
         }
 
         private async Task RunStartupScanAsync(CancellationToken cancellationToken)
@@ -355,6 +396,7 @@ namespace Airi.ViewModels
                 await _dispatcher.InvokeAsync(() =>
                 {
                     IsScanning = false;
+                    IsInitialLoading = false;
 
                     if (!IsFetchingMetadata)
                     {
@@ -1270,6 +1312,16 @@ namespace Airi.ViewModels
             }
 
             StatusMessage = BuildLibrarySummary();
+        }
+
+        private void OnVideosCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
+        }
+
+        private void OnActorsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowActorSkeleton)));
         }
 
         private string BuildLibrarySummary()
