@@ -1,299 +1,212 @@
-﻿using HtmlAgilityPack;
-using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Text.RegularExpressions;
-using System.Net.Http;
-using System.Collections.ObjectModel;
-using System.Windows.Automation;
-using IronPython.Hosting;
-using Microsoft.Scripting.Hosting;
-using static IronPython.Modules._ast;
-using Microsoft.Scripting.Utils;
+using System.Threading.Tasks;
+using Airi.Infrastructure;
+using Airi.Services;
+using Airi.ViewModels;
+using Airi.Web;
+using Airi.Views;
 
 namespace Airi
 {
-    public class AiriJSON
+    public partial class MainWindow : Window
     {
-        public int SortType { get; set; }
-        public List<string> ParseDirectory { get; set; }
-        public List<Video> Videos { get; set; }
-    }
-
-    // json 파일의 Videos 배열의 각 요소를 나타내는 클래스
-    public class Video
-    {
-        public string strImagePath { get; set; }
-        public string strTitle { get; set; }
-        public string fullPath { get; set; }
-        public DateTime dateTime { get; set; }
-        public List<string> actors { get; set; }
-    }
-
-    public class VideoThumbnails
-    {
-        public string strImagePath { get; set; }
-        public string strTitle { get; set; }
-        public string fullPath { get; set; }
-        public DateTime dateTime { get; set; }
-    }
-
-    public enum SortType : int
-    {
-        SORT_ASC_NAME = 0,
-        SORT_DESC_NAME,
-        SORT_ASC_TIME,
-        SORT_DESC_TIME
-    }
-
-    public partial class MainWindow
-    {
-        AiriJSON mAiriJSON;
-        private List<string> mSortedActorsList = new List<string>();
-        private ObservableCollection<string> mActorsList = new ObservableCollection<string>();
-        private ObservableCollection<VideoThumbnails> mVideoThumbnailList = new ObservableCollection<VideoThumbnails>();
-        private Dictionary<string, int> mVideoListMap = new Dictionary<string, int>();
-        private List<int> mUpdatedVideoIndex = new List<int>();
+        private readonly HttpClient _httpClient = new();
+        private readonly ITextTranslationService _translationService;
+        public MainViewModel ViewModel { get; }
 
         public MainWindow()
         {
             InitializeComponent();
-            lvVideoList.ItemsSource = mVideoThumbnailList;
-            lvActorList.ItemsSource = mActorsList;
-            Task.Run(() => _InitialFlowWork());
-        }
+            AppLogger.Info("Initializing MainWindow.");
 
-        private void _InitialFlowWork()
-        {
-            _LoadAiriJSON();
-            _UpdateVideoListMap();
-            foreach (var dir in mAiriJSON.ParseDirectory)
-                _ParseVideoDirectory(dir);
-            _SortAiriJSONVideos();
-            _SaveAiriJSON();
-            _UpdateVideoListMap();
-            _UpdateThumbnails();
-            _UpdateVideoMetaData();
-            _LoadAiriJSON();
-            _UpdateUpdatedVideo();
-        }
-
-        private void _LoadAiriJSON()
-        {
-            string jsonFilePath = "Airi.json";
-            using (StreamReader reader = new StreamReader(jsonFilePath))
+            var deeplAuthKey = Environment.GetEnvironmentVariable("DEEPL_AUTH_KEY");
+            if (string.IsNullOrWhiteSpace(deeplAuthKey))
             {
-                string jsonString = reader.ReadToEnd();
-                mAiriJSON = JsonConvert.DeserializeObject<AiriJSON>(jsonString);
+                _translationService = NullTranslationService.Instance;
+                AppLogger.Info("DeepL translation disabled: DEEPL_AUTH_KEY not set.");
+            }
+            else
+            {
+                _translationService = new DeepLTranslationService(deeplAuthKey);
+                AppLogger.Info("DeepL translation enabled.");
+            }
+
+            var translationTarget = Environment.GetEnvironmentVariable("DEEPL_TARGET_LANG");
+            var translationTargetLanguageCode = string.IsNullOrWhiteSpace(translationTarget) ? "KO" : translationTarget;
+            var libraryStore = new LibraryStore();
+            var libraryScanner = new LibraryScanner(new FileSystemScanner());
+            var metadataSources = new IWebVideoMetaSource[] { new NanoJavMetaSource(_httpClient) };
+            var thumbnailCache = new ThumbnailCache();
+            var webMetadataService = new WebMetadataService(
+                metadataSources,
+                thumbnailCache,
+                _translationService,
+                translationTargetLanguageCode);
+
+            var oneFourOneJavCrawler = new OneFourOneJavCrawler(_translationService, translationTargetLanguageCode);
+
+            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService, oneFourOneJavCrawler, thumbnailCache);
+            DataContext = ViewModel;
+            ViewModel.PlayVideoRequested += OnPlayVideoRequested;
+            Loaded += OnLoaded;
+        }
+
+        private async void OnPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F1 && !e.IsRepeat)
+            {
+                e.Handled = true;
+                await OpenMetadataEditorAsync();
             }
         }
 
-        private void _UpdateVideoListMap()
+        private async Task OpenMetadataEditorAsync()
         {
-            mVideoListMap.Clear();
-            int videoListIndex = 0;
-            foreach (Video video in mAiriJSON.Videos)
+            if (ViewModel.SelectedVideo is null)
             {
-                mVideoListMap.Add(video.fullPath, videoListIndex++);
-            }
-        }
-
-        private void _ParseVideoDirectory(string parseDir)
-        {
-            string[] extensions = { ".mp4", ".mkv", ".avi" };
-            List<string> filePaths = new DirectoryInfo(parseDir).GetFiles("*",
-                SearchOption.AllDirectories)
-                .Where(f => extensions.Contains(f.Extension)).Select(f => f.FullName).ToList();
-
-            foreach (string file in filePaths)
-            {
-                if (!mVideoListMap.ContainsKey(file))
-                {
-                    string _strTitle = System.IO.Path.GetFileNameWithoutExtension(file);
-                    mAiriJSON.Videos.Add(new Video()
-                    {
-                        strImagePath = @"thumb/noimage.jpg",
-                        strTitle = _strTitle,
-                        fullPath = file,
-                        dateTime = File.GetCreationTime(file),
-                        actors = new List<string>()
-                    });
-                }
-            }
-        }
-
-        private void _SortAiriJSONVideos()
-        {
-            switch ((SortType)mAiriJSON.SortType)
-            {
-                case SortType.SORT_ASC_NAME:
-                    {
-                        mAiriJSON.Videos.Sort((Video left, Video right) =>
-                        {
-                            return left.strTitle.CompareTo(right.strTitle);
-                        });
-                        break;
-                    }
-                case SortType.SORT_DESC_NAME:
-                    {
-                        mAiriJSON.Videos.Sort((Video left, Video right) =>
-                        {
-                            return left.strTitle.CompareTo(right.strTitle) * -1;
-                        });
-                        break;
-                    }
-                case SortType.SORT_ASC_TIME:
-                    {
-                        mAiriJSON.Videos.Sort((Video left, Video right) =>
-                        {
-                            return left.dateTime.CompareTo(right.dateTime);
-                        });
-                        break;
-                    }
-                case SortType.SORT_DESC_TIME:
-                    {
-                        mAiriJSON.Videos.Sort((Video left, Video right) =>
-                        {
-                            return left.dateTime.CompareTo(right.dateTime) * -1;
-                        });
-                        break;
-                    }
-            }
-        }
-
-        private void _SaveAiriJSON()
-        {
-            string jsonString = JsonConvert.SerializeObject(mAiriJSON, Formatting.Indented);
-            File.WriteAllText("Airi.json", jsonString);
-        }
-
-        private void _UpdateThumbnails()
-        {
-            Dispatcher.Invoke((Action)(() =>
-            {
-                mActorsList.Clear();
-                mVideoThumbnailList.Clear();
-            }));
-
-            mSortedActorsList.Clear();
-            mSortedActorsList.Add("ALL");
-            foreach (Video video in mAiriJSON.Videos)
-            {
-                foreach (string actor in video.actors)
-                {
-                    if (!mSortedActorsList.Contains(actor))
-                        mSortedActorsList.Add(actor);
-                }
-                
-                Dispatcher.Invoke((Action)(() =>
-                {
-                    mVideoThumbnailList.Add(new VideoThumbnails()
-                    {
-                        strImagePath = System.IO.Path.GetFullPath(video.strImagePath),
-                        strTitle = video.strTitle,
-                        fullPath = video.fullPath,
-                        dateTime = video.dateTime
-                    });
-                }));
+                return;
             }
 
-            mSortedActorsList.Sort(1, mSortedActorsList.Count - 1, null);
-
-            Dispatcher.Invoke((Action)(() =>
+            var dialog = new MetadataEditorWindow(ViewModel.SelectedVideo)
             {
-                mActorsList.AddRange(mSortedActorsList);
-            }));
-        }
-
-        private void _UpdateVideoMetaData()
-        {
-            ProcessStartInfo StartInfo = new ProcessStartInfo()
-            {
-                FileName = "python.exe",
-                Arguments = "VideoMetaDataUpdater.py",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true
+                Owner = this
             };
 
-            mUpdatedVideoIndex.Clear();
-            string pattern = @"\[(\d+)\]";
-            using (Process process = Process.Start(StartInfo))
+            if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
             {
-                process.OutputDataReceived += (sender, e) =>
-                {
-                    if (e.Data == null) { return; }
-                    Match match = Regex.Match(e.Data, pattern);
-                    if (match.Success)
-                    {
-                        string captured = match.Groups[1].Value;
-                        mUpdatedVideoIndex.Add(int.Parse(captured));
-                    }
-                };
-                process.BeginOutputReadLine();
-                process.WaitForExit();
+                await ViewModel.ApplyMetadataEditAsync(ViewModel.SelectedVideo, result);
             }
         }
 
-        private void _UpdateUpdatedVideo()
+
+
+        private async void OnLoaded(object sender, RoutedEventArgs e)
         {
-            foreach (int idx in mUpdatedVideoIndex)
-            {
-                Dispatcher.Invoke((Action)(() =>
-                {
-                    mVideoThumbnailList[idx] = new VideoThumbnails()
-                    {
-                        strImagePath = System.IO.Path.GetFullPath(mAiriJSON.Videos[idx].strImagePath),
-                        strTitle = mAiriJSON.Videos[idx].strTitle,
-                        fullPath = mAiriJSON.Videos[idx].fullPath,
-                        dateTime = mAiriJSON.Videos[idx].dateTime
-                    };
-                }));
-
-                foreach (string actor in mAiriJSON.Videos[idx].actors)
-                {
-                    if (!mSortedActorsList.Contains(actor))
-                        mSortedActorsList.Add(actor);
-                }
-            }
-
-            mSortedActorsList.Sort(1, mSortedActorsList.Count - 1, null);
-
-            Dispatcher.Invoke((Action)(() =>
-            {
-                mActorsList.Clear();
-                mActorsList.AddRange(mSortedActorsList);
-            }));
+            AppLogger.Info("MainWindow loaded. Starting view model initialization.");
+            await ViewModel.InitializeAsync();
+            AppLogger.Info("View model initialization complete.");
         }
 
-        private void lvVideoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        private void VideoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            var element = e.Source as ListView;
-            var selectedItem = element.SelectedValue as Video;
-            new Process
+            if (sender is not ListBox listBox)
             {
-                StartInfo = new ProcessStartInfo(selectedItem.fullPath)
+                return;
+            }
+
+            if (listBox.SelectedItem is not VideoItem video)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            TryPlayVideo(video);
+        }
+
+        private void OnVideoItemMouseEnter(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
+            {
+                tooltip.PlacementTarget = item;
+                tooltip.Placement = PlacementMode.Relative;
+                UpdateTooltipPosition(item, tooltip, e);
+                tooltip.IsOpen = true;
+            }
+        }
+
+        private void OnVideoItemMouseMove(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip && tooltip.IsOpen)
+            {
+                UpdateTooltipPosition(item, tooltip, e);
+            }
+        }
+
+        private void OnVideoItemMouseLeave(object sender, MouseEventArgs e)
+        {
+            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
+            {
+                tooltip.IsOpen = false;
+            }
+        }
+
+        private static void UpdateTooltipPosition(UIElement item, ToolTip tooltip, MouseEventArgs e)
+        {
+            var position = e.GetPosition(item);
+            tooltip.HorizontalOffset = position.X + 5;
+            tooltip.VerticalOffset = position.Y + 5;
+        }
+
+        private void OnPlayVideoRequested(VideoItem video)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => TryPlayVideo(video));
+                return;
+            }
+
+            TryPlayVideo(video);
+        }
+
+        private void TryPlayVideo(VideoItem video)
+        {
+            if (video.Presence != VideoPresenceState.Available)
+            {
+                AppLogger.Info($"Skipping playback for unavailable video: {video.Title}");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(video.SourcePath))
+            {
+                AppLogger.Info($"Skipping playback for {video.Title}; no source path set.");
+                return;
+            }
+
+            if (!File.Exists(video.SourcePath))
+            {
+                AppLogger.Info($"File not found for playback: {video.SourcePath}");
+                return;
+            }
+
+            try
+            {
+                AppLogger.Info($"Launching video with default player: {video.SourcePath}");
+                Process.Start(new ProcessStartInfo
                 {
+                    FileName = video.SourcePath,
                     UseShellExecute = true
-                }
-            }.Start();
+                });
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"Failed to launch video: {video.SourcePath}", ex);
+            }
+        }
+
+        protected override void OnClosed(System.EventArgs e)
+        {
+            base.OnClosed(e);
+            ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
+            _httpClient.Dispose();
+            if (_translationService is IDisposable disposableTranslation)
+            {
+                disposableTranslation.Dispose();
+            }
         }
     }
 }
+
+
+
+
+
+
+
+
