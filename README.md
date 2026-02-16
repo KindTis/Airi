@@ -10,12 +10,12 @@ Airi는 로컬 비디오 라이브러리를 관리하는 .NET 9 WPF 데스크톱
 - 탐색/필터: 검색어, 배우 필터, 정렬 옵션, 메타데이터 누락 항목만 보기
 - 재생: 더블클릭 또는 `Random Play`로 기본 플레이어 실행
 - 웹 메타데이터 보강:
-- `NanoJav` 소스를 통한 메타데이터/썸네일 수집
-- Selenium 기반 `141Jav` 크롤러 연동(`Start Crawler` 후 `Fetch Metadata`)
+- 웹 메타데이터 소스를 통한 메타데이터/썸네일 수집
+- Selenium 기반 크롤러 연동(`Start Crawler` 후 `Fetch Metadata`)
 - 메타데이터 편집 창:
 - `F1` 키로 편집 창 열기
 - 제목/출시일/설명/배우/태그/썸네일 수동 수정
-- 편집 창에서 `Try Parse On 141Jav`로 크롤러 페이지 파싱 결과 반영
+- 편집 창의 파싱 버튼으로 크롤러 페이지 결과 반영
 - 선택적 번역: DeepL API 키가 있으면 설명 자동 번역
 
 ## 기술 스택
@@ -103,7 +103,7 @@ dotnet test tests/Airi.Tests/Airi.Tests.csproj --collect:"XPlat Code Coverage"
 1. 앱 하단 `Start Crawler` 버튼 클릭
 2. 크롬 브라우저 세션이 열리면 크롤러 준비 완료
 3. 상단 `Fetch Metadata`로 메타데이터 일괄 보강
-4. 필요 시 비디오 선택 후 `F1` -> 편집 창에서 `Try Parse On 141Jav` 실행
+4. 필요 시 비디오 선택 후 `F1` -> 편집 창의 파싱 버튼 실행
 5. 브라우저 창을 닫으면 크롤러 세션이 종료됨
 
 ## 확장 포인트
@@ -113,4 +113,4 @@ dotnet test tests/Airi.Tests/Airi.Tests.csproj --collect:"XPlat Code Coverage"
 - `MainWindow.xaml.cs`의 `metadataSources`에 등록
 - 번역기 교체/추가:
 - `Services/ITextTranslationService` 구현
-- `WebMetadataService` 또는 `OneFourOneJavCrawler`에 주입
+- `WebMetadataService` 또는 크롤러 서비스에 주입
