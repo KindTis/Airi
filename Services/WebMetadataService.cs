@@ -91,6 +91,12 @@ namespace Airi.Services
             return null;
         }
 
+        public async Task<WebVideoMetaResult> TranslateResultDescriptionAsync(WebVideoMetaResult result, CancellationToken cancellationToken)
+        {
+            var meta = await TranslateDescriptionAsync(result.Meta, cancellationToken).ConfigureAwait(false);
+            return result with { Meta = meta };
+        }
+
         private async Task<VideoMeta> TranslateDescriptionAsync(VideoMeta meta, CancellationToken cancellationToken)
         {
             if (!_translationService.IsEnabled || string.IsNullOrWhiteSpace(_translationTargetLanguageCode))

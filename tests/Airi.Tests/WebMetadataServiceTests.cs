@@ -62,6 +62,57 @@ namespace Airi.Tests
         }
 
         [Fact]
+        public async Task TranslateResultDescriptionAsync_TranslatesDescriptionAndPreservesThumbnail_WhenTranslatorEnabled()
+        {
+            var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
+            var translation = new StubTranslationService();
+            var service = new WebMetadataService(Array.Empty<IWebVideoMetaSource>(), cache, translation, "EN");
+            var thumbnailBytes = new byte[] { 1, 2, 3 };
+            var result = new WebVideoMetaResult(
+                new VideoMeta(
+                    "Title",
+                    new DateOnly(2024, 1, 2),
+                    new[] { "Actor" },
+                    string.Empty,
+                    new[] { "Tag" },
+                    "원본 설명"),
+                thumbnailBytes,
+                ".png");
+
+            var translated = await service.TranslateResultDescriptionAsync(result, CancellationToken.None);
+
+            Assert.Equal("Translated Description", translated.Meta.Description);
+            Assert.Equal("Title", translated.Meta.Title);
+            Assert.Equal(new DateOnly(2024, 1, 2), translated.Meta.Date);
+            Assert.Equal(new[] { "Actor" }, translated.Meta.Actors);
+            Assert.Equal(new[] { "Tag" }, translated.Meta.Tags);
+            Assert.Same(thumbnailBytes, translated.ThumbnailBytes);
+            Assert.Equal(".png", translated.ThumbnailExtension);
+            Assert.True(translation.Invoked);
+        }
+
+        [Fact]
+        public async Task TranslateResultDescriptionAsync_WhenTranslatorDisabled_ReturnsOriginalDescription()
+        {
+            var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
+            var service = new WebMetadataService(Array.Empty<IWebVideoMetaSource>(), cache);
+            var result = new WebVideoMetaResult(
+                new VideoMeta(
+                    "Title",
+                    null,
+                    Array.Empty<string>(),
+                    string.Empty,
+                    Array.Empty<string>(),
+                    "원본 설명"),
+                null,
+                null);
+
+            var translated = await service.TranslateResultDescriptionAsync(result, CancellationToken.None);
+
+            Assert.Equal("원본 설명", translated.Meta.Description);
+        }
+
+        [Fact]
         public async Task EnrichAsync_NoProviders_ReturnsNull()
         {
             var service = new WebMetadataService(Array.Empty<IWebVideoMetaSource>(), new ThumbnailCache());

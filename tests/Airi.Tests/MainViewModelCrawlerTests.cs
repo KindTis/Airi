@@ -34,6 +34,24 @@ namespace Airi.Tests
         }
 
         [Fact]
+        public void TryFetchOneFourOneJavMetadataAsync_TranslatesDescription_WhenTranslatorEnabled()
+        {
+            RunInStaAsync(async () =>
+            {
+                using var fixture = new ViewModelFixture();
+                fixture.Session.Description = "원본 설명";
+                var translation = new StubTranslationService("번역된 설명");
+                var viewModel = fixture.CreateViewModel(translationService: translation);
+
+                var result = await viewModel.TryFetchOneFourOneJavMetadataAsync("ABC123");
+
+                Assert.NotNull(result);
+                Assert.Equal("번역된 설명", result!.Meta.Description);
+                Assert.True(translation.Invoked);
+            });
+        }
+
+        [Fact]
         public void TryFetchOneFourOneJavMetadataAsync_WhenFactoryFails_ClearsProviderAndStatus()
         {
             RunInStaAsync(async () =>
@@ -523,7 +541,10 @@ namespace Airi.Tests
             public FakeCrawlerSessionFactory Factory { get; }
             public string LibraryPath => Path.Combine(_root, "videos.json");
 
-            public MainViewModel CreateViewModel(IWebVideoMetaSource? metadataSource = null, IEnumerable<IWebVideoMetaSource>? metadataSources = null)
+            public MainViewModel CreateViewModel(
+                IWebVideoMetaSource? metadataSource = null,
+                IEnumerable<IWebVideoMetaSource>? metadataSources = null,
+                ITextTranslationService? translationService = null)
             {
                 var libraryStore = new LibraryStore(LibraryPath);
                 var libraryScanner = new LibraryScanner(new FileSystemScanner());
@@ -533,7 +554,7 @@ namespace Airi.Tests
                 var metadataService = new WebMetadataService(
                     sources,
                     thumbnailCache,
-                    NullTranslationService.Instance,
+                    translationService ?? NullTranslationService.Instance,
                     "KO");
 
                 return new MainViewModel(
@@ -603,6 +624,8 @@ namespace Airi.Tests
 
         private sealed class FakeSession : IOneFourOneJavCrawlerSession
         {
+            public string Description { get; set; } = string.Empty;
+
             public Task<bool> NavigateToAsync(string url, CancellationToken cancellationToken = default)
             {
                 return Task.FromResult(true);
@@ -614,12 +637,32 @@ namespace Airi.Tests
                     new DateTime(2024, 1, 2),
                     Array.Empty<string>(),
                     Array.Empty<string>(),
-                    string.Empty));
+                    Description));
             }
 
             public Task<string?> TryGetThumbnailUrlAsync(CancellationToken cancellationToken = default)
             {
                 return Task.FromResult<string?>(null);
+            }
+        }
+
+        private sealed class StubTranslationService : ITextTranslationService
+        {
+            private readonly string _translated;
+
+            public StubTranslationService(string translated)
+            {
+                _translated = translated;
+            }
+
+            public bool Invoked { get; private set; }
+
+            public bool IsEnabled => true;
+
+            public Task<string?> TranslateAsync(string text, string? sourceLanguageCode, string targetLanguageCode, CancellationToken cancellationToken)
+            {
+                Invoked = true;
+                return Task.FromResult<string?>(_translated);
             }
         }
 

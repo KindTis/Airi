@@ -638,7 +638,10 @@ namespace Airi.ViewModels
                     return null;
                 }
 
-                return await _oneFourOneJavSource.FetchAsync(query, cancellationToken).ConfigureAwait(false);
+                var result = await _oneFourOneJavSource.FetchAsync(query, cancellationToken).ConfigureAwait(false);
+                return result is null
+                    ? null
+                    : await _webMetadataService.TranslateResultDescriptionAsync(result, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
