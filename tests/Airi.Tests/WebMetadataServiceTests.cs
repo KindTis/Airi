@@ -72,6 +72,57 @@ namespace Airi.Tests
             Assert.Null(updated);
         }
 
+        [Fact]
+        public async Task EnrichAsync_FirstSourceReturnsPartialResult_DoesNotCallFallback()
+        {
+            var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
+            var first = new CountingSource(new WebVideoMetaResult(
+                new VideoMeta(string.Empty, new DateOnly(2024, 1, 2), Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
+                null,
+                null));
+            var fallback = new CountingSource(new WebVideoMetaResult(
+                new VideoMeta("Fallback", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
+                null,
+                null));
+            var service = new WebMetadataService(new[] { first, fallback }, cache);
+            var original = new VideoEntry(
+                "./Videos/sample.mp4",
+                new VideoMeta("Original Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
+                123,
+                DateTime.UtcNow);
+
+            var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
+
+            Assert.NotNull(updated);
+            Assert.Equal(new DateOnly(2024, 1, 2), updated!.Meta.Date);
+            Assert.Equal(1, first.CallCount);
+            Assert.Equal(0, fallback.CallCount);
+        }
+
+        [Fact]
+        public async Task EnrichAsync_FirstSourceReturnsNull_CallsNextSource()
+        {
+            var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
+            var first = new CountingSource(null);
+            var fallback = new CountingSource(new WebVideoMetaResult(
+                new VideoMeta("Fallback", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
+                null,
+                null));
+            var service = new WebMetadataService(new[] { first, fallback }, cache);
+            var original = new VideoEntry(
+                "./Videos/sample.mp4",
+                new VideoMeta("Original Title", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
+                123,
+                DateTime.UtcNow);
+
+            var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
+
+            Assert.NotNull(updated);
+            Assert.Equal("Fallback", updated!.Meta.Title);
+            Assert.Equal(1, first.CallCount);
+            Assert.Equal(1, fallback.CallCount);
+        }
+
         private sealed class StubSource : IWebVideoMetaSource
         {
             public string Name => "Stub";
@@ -108,6 +159,28 @@ namespace Airi.Tests
                     Array.Empty<string>(),
                     "원본 설명");
                 return Task.FromResult<WebVideoMetaResult?>(new WebVideoMetaResult(meta, Array.Empty<byte>(), ".jpg"));
+            }
+        }
+
+        private sealed class CountingSource : IWebVideoMetaSource
+        {
+            private readonly WebVideoMetaResult? _result;
+
+            public CountingSource(WebVideoMetaResult? result)
+            {
+                _result = result;
+            }
+
+            public int CallCount { get; private set; }
+
+            public string Name => "Counting";
+
+            public bool CanHandle(string query) => true;
+
+            public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken)
+            {
+                CallCount++;
+                return Task.FromResult(_result);
             }
         }
 

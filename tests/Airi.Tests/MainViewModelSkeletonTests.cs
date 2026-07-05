@@ -185,9 +185,17 @@ namespace Airi.Tests
                     thumbnailCache,
                     NullTranslationService.Instance,
                     "KO");
-                var crawler = new OneFourOneJavCrawler(NullTranslationService.Instance, "KO");
+                var crawlerSessionProvider = new CrawlerSessionProvider();
+                var oneFourOneJavSource = new OneFourOneJavMetaSource(crawlerSessionProvider);
+                var crawlerSessionFactory = new StubCrawlerSessionFactory();
 
-                return new MainViewModel(libraryStore, libraryScanner, metadataService, crawler, thumbnailCache);
+                return new MainViewModel(
+                    libraryStore,
+                    libraryScanner,
+                    metadataService,
+                    crawlerSessionProvider,
+                    oneFourOneJavSource,
+                    crawlerSessionFactory);
             }
 
             public void Dispose()
@@ -208,6 +216,14 @@ namespace Airi.Tests
             public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken)
             {
                 return Task.FromResult<WebVideoMetaResult?>(null);
+            }
+        }
+
+        private sealed class StubCrawlerSessionFactory : IOneFourOneJavCrawlerSessionFactory
+        {
+            public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("This test fixture does not start crawler sessions.");
             }
         }
     }

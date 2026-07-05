@@ -78,3 +78,6 @@ desktop.ini
 *.sdf
 *.opensdf
 *.sln.metaproj
+
+# graphify 출력물
+graphify-out/

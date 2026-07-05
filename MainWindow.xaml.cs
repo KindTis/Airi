@@ -42,17 +42,25 @@ namespace Airi
             var translationTargetLanguageCode = string.IsNullOrWhiteSpace(translationTarget) ? "KO" : translationTarget;
             var libraryStore = new LibraryStore();
             var libraryScanner = new LibraryScanner(new FileSystemScanner());
-            var metadataSources = new IWebVideoMetaSource[] { new NanoJavMetaSource(_httpClient) };
             var thumbnailCache = new ThumbnailCache();
+            var crawlerSessionProvider = new CrawlerSessionProvider();
+            var oneFourOneJavCrawler = new OneFourOneJavCrawler();
+            var oneFourOneJavSource = new OneFourOneJavMetaSource(crawlerSessionProvider, _httpClient);
+            var crawlerSessionFactory = new OneFourOneJavCrawlerSessionFactory(oneFourOneJavCrawler);
+            var metadataSources = new IWebVideoMetaSource[] { oneFourOneJavSource, new NanoJavMetaSource(_httpClient) };
             var webMetadataService = new WebMetadataService(
                 metadataSources,
                 thumbnailCache,
                 _translationService,
                 translationTargetLanguageCode);
 
-            var oneFourOneJavCrawler = new OneFourOneJavCrawler(_translationService, translationTargetLanguageCode);
-
-            ViewModel = new MainViewModel(libraryStore, libraryScanner, webMetadataService, oneFourOneJavCrawler, thumbnailCache);
+            ViewModel = new MainViewModel(
+                libraryStore,
+                libraryScanner,
+                webMetadataService,
+                crawlerSessionProvider,
+                oneFourOneJavSource,
+                crawlerSessionFactory);
             DataContext = ViewModel;
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
             Loaded += OnLoaded;

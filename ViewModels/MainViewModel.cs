@@ -5,7 +5,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,8 +15,6 @@ using Airi.Domain;
 using Airi.Infrastructure;
 using Airi.Services;
 using Airi.Web;
-using OpenQA.Selenium;
-using OpenQA.Selenium.Chrome;
 
 namespace Airi.ViewModels
 {
@@ -27,16 +24,15 @@ namespace Airi.ViewModels
     public class MainViewModel : INotifyPropertyChanged
     {
         private const string AllActorsLabel = "All Actors";
-        private const string CrawlerSeedUrl = "https://example.com/";
         private const int InitialLoadBatchSize = 40;
-        private static readonly HttpClient CrawlerThumbnailHttpClient = new();
         private readonly Random _random = new();
         private readonly LibraryStore _libraryStore;
         private readonly LibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
-        private readonly OneFourOneJavCrawler _oneFourOneJavCrawler;
-        private readonly ThumbnailCache _thumbnailCache;
+        private readonly CrawlerSessionProvider _crawlerSessionProvider;
+        private readonly OneFourOneJavMetaSource _oneFourOneJavSource;
+        private readonly IOneFourOneJavCrawlerSessionFactory _crawlerSessionFactory;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
@@ -46,10 +42,12 @@ namespace Airi.ViewModels
         private readonly string _fallbackThumbnailUri;
         private bool _isInitialized;
         private readonly SemaphoreSlim _initializationGate = new(1, 1);
-        private ChromeDriverService? _crawlerService;
-        private IWebDriver? _crawlerDriver;
-        private OneFourOneJavCrawler.CrawlerSession? _crawlerSession;
+        private readonly SemaphoreSlim _crawlerStartGate = new(1, 1);
+        private readonly object _crawlerStateLock = new();
+        private IOneFourOneJavCrawlerSessionHandle? _crawlerHandle;
+        private IOneFourOneJavCrawlerSession? _crawlerSession;
         private Task? _crawlerMonitorTask;
+        private int _crawlerMonitorGeneration;
         public enum SortField
         {
             Title,
@@ -108,15 +106,20 @@ namespace Airi.ViewModels
             LibraryStore libraryStore,
             LibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
-            OneFourOneJavCrawler oneFourOneJavCrawler,
-            ThumbnailCache thumbnailCache)
+            CrawlerSessionProvider crawlerSessionProvider,
+            OneFourOneJavMetaSource oneFourOneJavSource,
+            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
-            _oneFourOneJavCrawler = oneFourOneJavCrawler ?? throw new ArgumentNullException(nameof(oneFourOneJavCrawler));
-            _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
-            _dispatcher = Application.Current.Dispatcher;
+            _crawlerSessionProvider = crawlerSessionProvider ?? throw new ArgumentNullException(nameof(crawlerSessionProvider));
+            _oneFourOneJavSource = oneFourOneJavSource ?? throw new ArgumentNullException(nameof(oneFourOneJavSource));
+            _crawlerSessionFactory = crawlerSessionFactory ?? throw new ArgumentNullException(nameof(crawlerSessionFactory));
+            var applicationDispatcher = Application.Current?.Dispatcher;
+            _dispatcher = applicationDispatcher is not null && applicationDispatcher.CheckAccess()
+                ? applicationDispatcher
+                : Dispatcher.CurrentDispatcher;
             _library = new LibraryData();
             _fallbackThumbnailUri = GetFallbackThumbnailUri();
 
@@ -142,7 +145,7 @@ namespace Airi.ViewModels
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
             FetchMetadataCommand = new RelayCommand(async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false));
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
-            StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync().ConfigureAwait(false), _ => !IsCrawlerRunning);
+            StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync(CancellationToken.None).ConfigureAwait(false), _ => !IsCrawlerRunning);
 
             var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
             _selectedSortOption = defaultSort;
@@ -429,11 +432,6 @@ namespace Airi.ViewModels
                 return;
             }
 
-            if (!await EnsureCrawlerReadyAsync().ConfigureAwait(false))
-            {
-                return;
-            }
-
             await _dispatcher.InvokeAsync(() =>
             {
                 IsFetchingMetadata = true;
@@ -442,8 +440,15 @@ namespace Airi.ViewModels
 
             AppLogger.Info($"[Crawler] Starting metadata fetch for {missing.Count} videos with missing metadata.");
 
+            var preserveStatusMessage = false;
             try
             {
+                if (!await EnsureCrawlerReadyAsync().ConfigureAwait(false))
+                {
+                    preserveStatusMessage = true;
+                    return;
+                }
+
                 var total = missing.Count;
                 var index = 0;
 
@@ -478,30 +483,7 @@ namespace Airi.ViewModels
                         StatusMessage = $"[{index}/{total}] Fetching metadata for {displayName}...";
                     });
 
-                    var searchUrl = $"https://www.141jav.com/search/{Uri.EscapeDataString(query)}";
-                    var navigated = await NavigateCrawlerToAsync(searchUrl).ConfigureAwait(false);
-                    if (!navigated)
-                    {
-                        await _dispatcher.InvokeAsync(() =>
-                        {
-                            StatusMessage = $"[{index}/{total}] Crawler navigation failed for {displayName}.";
-                        });
-                        continue;
-                    }
-
-                    var metadata = await TryGetCrawlerMetadataAsync().ConfigureAwait(false);
-                    if (metadata is null)
-                    {
-                        AppLogger.Info($"[Crawler] No metadata returned for {displayName}.");
-                        await _dispatcher.InvokeAsync(() =>
-                        {
-                            StatusMessage = $"[{index}/{total}] No crawler metadata for {displayName}.";
-                        });
-                        continue;
-                    }
-
-                    var thumbnailUrl = await TryGetCrawlerThumbnailUrlAsync().ConfigureAwait(false);
-                    var updatedEntry = await ApplyCrawlerMetadataAsync(entry, metadata, thumbnailUrl, video).ConfigureAwait(false);
+                    var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
                     if (updatedEntry is null)
                     {
                         await _dispatcher.InvokeAsync(() =>
@@ -527,31 +509,31 @@ namespace Airi.ViewModels
                 await _dispatcher.InvokeAsync(() =>
                 {
                     IsFetchingMetadata = false;
-                    StatusMessage = BuildLibrarySummary();
+                    if (!preserveStatusMessage)
+                    {
+                        StatusMessage = BuildLibrarySummary();
+                    }
                 });
 
                 AppLogger.Info("[Crawler] Metadata fetch completed.");
             }
         }
 
-        private async Task<bool> EnsureCrawlerReadyAsync()
+        private async Task<bool> EnsureCrawlerReadyAsync(CancellationToken cancellationToken = default)
         {
-            if (_crawlerDriver is not null && _crawlerSession is not null)
+            var (handle, session) = GetCrawlerState();
+            if (handle is not null && session is not null && handle.IsBrowserOpen())
             {
                 return true;
             }
 
-            await _dispatcher.InvokeAsync(() =>
+            if (handle is not null)
             {
-                StatusMessage = "Crawler is not running. Start the crawler to fetch metadata.";
-                MessageBox.Show(
-                    "Start the crawler before fetching metadata. Click the Start Crawler button and wait for the browser to open.",
-                    "Crawler Not Ready",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            });
+                DisposeCrawler();
+                await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
+            }
 
-            return false;
+            return await StartCrawlerAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private static string BuildCrawlerQuery(VideoItem video, VideoEntry entry)
@@ -573,314 +555,109 @@ namespace Airi.ViewModels
             return LibraryPathHelper.NormalizeCode(fileStem);
         }
 
-        private static string DetermineThumbnailKey(VideoItem video, VideoEntry entry)
+        private async Task<bool> StartCrawlerAsync(CancellationToken cancellationToken = default)
         {
-            if (video is not null)
+            await _crawlerStartGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                var normalized = LibraryPathHelper.NormalizeCode(video.Title);
-                if (!string.IsNullOrWhiteSpace(normalized))
+                var (handle, session) = GetCrawlerState();
+                if (handle is not null && session is not null && handle.IsBrowserOpen())
                 {
-                    return normalized;
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        StatusMessage = "Crawler already running. Close the browser window to start a new session.";
+                    });
+                    return true;
+                }
+
+                if (handle is not null)
+                {
+                    DisposeCrawler();
+                    await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
+                }
+
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    IsCrawlerRunning = true;
+                    StatusMessage = "Crawler starting...";
+                });
+
+                AppLogger.Info("Starting Selenium crawler.");
+
+                try
+                {
+                    var result = await _crawlerSessionFactory.StartAsync(cancellationToken).ConfigureAwait(false);
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        SetCrawlerState(result.Handle, result.Session);
+                        IsCrawlerRunning = true;
+                        StatusMessage = result.Summary;
+                    });
+
+                    StartCrawlerMonitor(result.Handle);
+                    return true;
+                }
+                catch (OperationCanceledException)
+                {
+                    DisposeCrawler();
+                    await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    DisposeCrawler();
+
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        StatusMessage = $"Crawler failed: {ex.Message}";
+                        IsCrawlerRunning = false;
+                    });
+
+                    AppLogger.Error("Crawler failed while using Selenium.", ex);
+                    return false;
                 }
             }
-
-            var fallback = string.IsNullOrWhiteSpace(entry.Path)
-                ? video?.LibraryPath ?? "thumb"
-                : entry.Path;
-
-            var fileStem = Path.GetFileNameWithoutExtension(fallback);
-            var key = LibraryPathHelper.NormalizeCode(fileStem);
-            return string.IsNullOrWhiteSpace(key) ? "thumb" : key;
+            finally
+            {
+                _crawlerStartGate.Release();
+            }
         }
 
-        private async Task<VideoEntry?> ApplyCrawlerMetadataAsync(
-            VideoEntry entry,
-            OneFourOneJavCrawler.CrawlerMetadata metadata,
-            string? thumbnailUrl,
-            VideoItem video)
+
+        public async Task<WebVideoMetaResult?> TryFetchOneFourOneJavMetadataAsync(string query, CancellationToken cancellationToken = default)
         {
-            if (metadata is null)
-            {
-                return null;
-            }
-
-            var updatedMeta = entry.Meta;
-            var hasChanges = false;
-
-            if (metadata.ReleaseDate is DateTime releaseDate)
-            {
-                updatedMeta = updatedMeta with { Date = DateOnly.FromDateTime(releaseDate.Date) };
-                hasChanges = true;
-            }
-
-            if (metadata.Tags.Count > 0)
-            {
-                updatedMeta = updatedMeta with { Tags = metadata.Tags };
-                hasChanges = true;
-            }
-
-            if (metadata.Actors.Count > 0)
-            {
-                updatedMeta = updatedMeta with { Actors = metadata.Actors };
-                hasChanges = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(metadata.Description))
-            {
-                updatedMeta = updatedMeta with { Description = metadata.Description };
-                hasChanges = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(thumbnailUrl))
-            {
-                var cacheKey = DetermineThumbnailKey(video, entry);
-                var thumbnailPath = await DownloadCrawlerThumbnailAsync(thumbnailUrl, cacheKey).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(thumbnailPath))
-                {
-                    updatedMeta = updatedMeta with { Thumbnail = thumbnailPath };
-                    hasChanges = true;
-                }
-            }
-
-            return hasChanges ? entry with { Meta = updatedMeta } : null;
-        }
-
-        private async Task<string?> DownloadCrawlerThumbnailAsync(string imageUrl, string cacheKey)
-        {
-            if (string.IsNullOrWhiteSpace(imageUrl))
+            if (string.IsNullOrWhiteSpace(query))
             {
                 return null;
             }
 
             try
             {
-                var bytes = await CrawlerThumbnailHttpClient.GetByteArrayAsync(imageUrl).ConfigureAwait(false);
-                if (bytes.Length == 0)
+                if (!await EnsureCrawlerReadyAsync(cancellationToken).ConfigureAwait(false))
                 {
                     return null;
                 }
 
-                var extension = ".jpg";
-
-                if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
-                {
-                    var candidate = Path.GetExtension(uri.LocalPath);
-                    if (!string.IsNullOrWhiteSpace(candidate))
-                    {
-                        extension = candidate;
-                    }
-                }
-                else
-                {
-                    var candidate = Path.GetExtension(imageUrl);
-                    if (!string.IsNullOrWhiteSpace(candidate))
-                    {
-                        extension = candidate;
-                    }
-                }
-
-                return await _thumbnailCache.SaveAsync(bytes, extension, cacheKey).ConfigureAwait(false);
+                return await _oneFourOneJavSource.FetchAsync(query, cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException ex)
+            catch (OperationCanceledException)
             {
-                AppLogger.Error($"[Crawler] Failed to download thumbnail from {imageUrl}.", ex);
-                return null;
-            }
-            catch (TaskCanceledException ex)
-            {
-                AppLogger.Error($"[Crawler] Thumbnail download timed out for {imageUrl}.", ex);
-                return null;
-            }
-        }
-
-
-        private async Task StartCrawlerAsync()
-        {
-            if (_crawlerDriver is not null)
-            {
-                StatusMessage = "Crawler already running. Close the browser window to start a new session.";
-                return;
-            }
-
-            await _dispatcher.InvokeAsync(() =>
-            {
-                IsCrawlerRunning = true;
-                StatusMessage = "Crawler starting...";
-            });
-
-            AppLogger.Info("Starting Selenium crawler.");
-
-            try
-            {
-                var result = await Task.Run<(ChromeDriverService service, ChromeDriver driver, string summary)>(() =>
-                {
-                    var service = ChromeDriverService.CreateDefaultService();
-                    service.HideCommandPromptWindow = true;
-
-                    var options = new ChromeOptions();
-                    options.AddArgument("--disable-gpu");
-                    options.AddArgument("--no-sandbox");
-                    options.AddArgument("--disable-dev-shm-usage");
-                    options.AddArgument("--log-level=3");
-
-                    var driver = new ChromeDriver(service, options);
-                    try
-                    {
-                        driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(30);
-                        driver.Navigate().GoToUrl(CrawlerSeedUrl);
-
-                        var title = driver.Title ?? string.Empty;
-                        var heading = string.Empty;
-
-                        try
-                        {
-                            heading = driver.FindElements(By.TagName("h1"))
-                                .Select(element => element.Text)
-                                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
-                        }
-                        catch (NoSuchElementException)
-                        {
-                            // Intentionally ignored; not all pages include a heading.
-                        }
-
-                        var highlight = string.IsNullOrWhiteSpace(heading) ? title : heading;
-                        var summary = string.IsNullOrWhiteSpace(highlight)
-                            ? "Crawler opened the page. Close the browser window when you are finished."
-                            : $"Crawler opened \"{highlight}\". Close the browser window when you are finished.";
-
-                        AppLogger.Info($"Crawler visited {CrawlerSeedUrl} (title: {title}).");
-
-                        return (service, driver, summary);
-                    }
-                    catch
-                    {
-                        driver.Quit();
-                        driver.Dispose();
-                        service.Dispose();
-                        throw;
-                    }
-                }).ConfigureAwait(false);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    _crawlerService = result.service;
-                    _crawlerDriver = result.driver;
-                    _crawlerSession = _oneFourOneJavCrawler.CreateSession(result.driver);
-                    StatusMessage = result.summary;
-                });
-
-                StartCrawlerMonitor();
-            }
-            catch (WebDriverException ex)
-            {
-                DisposeCrawler();
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Crawler failed: {ex.Message}";
-                    IsCrawlerRunning = false;
-                });
-
-                AppLogger.Error("Crawler failed while using Selenium.", ex);
+                throw;
             }
             catch (Exception ex)
             {
-                DisposeCrawler();
-
+                AppLogger.Error($"[141Jav] Failed to fetch crawler metadata for '{query}'.", ex);
                 await _dispatcher.InvokeAsync(() =>
                 {
-                    StatusMessage = $"Crawler failed: {ex.Message}";
-                    IsCrawlerRunning = false;
-                });
-
-                AppLogger.Error("Unexpected crawler failure.", ex);
-            }
-        }
-
-
-        public async Task<string?> TryGetCrawlerThumbnailUrlAsync(CancellationToken cancellationToken = default)
-        {
-            var session = _crawlerSession;
-            if (session is null)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = "Crawler is not running. Start the crawler first.";
+                    StatusMessage = $"Crawler metadata fetch failed: {ex.Message}";
                 });
                 return null;
             }
-
-            return await session
-                .TryGetThumbnailUrlAsync(cancellationToken)
-                .ConfigureAwait(false);
         }
 
-        public async Task<OneFourOneJavCrawler.CrawlerMetadata?> TryGetCrawlerMetadataAsync(CancellationToken cancellationToken = default)
+        private void StartCrawlerMonitor(IOneFourOneJavCrawlerSessionHandle monitoredHandle)
         {
-            var session = _crawlerSession;
-            if (session is null)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = "Crawler is not running. Start the crawler first.";
-                });
-                return null;
-            }
-
-            return await session
-                .TryGetMetadataAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        public async Task<bool> NavigateCrawlerToAsync(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-            {
-                return false;
-            }
-
-            var driver = _crawlerDriver;
-            if (driver is null)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = "Crawler is not running. Start the crawler first.";
-                });
-                return false;
-            }
-
-            try
-            {
-                await Task.Run(() => driver.Navigate().GoToUrl(url)).ConfigureAwait(false);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Crawler navigating to {url}.";
-                });
-
-                return true;
-            }
-            catch (WebDriverException ex)
-            {
-                AppLogger.Error($"Crawler navigation failed for {url}.", ex);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Crawler failed to navigate: {ex.Message}";
-                });
-
-                DisposeCrawler();
-                await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
-                return false;
-            }
-        }
-
-        private void StartCrawlerMonitor()
-        {
-            if (_crawlerMonitorTask is { IsCompleted: false })
-            {
-                return;
-            }
+            var generation = Interlocked.Increment(ref _crawlerMonitorGeneration);
 
             _crawlerMonitorTask = Task.Run(async () =>
             {
@@ -888,20 +665,19 @@ namespace Airi.ViewModels
                 {
                     while (true)
                     {
-                        var driver = _crawlerDriver;
-                        if (driver is null)
+                        if (!IsCurrentCrawlerHandle(monitoredHandle))
                         {
                             break;
                         }
 
                         try
                         {
-                            if (driver.WindowHandles.Count == 0)
+                            if (!monitoredHandle.IsBrowserOpen())
                             {
                                 break;
                             }
                         }
-                        catch (WebDriverException)
+                        catch (Exception)
                         {
                             break;
                         }
@@ -911,48 +687,87 @@ namespace Airi.ViewModels
                 }
                 finally
                 {
-                    DisposeCrawler();
+                    var disposedCurrent = DisposeCrawlerIfCurrent(monitoredHandle);
 
                     await _dispatcher.InvokeAsync(() =>
                     {
-                        IsCrawlerRunning = false;
-                        StatusMessage = BuildLibrarySummary();
+                        if (disposedCurrent)
+                        {
+                            IsCrawlerRunning = false;
+                            StatusMessage = BuildLibrarySummary();
+                        }
                     });
 
-                    _crawlerMonitorTask = null;
+                    if (Volatile.Read(ref _crawlerMonitorGeneration) == generation)
+                    {
+                        _crawlerMonitorTask = null;
+                    }
                 }
             });
         }
 
         private void DisposeCrawler()
         {
-            _crawlerSession = null;
-            var driver = _crawlerDriver;
-            _crawlerDriver = null;
+            DisposeCrawlerIfCurrent(null);
+        }
 
-            if (driver is not null)
+        private (IOneFourOneJavCrawlerSessionHandle? Handle, IOneFourOneJavCrawlerSession? Session) GetCrawlerState()
+        {
+            lock (_crawlerStateLock)
+            {
+                return (_crawlerHandle, _crawlerSession);
+            }
+        }
+
+        private void SetCrawlerState(
+            IOneFourOneJavCrawlerSessionHandle handle,
+            IOneFourOneJavCrawlerSession session)
+        {
+            lock (_crawlerStateLock)
+            {
+                _crawlerHandle = handle;
+                _crawlerSession = session;
+                _crawlerSessionProvider.SetSession(session);
+            }
+        }
+
+        private bool IsCurrentCrawlerHandle(IOneFourOneJavCrawlerSessionHandle handle)
+        {
+            lock (_crawlerStateLock)
+            {
+                return ReferenceEquals(_crawlerHandle, handle);
+            }
+        }
+
+        private bool DisposeCrawlerIfCurrent(IOneFourOneJavCrawlerSessionHandle? expectedHandle)
+        {
+            IOneFourOneJavCrawlerSessionHandle? handle;
+            lock (_crawlerStateLock)
+            {
+                handle = _crawlerHandle;
+                if (expectedHandle is not null && !ReferenceEquals(handle, expectedHandle))
+                {
+                    return false;
+                }
+
+                _crawlerSessionProvider.SetSession(null);
+                _crawlerSession = null;
+                _crawlerHandle = null;
+            }
+
+            if (handle is not null)
             {
                 try
                 {
-                    driver.Quit();
+                    handle.Dispose();
                 }
-                catch (WebDriverException)
+                catch (Exception)
                 {
-                    // ignored: driver process already gone.
-                }
-
-                try
-                {
-                    driver.Dispose();
-                }
-                catch (WebDriverException)
-                {
-                    // ignored: driver process already disposed.
+                    // ignored: driver process already gone or already disposed.
                 }
             }
 
-            _crawlerService?.Dispose();
-            _crawlerService = null;
+            return true;
         }
 
 

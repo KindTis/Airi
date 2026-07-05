@@ -289,7 +289,6 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <Grid Grid.Column="0" Height="42" Margin="0,0,16,0">
@@ -341,13 +340,7 @@
                         BorderBrush="Transparent"
                         Command="{Binding RandomPlayCommand}"/>
 
-                <Button Grid.Column="3" Width="160" Height="42" Margin="0,0,12,0" Padding="12"
-                        Content="Fetch Metadata"
-                        Background="{StaticResource AccentBrush}" Foreground="White"
-                        BorderBrush="Transparent"
-                        Command="{Binding FetchMetadataCommand}"/>
-                
-                <ToggleButton Grid.Column="4" Width="200" Height="42" Padding="12"
+                <ToggleButton Grid.Column="3" Width="200" Height="42" Padding="12"
                               Content="Missing Metadata Only"
                               IsChecked="{Binding ShowMissingMetadataOnly}"
                               Background="#1E2234"
@@ -562,8 +555,8 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                 <Button Grid.Column="1"
-                        Content="Start Crawler"
-                        Command="{Binding StartCrawlerCommand}"
+                        Content="Fetch Metadata"
+                        Command="{Binding FetchMetadataCommand}"
                         Height="36"
                         MinWidth="140"
                         Margin="12,0,0,0"

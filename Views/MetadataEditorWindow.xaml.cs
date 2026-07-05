@@ -1,20 +1,17 @@
 using Airi;
 using System;
-using System.IO;
-using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Airi.ViewModels;
 using Airi.Infrastructure;
+using Airi.Web;
 using Microsoft.Win32;
 
 namespace Airi.Views
 {
     public partial class MetadataEditorWindow : Window
     {
-        private static readonly HttpClient ThumbnailHttpClient = new();
-
         public MetadataEditorWindow(VideoItem item)
         {
             InitializeComponent();
@@ -115,27 +112,31 @@ namespace Airi.Views
                 return;
             }
 
-            var url = $"https://www.141jav.com/search/{Uri.EscapeDataString(normalized)}";
-
             AppLogger.Info($"[MetadataEditor] Initiating crawler parse for '{vm.Title}' (normalized: '{normalized}').");
 
             SetInteractionInProgress(true);
             try
             {
-                var navigated = await mainWindow.ViewModel.NavigateCrawlerToAsync(url);
-                if (!navigated)
+                var result = await mainWindow.ViewModel.TryFetchOneFourOneJavMetadataAsync(normalized);
+                if (result is null)
                 {
-                    AppLogger.Info("[MetadataEditor] Crawler navigation request was not executed (crawler inactive).");
-                    MessageBox.Show(this, "크롤러가 실행 중인지 확인해주세요.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppLogger.Info("[MetadataEditor] No metadata payload was returned from 141jav.");
+                    MessageBox.Show(this, "141jav에서 메타데이터를 찾지 못했습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
-                await ParseCrawlerResultAsync(mainWindow, vm);
+                var applied = await ApplyCrawlerResultAsync(vm, result);
+                if (!applied)
+                {
+                    MessageBox.Show(this, "적용할 새 메타데이터가 없습니다.", "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
                 AppLogger.Info("[MetadataEditor] Crawler parse completed.");
             }
             catch (Exception ex)
             {
                 AppLogger.Error("[MetadataEditor] Unexpected exception while parsing crawler page.", ex);
+                MessageBox.Show(this, $"141jav 메타데이터를 적용하는 중 오류가 발생했습니다.\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -143,96 +144,56 @@ namespace Airi.Views
             }
         }
 
-        private async Task ParseCrawlerResultAsync(MainWindow mainWindow, MetadataEditorViewModel vm)
+        private async Task<bool> ApplyCrawlerResultAsync(MetadataEditorViewModel vm, WebVideoMetaResult result)
         {
             AppLogger.Info("[MetadataEditor] Parsing crawler metadata result.");
-            var crawlerMetadata = await mainWindow.ViewModel.TryGetCrawlerMetadataAsync();
-            if (crawlerMetadata is not null)
+            var applied = false;
+            var meta = result.Meta;
+
+            if (meta.Date is DateOnly releaseDate)
             {
-                if (crawlerMetadata.ReleaseDate is DateTime releaseDate)
-                {
-                    AppLogger.Info($"[MetadataEditor] Applying release date from crawler: {releaseDate:yyyy-MM-dd}.");
-                    vm.ReleaseDate = releaseDate;
-                }
+                AppLogger.Info($"[MetadataEditor] Applying release date from crawler: {releaseDate:yyyy-MM-dd}.");
+                vm.ReleaseDate = releaseDate.ToDateTime(TimeOnly.MinValue);
+                applied = true;
+            }
 
-                if (crawlerMetadata.Tags.Count > 0)
-                {
-                    AppLogger.Info($"[MetadataEditor] Applying {crawlerMetadata.Tags.Count} tags from crawler.");
-                    vm.TagsText = string.Join(Environment.NewLine, crawlerMetadata.Tags);
-                }
+            if (meta.Tags.Count > 0)
+            {
+                AppLogger.Info($"[MetadataEditor] Applying {meta.Tags.Count} tags from crawler.");
+                vm.TagsText = string.Join(Environment.NewLine, meta.Tags);
+                applied = true;
+            }
 
-                if (crawlerMetadata.Actors.Count > 0)
-                {
-                    AppLogger.Info($"[MetadataEditor] Applying {crawlerMetadata.Actors.Count} actors from crawler.");
-                    vm.ActorsText = string.Join(Environment.NewLine, crawlerMetadata.Actors);
-                }
+            if (meta.Actors.Count > 0)
+            {
+                AppLogger.Info($"[MetadataEditor] Applying {meta.Actors.Count} actors from crawler.");
+                vm.ActorsText = string.Join(Environment.NewLine, meta.Actors);
+                applied = true;
+            }
 
-                vm.Description = crawlerMetadata.Description;
+            if (!string.IsNullOrWhiteSpace(meta.Description))
+            {
+                vm.Description = meta.Description;
                 AppLogger.Info("[MetadataEditor] Applied crawler description to metadata editor.");
-            }
-            else
-            {
-                AppLogger.Info("[MetadataEditor] No metadata payload was returned from crawler.");
+                applied = true;
             }
 
-            var imageUrl = await mainWindow.ViewModel.TryGetCrawlerThumbnailUrlAsync();
-            if (string.IsNullOrWhiteSpace(imageUrl))
+            if (result.ThumbnailBytes is { Length: > 0 })
             {
-                AppLogger.Info("[MetadataEditor] No thumbnail URL discovered on crawler page.");
-            }
-            else
-            {
-                byte[] imageBytes = Array.Empty<byte>();
-                var downloadFailed = false;
-
-                try
+                var updated = await vm.UpdateThumbnailFromBytesAsync(result.ThumbnailBytes, result.ThumbnailExtension);
+                if (!updated)
                 {
-                    imageBytes = await ThumbnailHttpClient.GetByteArrayAsync(imageUrl);
-                }
-                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-                {
-                    downloadFailed = true;
-                    AppLogger.Error($"[MetadataEditor] Failed to download crawler thumbnail from {imageUrl}.", ex);
-                }
-
-                if (imageBytes.Length == 0)
-                {
-                    if (!downloadFailed)
-                    {
-                        AppLogger.Info("[MetadataEditor] Downloaded crawler thumbnail was empty.");
-                    }
-                    else
-                    {
-                        AppLogger.Info("[MetadataEditor] Skipping empty thumbnail update due to earlier download failure.");
-                    }
+                    AppLogger.Info("[MetadataEditor] Thumbnail update from crawler image was not applied.");
+                    MessageBox.Show(this, "썸네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 else
                 {
-                    var extension = ".jpg";
-                    string? fileName = null;
-
-                    if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
-                    {
-                        fileName = Path.GetFileName(uri.LocalPath);
-                        var candidate = Path.GetExtension(fileName);
-                        if (!string.IsNullOrWhiteSpace(candidate))
-                        {
-                            extension = candidate;
-                        }
-                    }
-
-                    var updated = await vm.UpdateThumbnailFromBytesAsync(imageBytes, extension, string.IsNullOrWhiteSpace(fileName) ? null : fileName);
-                    if (!updated)
-                    {
-                        AppLogger.Info("[MetadataEditor] Thumbnail update from crawler image was not applied.");
-                        MessageBox.Show(this, "썸네일을 갱신하지 못했습니다.", "경고", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                    else
-                    {
-                        AppLogger.Info("[MetadataEditor] Thumbnail updated from crawler image.");
-                    }
+                    AppLogger.Info("[MetadataEditor] Thumbnail updated from crawler image.");
+                    applied = true;
                 }
             }
+
+            return applied;
         }
 
         private void SetInteractionInProgress(bool isInProgress)

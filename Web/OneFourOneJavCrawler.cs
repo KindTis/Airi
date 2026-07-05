@@ -6,25 +6,14 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Airi.Infrastructure;
-using Airi.Services;
 using OpenQA.Selenium;
 
 namespace Airi.Web
 {
     public sealed class OneFourOneJavCrawler
     {
-        private readonly ITextTranslationService _translationService;
-        private readonly string _targetLanguageCode;
-
         public OneFourOneJavCrawler()
-            : this(NullTranslationService.Instance, null)
         {
-        }
-
-        public OneFourOneJavCrawler(ITextTranslationService translationService, string? targetLanguageCode)
-        {
-            _translationService = translationService ?? throw new ArgumentNullException(nameof(translationService));
-            _targetLanguageCode = string.IsNullOrWhiteSpace(targetLanguageCode) ? string.Empty : targetLanguageCode;
         }
 
         public CrawlerSession CreateSession(IWebDriver driver)
@@ -52,12 +41,6 @@ namespace Airi.Web
                 if (metadata is null)
                 {
                     return null;
-                }
-
-                var translatedDescription = await TranslateDescriptionAsync(metadata.Description, cancellationToken).ConfigureAwait(false);
-                if (!string.Equals(translatedDescription, metadata.Description, StringComparison.Ordinal))
-                {
-                    return metadata with { Description = translatedDescription };
                 }
 
                 return metadata;
@@ -258,38 +241,7 @@ namespace Airi.Web
             return string.IsNullOrWhiteSpace(source) ? null : source;
         }
 
-        private async Task<string> TranslateDescriptionAsync(string description, CancellationToken cancellationToken)
-        {
-            if (!_translationService.IsEnabled || string.IsNullOrWhiteSpace(_targetLanguageCode))
-            {
-                return description;
-            }
-
-            if (string.IsNullOrWhiteSpace(description))
-            {
-                return string.Empty;
-            }
-
-            try
-            {
-                var translated = await _translationService
-                    .TranslateAsync(description, null, _targetLanguageCode, cancellationToken)
-                    .ConfigureAwait(false);
-
-                return string.IsNullOrWhiteSpace(translated) ? description : translated;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("[141Jav] Failed to translate description.", ex);
-                return description;
-            }
-        }
-
-        public sealed class CrawlerSession
+        public sealed class CrawlerSession : IOneFourOneJavCrawlerSession
         {
             private readonly OneFourOneJavCrawler _crawler;
             private readonly IWebDriver _driver;
@@ -298,6 +250,29 @@ namespace Airi.Web
             {
                 _crawler = crawler;
                 _driver = driver ?? throw new ArgumentNullException(nameof(driver));
+            }
+
+            public async Task<bool> NavigateToAsync(string url, CancellationToken cancellationToken = default)
+            {
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    await Task.Run(() => _driver.Navigate().GoToUrl(url), cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (WebDriverException ex)
+                {
+                    AppLogger.Error($"[141Jav] Failed to navigate crawler session to {url}.", ex);
+                    return false;
+                }
             }
 
             public Task<string?> TryGetThumbnailUrlAsync(CancellationToken cancellationToken = default)
