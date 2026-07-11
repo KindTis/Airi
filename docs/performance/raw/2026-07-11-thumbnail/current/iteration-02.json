@@ -1,0 +1,4197 @@
+{
+  "schemaVersion": 2,
+  "dataset": "current",
+  "iteration": 2,
+  "mode": "After",
+  "fixtureManifestSha256": "1EEC1AE76B68FF2ADA29FC6B91535EADC5A98D5FD6F08D27010DC267C01796A1",
+  "cold": {
+    "valid": true,
+    "invalidReason": null,
+    "timing": {
+      "schemaVersion": 2,
+      "phase": "Cold",
+      "markers": {
+        "StartupMeasurementBegin": {
+          "elapsedTicks": 0,
+          "elapsedMilliseconds": 0
+        },
+        "MainWindowLoaded": {
+          "elapsedTicks": 7786043,
+          "elapsedMilliseconds": 778.6043
+        },
+        "LibraryLoaded": {
+          "elapsedTicks": 12077606,
+          "elapsedMilliseconds": 1207.7606
+        },
+        "FirstBatchPublished": {
+          "elapsedTicks": 12286144,
+          "elapsedMilliseconds": 1228.6144
+        },
+        "VisualFirstMeaningfulCard": {
+          "elapsedTicks": 13282783,
+          "elapsedMilliseconds": 1328.2783
+        },
+        "FirstThumbnailApplied": {
+          "elapsedTicks": 13400824,
+          "elapsedMilliseconds": 1340.0824
+        },
+        "VisualFirstThumbnail": {
+          "elapsedTicks": 13416838,
+          "elapsedMilliseconds": 1341.6838
+        },
+        "AllItemsPublished": {
+          "elapsedTicks": 16443111,
+          "elapsedMilliseconds": 1644.3111
+        },
+        "StartupTerminal": {
+          "elapsedTicks": 19824143,
+          "elapsedMilliseconds": 1982.4143
+        }
+      },
+      "requests": [
+        {
+          "itemIdentity": 1,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA362_20250928_122409841.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 2,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIMK_101_20250927_130532407.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 3,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIMK074_20250928_122418548.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 4,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND893_20250928_112045377.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 5,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA276_20250928_122403563.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 6,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MVSD432_20250928_122434335.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 7,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DASD695_20250927_180238077.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 8,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BF597_20250927_175740124.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 9,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BLK435_20250927_175903175.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 10,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DOCP184_20250928_101934177.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 11,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BF594_20250927_175631187.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 12,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DASD587_20250927_180208306.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 13,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND723_20250928_112024719.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 14,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\JUY979_20250928_112130135.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 15,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\CAWD018_20250927_175919319.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 16,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA151_20250928_122356316.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 17,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\IPX375_20250928_112108789.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 18,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\PRED181_20250928_122505605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 19,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIRD192_20250928_122426512.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 20,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND712_20250928_111957410.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 21,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BLK417_20250927_175808032.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 22,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\PRED175_20250928_122454445.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 23,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\WANZ882_20250928_122511107.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 24,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA122_20250928_122350132.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 25,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_205_20250927_130906342.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 26,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_166_20250927_130903821.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 27,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_085_20250927_130900016.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 28,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_998_20250927_130855063.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 29,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_974_20250927_130852078.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 30,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_938_20250927_130848720.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 31,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS944_20250928_122651200.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 32,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_924_20250927_130845931.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 33,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_909_20250927_130843023.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 34,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_870_20250927_130833992.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 35,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_856_20250927_130831548.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 36,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_759_20250927_130819642.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 37,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_828_20250927_130827969.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 38,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_787_20250927_130823997.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 39,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_618_20250927_130815770.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 40,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_591_20250927_130811945.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 41,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_570_20250927_130807007.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 42,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_566_20250927_130802043.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 43,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_516_20250927_130755983.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 44,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_468_20250927_130752195.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 45,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_450_20250927_130748042.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 46,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS242_20250928_122550260.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 25,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_205_20250927_130906342.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 47,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_955_20250927_131846027.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 48,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_935_20250927_131842922.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 33,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_909_20250927_130843023.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 28,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_998_20250927_130855063.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 26,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_166_20250927_130903821.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 27,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_085_20250927_130900016.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 49,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_364_20260710_141046637.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 50,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_585_20260710_141419239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 51,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_575_20260710_141406646.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 52,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_355_20260710_141041341.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 53,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_561_20260710_141338475.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 54,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_346_20260710_141036640.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 55,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_540_20260710_141324481.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 56,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_326_20260710_141025437.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 57,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_521_20260710_141318201.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 58,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_505_20260710_141251490.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 59,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_315_20260710_141018516.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 60,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_468_20260710_141222483.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 61,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_304_20260710_141012524.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 62,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_293_20260710_141003605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 63,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_464_20260710_141216062.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 64,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_449_20260710_141120113.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 65,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_282_20260710_140938951.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 66,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_414_20260710_141110827.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 67,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF272_20260705_083714476.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 68,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_846_20250927_134406472.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 69,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_262_20251002_151609239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 70,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_380_20260710_141057019.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 71,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_811_20250927_134404383.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 72,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_253_20251002_151601887.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 49,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_364_20260710_141046637.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 50,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_585_20260710_141419239.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 51,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_575_20260710_141406646.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 52,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_355_20260710_141041341.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 53,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_561_20260710_141338475.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 54,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_346_20260710_141036640.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 55,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_540_20260710_141324481.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 56,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_326_20260710_141025437.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 57,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_521_20260710_141318201.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 58,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_505_20260710_141251490.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 59,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_315_20260710_141018516.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 60,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_468_20260710_141222483.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 61,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_304_20260710_141012524.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 62,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_293_20260710_141003605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 63,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_464_20260710_141216062.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 64,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_449_20260710_141120113.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 65,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_282_20260710_140938951.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 66,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_414_20260710_141110827.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 67,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF272_20260705_083714476.jpg",
+          "decodePixelWidth": 237,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 68,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_846_20250927_134406472.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 69,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_262_20251002_151609239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 70,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_380_20260710_141057019.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 71,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_811_20250927_134404383.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 72,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_253_20251002_151601887.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        }
+      ],
+      "registrations": [
+        {
+          "imageIdentity": 2072391,
+          "itemIdentity": 1,
+          "enter": true
+        },
+        {
+          "imageIdentity": 8777251,
+          "itemIdentity": 2,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1650544,
+          "itemIdentity": 3,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46778678,
+          "itemIdentity": 4,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6503343,
+          "itemIdentity": 5,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46077513,
+          "itemIdentity": 6,
+          "enter": true
+        },
+        {
+          "imageIdentity": 25231803,
+          "itemIdentity": 7,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63272809,
+          "itemIdentity": 8,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3747672,
+          "itemIdentity": 9,
+          "enter": true
+        },
+        {
+          "imageIdentity": 57262836,
+          "itemIdentity": 10,
+          "enter": true
+        },
+        {
+          "imageIdentity": 58821598,
+          "itemIdentity": 11,
+          "enter": true
+        },
+        {
+          "imageIdentity": 32158488,
+          "itemIdentity": 12,
+          "enter": true
+        },
+        {
+          "imageIdentity": 4343219,
+          "itemIdentity": 13,
+          "enter": true
+        },
+        {
+          "imageIdentity": 31246676,
+          "itemIdentity": 14,
+          "enter": true
+        },
+        {
+          "imageIdentity": 8537035,
+          "itemIdentity": 15,
+          "enter": true
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 16,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43965230,
+          "itemIdentity": 17,
+          "enter": true
+        },
+        {
+          "imageIdentity": 13702041,
+          "itemIdentity": 18,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5916785,
+          "itemIdentity": 19,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5605039,
+          "itemIdentity": 20,
+          "enter": true
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 21,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 22,
+          "enter": true
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 23,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 24,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 24,
+          "enter": false
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 25,
+          "enter": true
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 23,
+          "enter": false
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 26,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 22,
+          "enter": false
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 27,
+          "enter": true
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 21,
+          "enter": false
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 28,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5605039,
+          "itemIdentity": 20,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5605039,
+          "itemIdentity": 29,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5916785,
+          "itemIdentity": 19,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5916785,
+          "itemIdentity": 30,
+          "enter": true
+        },
+        {
+          "imageIdentity": 13702041,
+          "itemIdentity": 18,
+          "enter": false
+        },
+        {
+          "imageIdentity": 13702041,
+          "itemIdentity": 31,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43965230,
+          "itemIdentity": 17,
+          "enter": false
+        },
+        {
+          "imageIdentity": 43965230,
+          "itemIdentity": 32,
+          "enter": true
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 16,
+          "enter": false
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 33,
+          "enter": true
+        },
+        {
+          "imageIdentity": 8537035,
+          "itemIdentity": 15,
+          "enter": false
+        },
+        {
+          "imageIdentity": 8537035,
+          "itemIdentity": 34,
+          "enter": true
+        },
+        {
+          "imageIdentity": 31246676,
+          "itemIdentity": 14,
+          "enter": false
+        },
+        {
+          "imageIdentity": 31246676,
+          "itemIdentity": 35,
+          "enter": true
+        },
+        {
+          "imageIdentity": 4343219,
+          "itemIdentity": 13,
+          "enter": false
+        },
+        {
+          "imageIdentity": 4343219,
+          "itemIdentity": 36,
+          "enter": true
+        },
+        {
+          "imageIdentity": 32158488,
+          "itemIdentity": 12,
+          "enter": false
+        },
+        {
+          "imageIdentity": 32158488,
+          "itemIdentity": 37,
+          "enter": true
+        },
+        {
+          "imageIdentity": 58821598,
+          "itemIdentity": 11,
+          "enter": false
+        },
+        {
+          "imageIdentity": 58821598,
+          "itemIdentity": 38,
+          "enter": true
+        },
+        {
+          "imageIdentity": 57262836,
+          "itemIdentity": 10,
+          "enter": false
+        },
+        {
+          "imageIdentity": 57262836,
+          "itemIdentity": 39,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3747672,
+          "itemIdentity": 9,
+          "enter": false
+        },
+        {
+          "imageIdentity": 3747672,
+          "itemIdentity": 40,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63272809,
+          "itemIdentity": 8,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63272809,
+          "itemIdentity": 41,
+          "enter": true
+        },
+        {
+          "imageIdentity": 25231803,
+          "itemIdentity": 7,
+          "enter": false
+        },
+        {
+          "imageIdentity": 25231803,
+          "itemIdentity": 42,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46077513,
+          "itemIdentity": 6,
+          "enter": false
+        },
+        {
+          "imageIdentity": 46077513,
+          "itemIdentity": 43,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6503343,
+          "itemIdentity": 5,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6503343,
+          "itemIdentity": 44,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46778678,
+          "itemIdentity": 4,
+          "enter": false
+        },
+        {
+          "imageIdentity": 46778678,
+          "itemIdentity": 45,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1650544,
+          "itemIdentity": 3,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1650544,
+          "itemIdentity": 46,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 25,
+          "enter": false
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 25,
+          "enter": true
+        },
+        {
+          "imageIdentity": 8777251,
+          "itemIdentity": 2,
+          "enter": false
+        },
+        {
+          "imageIdentity": 8777251,
+          "itemIdentity": 47,
+          "enter": true
+        },
+        {
+          "imageIdentity": 2072391,
+          "itemIdentity": 1,
+          "enter": false
+        },
+        {
+          "imageIdentity": 2072391,
+          "itemIdentity": 48,
+          "enter": true
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 33,
+          "enter": false
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 33,
+          "enter": true
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 28,
+          "enter": false
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 28,
+          "enter": true
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 26,
+          "enter": false
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 26,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 27,
+          "enter": false
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 27,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43372787,
+          "itemIdentity": 27,
+          "enter": false
+        },
+        {
+          "imageIdentity": 39932352,
+          "itemIdentity": 26,
+          "enter": false
+        },
+        {
+          "imageIdentity": 51203387,
+          "itemIdentity": 28,
+          "enter": false
+        },
+        {
+          "imageIdentity": 52184565,
+          "itemIdentity": 33,
+          "enter": false
+        },
+        {
+          "imageIdentity": 3868917,
+          "itemIdentity": 25,
+          "enter": false
+        },
+        {
+          "imageIdentity": 2072391,
+          "itemIdentity": 48,
+          "enter": false
+        },
+        {
+          "imageIdentity": 8777251,
+          "itemIdentity": 47,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1650544,
+          "itemIdentity": 46,
+          "enter": false
+        },
+        {
+          "imageIdentity": 46778678,
+          "itemIdentity": 45,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6503343,
+          "itemIdentity": 44,
+          "enter": false
+        },
+        {
+          "imageIdentity": 46077513,
+          "itemIdentity": 43,
+          "enter": false
+        },
+        {
+          "imageIdentity": 25231803,
+          "itemIdentity": 42,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63272809,
+          "itemIdentity": 41,
+          "enter": false
+        },
+        {
+          "imageIdentity": 3747672,
+          "itemIdentity": 40,
+          "enter": false
+        },
+        {
+          "imageIdentity": 57262836,
+          "itemIdentity": 39,
+          "enter": false
+        },
+        {
+          "imageIdentity": 58821598,
+          "itemIdentity": 38,
+          "enter": false
+        },
+        {
+          "imageIdentity": 32158488,
+          "itemIdentity": 37,
+          "enter": false
+        },
+        {
+          "imageIdentity": 4343219,
+          "itemIdentity": 36,
+          "enter": false
+        },
+        {
+          "imageIdentity": 31246676,
+          "itemIdentity": 35,
+          "enter": false
+        },
+        {
+          "imageIdentity": 8537035,
+          "itemIdentity": 34,
+          "enter": false
+        },
+        {
+          "imageIdentity": 43965230,
+          "itemIdentity": 32,
+          "enter": false
+        },
+        {
+          "imageIdentity": 13702041,
+          "itemIdentity": 31,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5916785,
+          "itemIdentity": 30,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5605039,
+          "itemIdentity": 29,
+          "enter": false
+        },
+        {
+          "imageIdentity": 49347233,
+          "itemIdentity": 49,
+          "enter": true
+        },
+        {
+          "imageIdentity": 49515886,
+          "itemIdentity": 50,
+          "enter": true
+        },
+        {
+          "imageIdentity": 61152983,
+          "itemIdentity": 51,
+          "enter": true
+        },
+        {
+          "imageIdentity": 58806301,
+          "itemIdentity": 52,
+          "enter": true
+        },
+        {
+          "imageIdentity": 31102933,
+          "itemIdentity": 53,
+          "enter": true
+        },
+        {
+          "imageIdentity": 65727615,
+          "itemIdentity": 54,
+          "enter": true
+        },
+        {
+          "imageIdentity": 38911592,
+          "itemIdentity": 55,
+          "enter": true
+        },
+        {
+          "imageIdentity": 545308,
+          "itemIdentity": 56,
+          "enter": true
+        },
+        {
+          "imageIdentity": 37626286,
+          "itemIdentity": 57,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46076937,
+          "itemIdentity": 58,
+          "enter": true
+        },
+        {
+          "imageIdentity": 25192085,
+          "itemIdentity": 59,
+          "enter": true
+        },
+        {
+          "imageIdentity": 60532332,
+          "itemIdentity": 60,
+          "enter": true
+        },
+        {
+          "imageIdentity": 15981404,
+          "itemIdentity": 61,
+          "enter": true
+        },
+        {
+          "imageIdentity": 28975100,
+          "itemIdentity": 62,
+          "enter": true
+        },
+        {
+          "imageIdentity": 53124880,
+          "itemIdentity": 63,
+          "enter": true
+        },
+        {
+          "imageIdentity": 41738110,
+          "itemIdentity": 64,
+          "enter": true
+        },
+        {
+          "imageIdentity": 61357327,
+          "itemIdentity": 65,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5797192,
+          "itemIdentity": 66,
+          "enter": true
+        },
+        {
+          "imageIdentity": 64461960,
+          "itemIdentity": 67,
+          "enter": true
+        },
+        {
+          "imageIdentity": 18690240,
+          "itemIdentity": 68,
+          "enter": true
+        },
+        {
+          "imageIdentity": 14558200,
+          "itemIdentity": 69,
+          "enter": true
+        },
+        {
+          "imageIdentity": 64991709,
+          "itemIdentity": 70,
+          "enter": true
+        },
+        {
+          "imageIdentity": 55242925,
+          "itemIdentity": 71,
+          "enter": true
+        },
+        {
+          "imageIdentity": 53665444,
+          "itemIdentity": 72,
+          "enter": true
+        },
+        {
+          "imageIdentity": 49347233,
+          "itemIdentity": 49,
+          "enter": false
+        },
+        {
+          "imageIdentity": 49515886,
+          "itemIdentity": 50,
+          "enter": false
+        },
+        {
+          "imageIdentity": 61152983,
+          "itemIdentity": 51,
+          "enter": false
+        },
+        {
+          "imageIdentity": 58806301,
+          "itemIdentity": 52,
+          "enter": false
+        },
+        {
+          "imageIdentity": 31102933,
+          "itemIdentity": 53,
+          "enter": false
+        },
+        {
+          "imageIdentity": 65727615,
+          "itemIdentity": 54,
+          "enter": false
+        },
+        {
+          "imageIdentity": 38911592,
+          "itemIdentity": 55,
+          "enter": false
+        },
+        {
+          "imageIdentity": 545308,
+          "itemIdentity": 56,
+          "enter": false
+        },
+        {
+          "imageIdentity": 37626286,
+          "itemIdentity": 57,
+          "enter": false
+        },
+        {
+          "imageIdentity": 46076937,
+          "itemIdentity": 58,
+          "enter": false
+        },
+        {
+          "imageIdentity": 25192085,
+          "itemIdentity": 59,
+          "enter": false
+        },
+        {
+          "imageIdentity": 60532332,
+          "itemIdentity": 60,
+          "enter": false
+        },
+        {
+          "imageIdentity": 15981404,
+          "itemIdentity": 61,
+          "enter": false
+        },
+        {
+          "imageIdentity": 28975100,
+          "itemIdentity": 62,
+          "enter": false
+        },
+        {
+          "imageIdentity": 53124880,
+          "itemIdentity": 63,
+          "enter": false
+        },
+        {
+          "imageIdentity": 41738110,
+          "itemIdentity": 64,
+          "enter": false
+        },
+        {
+          "imageIdentity": 61357327,
+          "itemIdentity": 65,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5797192,
+          "itemIdentity": 66,
+          "enter": false
+        },
+        {
+          "imageIdentity": 64461960,
+          "itemIdentity": 67,
+          "enter": false
+        },
+        {
+          "imageIdentity": 18690240,
+          "itemIdentity": 68,
+          "enter": false
+        },
+        {
+          "imageIdentity": 14558200,
+          "itemIdentity": 69,
+          "enter": false
+        },
+        {
+          "imageIdentity": 64991709,
+          "itemIdentity": 70,
+          "enter": false
+        },
+        {
+          "imageIdentity": 55242925,
+          "itemIdentity": 71,
+          "enter": false
+        },
+        {
+          "imageIdentity": 53665444,
+          "itemIdentity": 72,
+          "enter": false
+        },
+        {
+          "imageIdentity": 23981953,
+          "itemIdentity": 49,
+          "enter": true
+        },
+        {
+          "imageIdentity": 44142043,
+          "itemIdentity": 50,
+          "enter": true
+        },
+        {
+          "imageIdentity": 25902132,
+          "itemIdentity": 51,
+          "enter": true
+        },
+        {
+          "imageIdentity": 42416664,
+          "itemIdentity": 52,
+          "enter": true
+        },
+        {
+          "imageIdentity": 41068698,
+          "itemIdentity": 53,
+          "enter": true
+        },
+        {
+          "imageIdentity": 15167909,
+          "itemIdentity": 54,
+          "enter": true
+        },
+        {
+          "imageIdentity": 39952801,
+          "itemIdentity": 55,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5279912,
+          "itemIdentity": 56,
+          "enter": true
+        },
+        {
+          "imageIdentity": 28769672,
+          "itemIdentity": 57,
+          "enter": true
+        },
+        {
+          "imageIdentity": 38950360,
+          "itemIdentity": 58,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3220316,
+          "itemIdentity": 59,
+          "enter": true
+        },
+        {
+          "imageIdentity": 20875258,
+          "itemIdentity": 60,
+          "enter": true
+        },
+        {
+          "imageIdentity": 31106683,
+          "itemIdentity": 61,
+          "enter": true
+        },
+        {
+          "imageIdentity": 65986404,
+          "itemIdentity": 62,
+          "enter": true
+        },
+        {
+          "imageIdentity": 56768020,
+          "itemIdentity": 63,
+          "enter": true
+        },
+        {
+          "imageIdentity": 24679292,
+          "itemIdentity": 64,
+          "enter": true
+        },
+        {
+          "imageIdentity": 25149604,
+          "itemIdentity": 65,
+          "enter": true
+        },
+        {
+          "imageIdentity": 57601081,
+          "itemIdentity": 66,
+          "enter": true
+        },
+        {
+          "imageIdentity": 15051641,
+          "itemIdentity": 67,
+          "enter": true
+        },
+        {
+          "imageIdentity": 31930272,
+          "itemIdentity": 68,
+          "enter": true
+        },
+        {
+          "imageIdentity": 55705137,
+          "itemIdentity": 69,
+          "enter": true
+        },
+        {
+          "imageIdentity": 18449223,
+          "itemIdentity": 70,
+          "enter": true
+        },
+        {
+          "imageIdentity": 65036858,
+          "itemIdentity": 71,
+          "enter": true
+        },
+        {
+          "imageIdentity": 58358228,
+          "itemIdentity": 72,
+          "enter": true
+        }
+      ],
+      "dispatcherBatches": [
+        {
+          "kind": "StoredReset",
+          "itemCount": 0,
+          "elapsedTicks": 46302,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 41359,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 27897,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 26608,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 32343,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 65760,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 29638,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 28851,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 34212,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 24346,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 30771,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 31050,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 29053,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 35960,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 22637,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 69599,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 18439,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 22,
+          "elapsedTicks": 10271,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredFinalize",
+          "itemCount": 662,
+          "elapsedTicks": 139322,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanSeedCapture",
+          "itemCount": 662,
+          "elapsedTicks": 6519,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanCommitStart",
+          "itemCount": 0,
+          "elapsedTicks": 2778,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 9854,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 650,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 655,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 450,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 849,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1280,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 776,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1049,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1069,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 965,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 973,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 822,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1576,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 920,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1053,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1121,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 22,
+          "elapsedTicks": 1376,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanFinalize",
+          "itemCount": 662,
+          "elapsedTicks": 162677,
+          "threadId": 16
+        },
+        {
+          "kind": "StartupTerminal",
+          "itemCount": 0,
+          "elapsedTicks": 10476,
+          "threadId": 16
+        }
+      ],
+      "resourceCheckpoints": [
+        {
+          "kind": "PhaseStart",
+          "elapsedTicks": 5689,
+          "workingSetBytes": 86269952,
+          "managedHeapBytes": 5613200,
+          "gc0CollectionCount": 1,
+          "gc1CollectionCount": 0,
+          "gc2CollectionCount": 0,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "VisualFirstMeaningfulCard",
+          "elapsedTicks": 13287633,
+          "workingSetBytes": 170885120,
+          "managedHeapBytes": 6699208,
+          "gc0CollectionCount": 4,
+          "gc1CollectionCount": 2,
+          "gc2CollectionCount": 1,
+          "loaderCacheEntryCount": 4,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 4,
+          "ownerSlotBound": 4
+        },
+        {
+          "kind": "VisualFirstThumbnail",
+          "elapsedTicks": 13416930,
+          "workingSetBytes": 173219840,
+          "managedHeapBytes": 6870528,
+          "gc0CollectionCount": 4,
+          "gc1CollectionCount": 2,
+          "gc2CollectionCount": 1,
+          "loaderCacheEntryCount": 13,
+          "realizedNonFallbackItemSourceCount": 12,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 25,
+          "ownerSlotBound": 25
+        },
+        {
+          "kind": "StartupTerminal",
+          "elapsedTicks": 19824614,
+          "workingSetBytes": 201220096,
+          "managedHeapBytes": 9041616,
+          "gc0CollectionCount": 13,
+          "gc1CollectionCount": 10,
+          "gc2CollectionCount": 8,
+          "loaderCacheEntryCount": 86,
+          "realizedNonFallbackItemSourceCount": 23,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 109,
+          "ownerSlotBound": 109
+        },
+        {
+          "kind": "FirstSteady",
+          "elapsedTicks": 25304099,
+          "workingSetBytes": 200835072,
+          "managedHeapBytes": 9388136,
+          "gc0CollectionCount": 13,
+          "gc1CollectionCount": 10,
+          "gc2CollectionCount": 8,
+          "loaderCacheEntryCount": 87,
+          "realizedNonFallbackItemSourceCount": 24,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 111,
+          "ownerSlotBound": 111
+        },
+        {
+          "kind": "PhaseEnd",
+          "elapsedTicks": 25367010,
+          "workingSetBytes": 200876032,
+          "managedHeapBytes": 9396360,
+          "gc0CollectionCount": 13,
+          "gc1CollectionCount": 10,
+          "gc2CollectionCount": 8,
+          "loaderCacheEntryCount": 87,
+          "realizedNonFallbackItemSourceCount": 24,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 111,
+          "ownerSlotBound": 111
+        }
+      ],
+      "checkpointMaximum": {
+        "workingSetBytes": 201220096,
+        "managedHeapBytes": 9396360,
+        "registrationCount": 24,
+        "decodedStrongReferenceCount": 111,
+        "ownerSlotBound": 111
+      },
+      "gcPhaseDelta": {
+        "gen0": 12,
+        "gen1": 10,
+        "gen2": 8
+      },
+      "fallbackInitialization": {
+        "elapsedTicks": 333877,
+        "elapsedMilliseconds": 33.3877,
+        "threadId": 9
+      },
+      "activeRegistrationCount": 24,
+      "maxRegistrationCount": 24
+    },
+    "viewport": {
+      "windowWidth": 1500,
+      "windowHeight": 1000,
+      "viewportWidth": 1159,
+      "viewportHeight": 763,
+      "firstItemWidth": 286,
+      "firstItemHeight": 276,
+      "dpiScaleX": 1,
+      "dpiScaleY": 1,
+      "horizontalOffset": 0,
+      "verticalOffset": 0,
+      "realizedContainerCount": 24,
+      "searchQuery": "",
+      "selectedActor": "All Actors",
+      "missingOnly": false,
+      "sortLabel": "\uCD9C\uC2DC\uC77C \uB0B4\uB9BC\uCC28\uC21C",
+      "workingAreaWidth": 1920,
+      "workingAreaHeight": 1032
+    },
+    "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
+    "outputLibrarySha256": "7297965EF8ADD60EAC8BBA021D1201E5F9C5A4AD4FE971C8EFB5FA0B04BC45EC",
+    "warmPreparation": {
+      "itemCount": 662,
+      "realizedContainerCount": 24,
+      "timingSnapshotStayedSealed": true
+    },
+    "structuralValidation": {
+      "positions": [
+        {
+          "name": "top",
+          "index": 0,
+          "verticalOffset": 0,
+          "realizedContainerCount": 24,
+          "traversalMaximumContainerCount": 24,
+          "registrationCount": 24,
+          "realizedNonFallbackSourceCount": 24,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        },
+        {
+          "name": "middle",
+          "index": 331,
+          "verticalOffset": 22145,
+          "realizedContainerCount": 36,
+          "traversalMaximumContainerCount": 36,
+          "registrationCount": 36,
+          "realizedNonFallbackSourceCount": 36,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        },
+        {
+          "name": "last",
+          "index": 661,
+          "verticalOffset": 45053,
+          "realizedContainerCount": 22,
+          "traversalMaximumContainerCount": 36,
+          "registrationCount": 22,
+          "realizedNonFallbackSourceCount": 16,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        },
+        {
+          "name": "topReturn",
+          "index": 0,
+          "verticalOffset": 0,
+          "realizedContainerCount": 24,
+          "traversalMaximumContainerCount": 24,
+          "registrationCount": 24,
+          "realizedNonFallbackSourceCount": 19,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        }
+      ],
+      "allPassed": true
+    },
+    "gates": {
+      "firstCardBeforeAllItems": "Pass",
+      "requestMembership": true,
+      "fileOpenBound": true,
+      "decodeConcurrency": true,
+      "lruInvariant": true,
+      "dispatcherUnder100Milliseconds": true,
+      "nonFallbackSourceBound": true,
+      "ownerSlotBound": true
+    },
+    "loader": {
+      "cacheMissRequestCount": 87,
+      "fileOpenCount": 87,
+      "fileChangeRetryAttemptCount": 0,
+      "activeDecodeCount": 0,
+      "maxConcurrentDecodeCount": 4,
+      "startCacheEntryCount": 0,
+      "cacheEntryCount": 87,
+      "recencyNodeCount": 87,
+      "fallbackInitializationThreadId": 9,
+      "fallbackInitializationElapsedTicks": 333877
+    }
+  },
+  "warm": {
+    "valid": true,
+    "invalidReason": null,
+    "timing": {
+      "schemaVersion": 2,
+      "phase": "Warm",
+      "markers": {
+        "StartupMeasurementBegin": {
+          "elapsedTicks": 0,
+          "elapsedMilliseconds": 0
+        },
+        "MainWindowLoaded": {
+          "elapsedTicks": 642938,
+          "elapsedMilliseconds": 64.2938
+        },
+        "LibraryLoaded": {
+          "elapsedTicks": 1454697,
+          "elapsedMilliseconds": 145.4697
+        },
+        "FirstBatchPublished": {
+          "elapsedTicks": 1729898,
+          "elapsedMilliseconds": 172.9898
+        },
+        "VisualFirstMeaningfulCard": {
+          "elapsedTicks": 2135999,
+          "elapsedMilliseconds": 213.5999
+        },
+        "FirstThumbnailApplied": {
+          "elapsedTicks": 2214553,
+          "elapsedMilliseconds": 221.4553
+        },
+        "VisualFirstThumbnail": {
+          "elapsedTicks": 2273906,
+          "elapsedMilliseconds": 227.3906
+        },
+        "AllItemsPublished": {
+          "elapsedTicks": 5205023,
+          "elapsedMilliseconds": 520.5023
+        },
+        "StartupTerminal": {
+          "elapsedTicks": 7963735,
+          "elapsedMilliseconds": 796.3735
+        }
+      },
+      "requests": [
+        {
+          "itemIdentity": 1,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA362_20250928_122409841.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 2,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIMK_101_20250927_130532407.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 3,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIMK074_20250928_122418548.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 4,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND893_20250928_112045377.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 5,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA276_20250928_122403563.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 6,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MVSD432_20250928_122434335.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 7,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DASD695_20250927_180238077.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 8,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BF597_20250927_175740124.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 9,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BLK435_20250927_175903175.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 10,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DOCP184_20250928_101934177.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 11,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BF594_20250927_175631187.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 12,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\DASD587_20250927_180208306.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 13,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND723_20250928_112024719.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 14,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\JUY979_20250928_112130135.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 15,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\CAWD018_20250927_175919319.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 16,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA151_20250928_122356316.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 17,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\IPX375_20250928_112108789.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 18,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\PRED181_20250928_122505605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 19,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIRD192_20250928_122426512.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 20,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\HND712_20250928_111957410.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 21,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\BLK417_20250927_175808032.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 22,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\PRED175_20250928_122454445.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 23,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\WANZ882_20250928_122511107.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 24,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\MIAA122_20250928_122350132.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 25,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_205_20250927_130906342.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 26,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_166_20250927_130903821.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 27,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_085_20250927_130900016.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 28,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_998_20250927_130855063.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 29,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_974_20250927_130852078.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 30,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_938_20250927_130848720.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 31,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS944_20250928_122651200.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 32,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_924_20250927_130845931.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 33,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_909_20250927_130843023.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 34,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_870_20250927_130833992.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 35,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_856_20250927_130831548.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 36,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_759_20250927_130819642.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 37,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_828_20250927_130827969.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 38,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_787_20250927_130823997.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 39,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_618_20250927_130815770.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 40,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_591_20250927_130811945.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 41,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_570_20250927_130807007.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 42,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_566_20250927_130802043.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 43,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_516_20250927_130755983.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 44,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_468_20250927_130752195.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 45,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_450_20250927_130748042.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 46,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS242_20250928_122550260.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 25,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_205_20250927_130906342.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 47,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_955_20250927_131846027.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 48,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_935_20250927_131842922.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 33,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_909_20250927_130843023.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 28,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\STARS_998_20250927_130855063.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 26,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_166_20250927_130903821.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 27,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_085_20250927_130900016.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 49,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_364_20260710_141046637.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 50,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_585_20260710_141419239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 51,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_575_20260710_141406646.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 52,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_355_20260710_141041341.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 53,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_561_20260710_141338475.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 54,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_346_20260710_141036640.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 55,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_540_20260710_141324481.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 56,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_326_20260710_141025437.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 57,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_521_20260710_141318201.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 58,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_505_20260710_141251490.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 59,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_315_20260710_141018516.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 60,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_468_20260710_141222483.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 61,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_304_20260710_141012524.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 62,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_293_20260710_141003605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 63,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_464_20260710_141216062.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 64,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_449_20260710_141120113.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 65,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_282_20260710_140938951.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 66,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_414_20260710_141110827.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 67,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF272_20260705_083714476.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 68,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_846_20250927_134406472.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 69,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_262_20251002_151609239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 70,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_380_20260710_141057019.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 71,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_811_20250927_134404383.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 72,
+          "generation": 1,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_253_20251002_151601887.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 49,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_364_20260710_141046637.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 50,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_585_20260710_141419239.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 51,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_575_20260710_141406646.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 52,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_355_20260710_141041341.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 53,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_561_20260710_141338475.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 54,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_346_20260710_141036640.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 55,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_540_20260710_141324481.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 56,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_326_20260710_141025437.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 57,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_521_20260710_141318201.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 58,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_505_20260710_141251490.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 59,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_315_20260710_141018516.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 60,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_468_20260710_141222483.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 61,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_304_20260710_141012524.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 62,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_293_20260710_141003605.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 63,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_464_20260710_141216062.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 64,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_449_20260710_141120113.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 65,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_282_20260710_140938951.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 66,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_414_20260710_141110827.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 67,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF272_20260705_083714476.jpg",
+          "decodePixelWidth": 237,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 68,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_846_20250927_134406472.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 69,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_262_20251002_151609239.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 70,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\START_380_20260710_141057019.jpg",
+          "decodePixelWidth": 240,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 71,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\SONE_811_20250927_134404383.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        },
+        {
+          "itemIdentity": 72,
+          "generation": 3,
+          "normalizedPath": "C:\\Users\\tatis\\AppData\\Local\\Temp\\AiriPerf\\current\\2\\bin\\cache\\ABF_253_20251002_151601887.jpg",
+          "decodePixelWidth": 238,
+          "inRealizationWindow": true
+        }
+      ],
+      "registrations": [
+        {
+          "imageIdentity": 16632067,
+          "itemIdentity": 1,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6761957,
+          "itemIdentity": 2,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63921894,
+          "itemIdentity": 3,
+          "enter": true
+        },
+        {
+          "imageIdentity": 48534546,
+          "itemIdentity": 4,
+          "enter": true
+        },
+        {
+          "imageIdentity": 60549372,
+          "itemIdentity": 5,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17157135,
+          "itemIdentity": 6,
+          "enter": true
+        },
+        {
+          "imageIdentity": 42991667,
+          "itemIdentity": 7,
+          "enter": true
+        },
+        {
+          "imageIdentity": 13635074,
+          "itemIdentity": 8,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1296074,
+          "itemIdentity": 9,
+          "enter": true
+        },
+        {
+          "imageIdentity": 22320290,
+          "itemIdentity": 10,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63705038,
+          "itemIdentity": 11,
+          "enter": true
+        },
+        {
+          "imageIdentity": 33571508,
+          "itemIdentity": 12,
+          "enter": true
+        },
+        {
+          "imageIdentity": 34732701,
+          "itemIdentity": 13,
+          "enter": true
+        },
+        {
+          "imageIdentity": 47746190,
+          "itemIdentity": 14,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6152806,
+          "itemIdentity": 15,
+          "enter": true
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 16,
+          "enter": true
+        },
+        {
+          "imageIdentity": 34046374,
+          "itemIdentity": 17,
+          "enter": true
+        },
+        {
+          "imageIdentity": 389571,
+          "itemIdentity": 18,
+          "enter": true
+        },
+        {
+          "imageIdentity": 26880427,
+          "itemIdentity": 19,
+          "enter": true
+        },
+        {
+          "imageIdentity": 42810138,
+          "itemIdentity": 20,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 21,
+          "enter": true
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 22,
+          "enter": true
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 23,
+          "enter": true
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 24,
+          "enter": true
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 24,
+          "enter": false
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 25,
+          "enter": true
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 23,
+          "enter": false
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 26,
+          "enter": true
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 22,
+          "enter": false
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 27,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 21,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 28,
+          "enter": true
+        },
+        {
+          "imageIdentity": 42810138,
+          "itemIdentity": 20,
+          "enter": false
+        },
+        {
+          "imageIdentity": 42810138,
+          "itemIdentity": 29,
+          "enter": true
+        },
+        {
+          "imageIdentity": 26880427,
+          "itemIdentity": 19,
+          "enter": false
+        },
+        {
+          "imageIdentity": 26880427,
+          "itemIdentity": 30,
+          "enter": true
+        },
+        {
+          "imageIdentity": 389571,
+          "itemIdentity": 18,
+          "enter": false
+        },
+        {
+          "imageIdentity": 389571,
+          "itemIdentity": 31,
+          "enter": true
+        },
+        {
+          "imageIdentity": 34046374,
+          "itemIdentity": 17,
+          "enter": false
+        },
+        {
+          "imageIdentity": 34046374,
+          "itemIdentity": 32,
+          "enter": true
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 16,
+          "enter": false
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 33,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6152806,
+          "itemIdentity": 15,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6152806,
+          "itemIdentity": 34,
+          "enter": true
+        },
+        {
+          "imageIdentity": 47746190,
+          "itemIdentity": 14,
+          "enter": false
+        },
+        {
+          "imageIdentity": 47746190,
+          "itemIdentity": 35,
+          "enter": true
+        },
+        {
+          "imageIdentity": 34732701,
+          "itemIdentity": 13,
+          "enter": false
+        },
+        {
+          "imageIdentity": 34732701,
+          "itemIdentity": 36,
+          "enter": true
+        },
+        {
+          "imageIdentity": 33571508,
+          "itemIdentity": 12,
+          "enter": false
+        },
+        {
+          "imageIdentity": 33571508,
+          "itemIdentity": 37,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63705038,
+          "itemIdentity": 11,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63705038,
+          "itemIdentity": 38,
+          "enter": true
+        },
+        {
+          "imageIdentity": 22320290,
+          "itemIdentity": 10,
+          "enter": false
+        },
+        {
+          "imageIdentity": 22320290,
+          "itemIdentity": 39,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1296074,
+          "itemIdentity": 9,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1296074,
+          "itemIdentity": 40,
+          "enter": true
+        },
+        {
+          "imageIdentity": 13635074,
+          "itemIdentity": 8,
+          "enter": false
+        },
+        {
+          "imageIdentity": 13635074,
+          "itemIdentity": 41,
+          "enter": true
+        },
+        {
+          "imageIdentity": 42991667,
+          "itemIdentity": 7,
+          "enter": false
+        },
+        {
+          "imageIdentity": 42991667,
+          "itemIdentity": 42,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17157135,
+          "itemIdentity": 6,
+          "enter": false
+        },
+        {
+          "imageIdentity": 17157135,
+          "itemIdentity": 43,
+          "enter": true
+        },
+        {
+          "imageIdentity": 60549372,
+          "itemIdentity": 5,
+          "enter": false
+        },
+        {
+          "imageIdentity": 60549372,
+          "itemIdentity": 44,
+          "enter": true
+        },
+        {
+          "imageIdentity": 48534546,
+          "itemIdentity": 4,
+          "enter": false
+        },
+        {
+          "imageIdentity": 48534546,
+          "itemIdentity": 45,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63921894,
+          "itemIdentity": 3,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63921894,
+          "itemIdentity": 46,
+          "enter": true
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 25,
+          "enter": false
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 25,
+          "enter": true
+        },
+        {
+          "imageIdentity": 6761957,
+          "itemIdentity": 2,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6761957,
+          "itemIdentity": 47,
+          "enter": true
+        },
+        {
+          "imageIdentity": 16632067,
+          "itemIdentity": 1,
+          "enter": false
+        },
+        {
+          "imageIdentity": 16632067,
+          "itemIdentity": 48,
+          "enter": true
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 33,
+          "enter": false
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 33,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 28,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 28,
+          "enter": true
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 26,
+          "enter": false
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 26,
+          "enter": true
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 27,
+          "enter": false
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 27,
+          "enter": true
+        },
+        {
+          "imageIdentity": 9448241,
+          "itemIdentity": 27,
+          "enter": false
+        },
+        {
+          "imageIdentity": 47948876,
+          "itemIdentity": 26,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1109523,
+          "itemIdentity": 28,
+          "enter": false
+        },
+        {
+          "imageIdentity": 21890454,
+          "itemIdentity": 33,
+          "enter": false
+        },
+        {
+          "imageIdentity": 20138158,
+          "itemIdentity": 25,
+          "enter": false
+        },
+        {
+          "imageIdentity": 16632067,
+          "itemIdentity": 48,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6761957,
+          "itemIdentity": 47,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63921894,
+          "itemIdentity": 46,
+          "enter": false
+        },
+        {
+          "imageIdentity": 48534546,
+          "itemIdentity": 45,
+          "enter": false
+        },
+        {
+          "imageIdentity": 60549372,
+          "itemIdentity": 44,
+          "enter": false
+        },
+        {
+          "imageIdentity": 17157135,
+          "itemIdentity": 43,
+          "enter": false
+        },
+        {
+          "imageIdentity": 42991667,
+          "itemIdentity": 42,
+          "enter": false
+        },
+        {
+          "imageIdentity": 13635074,
+          "itemIdentity": 41,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1296074,
+          "itemIdentity": 40,
+          "enter": false
+        },
+        {
+          "imageIdentity": 22320290,
+          "itemIdentity": 39,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63705038,
+          "itemIdentity": 38,
+          "enter": false
+        },
+        {
+          "imageIdentity": 33571508,
+          "itemIdentity": 37,
+          "enter": false
+        },
+        {
+          "imageIdentity": 34732701,
+          "itemIdentity": 36,
+          "enter": false
+        },
+        {
+          "imageIdentity": 47746190,
+          "itemIdentity": 35,
+          "enter": false
+        },
+        {
+          "imageIdentity": 6152806,
+          "itemIdentity": 34,
+          "enter": false
+        },
+        {
+          "imageIdentity": 34046374,
+          "itemIdentity": 32,
+          "enter": false
+        },
+        {
+          "imageIdentity": 389571,
+          "itemIdentity": 31,
+          "enter": false
+        },
+        {
+          "imageIdentity": 26880427,
+          "itemIdentity": 30,
+          "enter": false
+        },
+        {
+          "imageIdentity": 42810138,
+          "itemIdentity": 29,
+          "enter": false
+        },
+        {
+          "imageIdentity": 10444958,
+          "itemIdentity": 49,
+          "enter": true
+        },
+        {
+          "imageIdentity": 49613488,
+          "itemIdentity": 50,
+          "enter": true
+        },
+        {
+          "imageIdentity": 778674,
+          "itemIdentity": 51,
+          "enter": true
+        },
+        {
+          "imageIdentity": 53728565,
+          "itemIdentity": 52,
+          "enter": true
+        },
+        {
+          "imageIdentity": 16283486,
+          "itemIdentity": 53,
+          "enter": true
+        },
+        {
+          "imageIdentity": 49818749,
+          "itemIdentity": 54,
+          "enter": true
+        },
+        {
+          "imageIdentity": 14941679,
+          "itemIdentity": 55,
+          "enter": true
+        },
+        {
+          "imageIdentity": 24342928,
+          "itemIdentity": 56,
+          "enter": true
+        },
+        {
+          "imageIdentity": 1940483,
+          "itemIdentity": 57,
+          "enter": true
+        },
+        {
+          "imageIdentity": 66784515,
+          "itemIdentity": 58,
+          "enter": true
+        },
+        {
+          "imageIdentity": 44728841,
+          "itemIdentity": 59,
+          "enter": true
+        },
+        {
+          "imageIdentity": 66391165,
+          "itemIdentity": 60,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17587645,
+          "itemIdentity": 61,
+          "enter": true
+        },
+        {
+          "imageIdentity": 5588018,
+          "itemIdentity": 62,
+          "enter": true
+        },
+        {
+          "imageIdentity": 50028975,
+          "itemIdentity": 63,
+          "enter": true
+        },
+        {
+          "imageIdentity": 29447274,
+          "itemIdentity": 64,
+          "enter": true
+        },
+        {
+          "imageIdentity": 18596029,
+          "itemIdentity": 65,
+          "enter": true
+        },
+        {
+          "imageIdentity": 8057594,
+          "itemIdentity": 66,
+          "enter": true
+        },
+        {
+          "imageIdentity": 19103123,
+          "itemIdentity": 67,
+          "enter": true
+        },
+        {
+          "imageIdentity": 43047113,
+          "itemIdentity": 68,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17460785,
+          "itemIdentity": 69,
+          "enter": true
+        },
+        {
+          "imageIdentity": 63943499,
+          "itemIdentity": 70,
+          "enter": true
+        },
+        {
+          "imageIdentity": 50025316,
+          "itemIdentity": 71,
+          "enter": true
+        },
+        {
+          "imageIdentity": 29194760,
+          "itemIdentity": 72,
+          "enter": true
+        },
+        {
+          "imageIdentity": 10444958,
+          "itemIdentity": 49,
+          "enter": false
+        },
+        {
+          "imageIdentity": 49613488,
+          "itemIdentity": 50,
+          "enter": false
+        },
+        {
+          "imageIdentity": 778674,
+          "itemIdentity": 51,
+          "enter": false
+        },
+        {
+          "imageIdentity": 53728565,
+          "itemIdentity": 52,
+          "enter": false
+        },
+        {
+          "imageIdentity": 16283486,
+          "itemIdentity": 53,
+          "enter": false
+        },
+        {
+          "imageIdentity": 49818749,
+          "itemIdentity": 54,
+          "enter": false
+        },
+        {
+          "imageIdentity": 14941679,
+          "itemIdentity": 55,
+          "enter": false
+        },
+        {
+          "imageIdentity": 24342928,
+          "itemIdentity": 56,
+          "enter": false
+        },
+        {
+          "imageIdentity": 1940483,
+          "itemIdentity": 57,
+          "enter": false
+        },
+        {
+          "imageIdentity": 66784515,
+          "itemIdentity": 58,
+          "enter": false
+        },
+        {
+          "imageIdentity": 44728841,
+          "itemIdentity": 59,
+          "enter": false
+        },
+        {
+          "imageIdentity": 66391165,
+          "itemIdentity": 60,
+          "enter": false
+        },
+        {
+          "imageIdentity": 17587645,
+          "itemIdentity": 61,
+          "enter": false
+        },
+        {
+          "imageIdentity": 5588018,
+          "itemIdentity": 62,
+          "enter": false
+        },
+        {
+          "imageIdentity": 50028975,
+          "itemIdentity": 63,
+          "enter": false
+        },
+        {
+          "imageIdentity": 29447274,
+          "itemIdentity": 64,
+          "enter": false
+        },
+        {
+          "imageIdentity": 18596029,
+          "itemIdentity": 65,
+          "enter": false
+        },
+        {
+          "imageIdentity": 8057594,
+          "itemIdentity": 66,
+          "enter": false
+        },
+        {
+          "imageIdentity": 19103123,
+          "itemIdentity": 67,
+          "enter": false
+        },
+        {
+          "imageIdentity": 43047113,
+          "itemIdentity": 68,
+          "enter": false
+        },
+        {
+          "imageIdentity": 17460785,
+          "itemIdentity": 69,
+          "enter": false
+        },
+        {
+          "imageIdentity": 63943499,
+          "itemIdentity": 70,
+          "enter": false
+        },
+        {
+          "imageIdentity": 50025316,
+          "itemIdentity": 71,
+          "enter": false
+        },
+        {
+          "imageIdentity": 29194760,
+          "itemIdentity": 72,
+          "enter": false
+        },
+        {
+          "imageIdentity": 39574026,
+          "itemIdentity": 49,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46253273,
+          "itemIdentity": 50,
+          "enter": true
+        },
+        {
+          "imageIdentity": 37359291,
+          "itemIdentity": 51,
+          "enter": true
+        },
+        {
+          "imageIdentity": 27654284,
+          "itemIdentity": 52,
+          "enter": true
+        },
+        {
+          "imageIdentity": 29097455,
+          "itemIdentity": 53,
+          "enter": true
+        },
+        {
+          "imageIdentity": 61567391,
+          "itemIdentity": 54,
+          "enter": true
+        },
+        {
+          "imageIdentity": 20291605,
+          "itemIdentity": 55,
+          "enter": true
+        },
+        {
+          "imageIdentity": 57943481,
+          "itemIdentity": 56,
+          "enter": true
+        },
+        {
+          "imageIdentity": 38677225,
+          "itemIdentity": 57,
+          "enter": true
+        },
+        {
+          "imageIdentity": 51482894,
+          "itemIdentity": 58,
+          "enter": true
+        },
+        {
+          "imageIdentity": 62658811,
+          "itemIdentity": 59,
+          "enter": true
+        },
+        {
+          "imageIdentity": 28490726,
+          "itemIdentity": 60,
+          "enter": true
+        },
+        {
+          "imageIdentity": 19703081,
+          "itemIdentity": 61,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17335318,
+          "itemIdentity": 62,
+          "enter": true
+        },
+        {
+          "imageIdentity": 55286303,
+          "itemIdentity": 63,
+          "enter": true
+        },
+        {
+          "imageIdentity": 56658565,
+          "itemIdentity": 64,
+          "enter": true
+        },
+        {
+          "imageIdentity": 17126877,
+          "itemIdentity": 65,
+          "enter": true
+        },
+        {
+          "imageIdentity": 40903847,
+          "itemIdentity": 66,
+          "enter": true
+        },
+        {
+          "imageIdentity": 3793200,
+          "itemIdentity": 67,
+          "enter": true
+        },
+        {
+          "imageIdentity": 60404228,
+          "itemIdentity": 68,
+          "enter": true
+        },
+        {
+          "imageIdentity": 7142198,
+          "itemIdentity": 69,
+          "enter": true
+        },
+        {
+          "imageIdentity": 23049649,
+          "itemIdentity": 70,
+          "enter": true
+        },
+        {
+          "imageIdentity": 46921949,
+          "itemIdentity": 71,
+          "enter": true
+        },
+        {
+          "imageIdentity": 16389076,
+          "itemIdentity": 72,
+          "enter": true
+        }
+      ],
+      "dispatcherBatches": [
+        {
+          "kind": "StoredReset",
+          "itemCount": 0,
+          "elapsedTicks": 9466,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 19879,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 17508,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 67434,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 23485,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 36744,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 24571,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 23686,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 26116,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 25496,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 29439,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 21995,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 24699,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 21910,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 28681,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 29352,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 40,
+          "elapsedTicks": 31301,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredPublish",
+          "itemCount": 22,
+          "elapsedTicks": 19422,
+          "threadId": 16
+        },
+        {
+          "kind": "StoredFinalize",
+          "itemCount": 662,
+          "elapsedTicks": 239794,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanSeedCapture",
+          "itemCount": 662,
+          "elapsedTicks": 1194,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanCommitStart",
+          "itemCount": 0,
+          "elapsedTicks": 354,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 1226,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 640,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 595,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 646,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 519,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 2994,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 583,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 482,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 399,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 402,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 474,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 701,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 673,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 712,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 655,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 40,
+          "elapsedTicks": 551,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanApply",
+          "itemCount": 22,
+          "elapsedTicks": 819,
+          "threadId": 16
+        },
+        {
+          "kind": "ScanFinalize",
+          "itemCount": 662,
+          "elapsedTicks": 281933,
+          "threadId": 16
+        },
+        {
+          "kind": "StartupTerminal",
+          "itemCount": 0,
+          "elapsedTicks": 1758,
+          "threadId": 16
+        }
+      ],
+      "resourceCheckpoints": [
+        {
+          "kind": "PhaseStart",
+          "elapsedTicks": 211,
+          "workingSetBytes": 215871488,
+          "managedHeapBytes": 8722400,
+          "gc0CollectionCount": 18,
+          "gc1CollectionCount": 14,
+          "gc2CollectionCount": 12,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 96,
+          "ownerSlotBound": 96
+        },
+        {
+          "kind": "VisualFirstMeaningfulCard",
+          "elapsedTicks": 2136240,
+          "workingSetBytes": 216940544,
+          "managedHeapBytes": 10032448,
+          "gc0CollectionCount": 20,
+          "gc1CollectionCount": 15,
+          "gc2CollectionCount": 13,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 96,
+          "ownerSlotBound": 96
+        },
+        {
+          "kind": "VisualFirstThumbnail",
+          "elapsedTicks": 2274630,
+          "workingSetBytes": 217427968,
+          "managedHeapBytes": 10192272,
+          "gc0CollectionCount": 20,
+          "gc1CollectionCount": 15,
+          "gc2CollectionCount": 13,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 23,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 119,
+          "ownerSlotBound": 119
+        },
+        {
+          "kind": "StartupTerminal",
+          "elapsedTicks": 7964010,
+          "workingSetBytes": 230289408,
+          "managedHeapBytes": 9482136,
+          "gc0CollectionCount": 29,
+          "gc1CollectionCount": 21,
+          "gc2CollectionCount": 19,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 22,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 118,
+          "ownerSlotBound": 118
+        },
+        {
+          "kind": "FirstSteady",
+          "elapsedTicks": 13515937,
+          "workingSetBytes": 228229120,
+          "managedHeapBytes": 8066632,
+          "gc0CollectionCount": 30,
+          "gc1CollectionCount": 22,
+          "gc2CollectionCount": 20,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 24,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 120,
+          "ownerSlotBound": 120
+        },
+        {
+          "kind": "PhaseEnd",
+          "elapsedTicks": 13604347,
+          "workingSetBytes": 228188160,
+          "managedHeapBytes": 8075944,
+          "gc0CollectionCount": 30,
+          "gc1CollectionCount": 22,
+          "gc2CollectionCount": 20,
+          "loaderCacheEntryCount": 96,
+          "realizedNonFallbackItemSourceCount": 24,
+          "registrationCount": 24,
+          "decodedStrongReferenceCount": 120,
+          "ownerSlotBound": 120
+        }
+      ],
+      "checkpointMaximum": {
+        "workingSetBytes": 230289408,
+        "managedHeapBytes": 10192272,
+        "registrationCount": 24,
+        "decodedStrongReferenceCount": 120,
+        "ownerSlotBound": 120
+      },
+      "gcPhaseDelta": {
+        "gen0": 12,
+        "gen1": 8,
+        "gen2": 8
+      },
+      "fallbackInitialization": null,
+      "activeRegistrationCount": 24,
+      "maxRegistrationCount": 24
+    },
+    "viewport": {
+      "windowWidth": 1500,
+      "windowHeight": 1000,
+      "viewportWidth": 1159,
+      "viewportHeight": 763,
+      "firstItemWidth": 286,
+      "firstItemHeight": 276,
+      "dpiScaleX": 1,
+      "dpiScaleY": 1,
+      "horizontalOffset": 0,
+      "verticalOffset": 0,
+      "realizedContainerCount": 24,
+      "searchQuery": "",
+      "selectedActor": "All Actors",
+      "missingOnly": false,
+      "sortLabel": "\uCD9C\uC2DC\uC77C \uB0B4\uB9BC\uCC28\uC21C",
+      "workingAreaWidth": 1920,
+      "workingAreaHeight": 1032
+    },
+    "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
+    "outputLibrarySha256": "04DCCC29085D2F37BA9D4C7D36BB7EC3F4953220BFBC8F8EB12894520897658F",
+    "warmPreparation": null,
+    "structuralValidation": {
+      "positions": [
+        {
+          "name": "top",
+          "index": 0,
+          "verticalOffset": 0,
+          "realizedContainerCount": 24,
+          "traversalMaximumContainerCount": 24,
+          "registrationCount": 24,
+          "realizedNonFallbackSourceCount": 24,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        },
+        {
+          "name": "middle",
+          "index": 331,
+          "verticalOffset": 22145,
+          "realizedContainerCount": 36,
+          "traversalMaximumContainerCount": 36,
+          "registrationCount": 36,
+          "realizedNonFallbackSourceCount": 36,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        },
+        {
+          "name": "last",
+          "index": 661,
+          "verticalOffset": 45053,
+          "realizedContainerCount": 22,
+          "traversalMaximumContainerCount": 36,
+          "registrationCount": 22,
+          "realizedNonFallbackSourceCount": 16,
+          "itemWidth": 286,
+          "itemHeight": 276,
+          "columns": 4,
+          "hardLimit": 40
+        }
+      ],
+      "allPassed": true
+    },
+    "gates": {
+      "firstCardBeforeAllItems": "Pass",
+      "requestMembership": true,
+      "fileOpenBound": true,
+      "decodeConcurrency": true,
+      "lruInvariant": true,
+      "dispatcherUnder100Milliseconds": true,
+      "nonFallbackSourceBound": true,
+      "ownerSlotBound": true
+    },
+    "loader": {
+      "cacheMissRequestCount": 75,
+      "fileOpenCount": 75,
+      "fileChangeRetryAttemptCount": 0,
+      "activeDecodeCount": 0,
+      "maxConcurrentDecodeCount": 4,
+      "startCacheEntryCount": 96,
+      "cacheEntryCount": 96,
+      "recencyNodeCount": 96,
+      "fallbackInitializationThreadId": 9,
+      "fallbackInitializationElapsedTicks": 333877
+    }
+  },
+  "environmentCompatibility": {
+    "machineLabel": "local-windows",
+    "osBuild": "Microsoft Windows NT 10.0.26200.0",
+    "runtime": ".NET 9.0.17",
+    "processArchitecture": "X64",
+    "configuration": "Release",
+    "powerSchemeLabel": "\uADE0\uD615 \uC870\uC815"
+  },
+  "buildProvenance": {
+    "commitSha": "c2450a998ee7674086980570eb0cd7a7b7db97f5",
+    "binarySha256": "FADDB62B8EA977CD452AA83F29EE478B6478902D68A49CB4974857904AADA0F0",
+    "dirtyWorktree": true
+  }
+}

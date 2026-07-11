@@ -1,13 +1,14 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "dataset": "current",
   "iteration": 5,
   "mode": "Baseline",
+  "fixtureManifestSha256": "1EEC1AE76B68FF2ADA29FC6B91535EADC5A98D5FD6F08D27010DC267C01796A1",
   "cold": {
     "valid": true,
     "invalidReason": null,
     "timing": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "phase": "Cold",
       "markers": {
         "StartupMeasurementBegin": {
@@ -15,34 +16,138 @@
           "elapsedMilliseconds": 0
         },
         "MainWindowLoaded": {
-          "elapsedTicks": 3314367,
-          "elapsedMilliseconds": 331.4367
+          "elapsedTicks": 6776973,
+          "elapsedMilliseconds": 677.6973
         },
         "LibraryLoaded": {
-          "elapsedTicks": 6102169,
-          "elapsedMilliseconds": 610.2169
+          "elapsedTicks": 10105743,
+          "elapsedMilliseconds": 1010.5743
         },
         "FirstBatchPublished": {
-          "elapsedTicks": 7128616,
-          "elapsedMilliseconds": 712.8616
+          "elapsedTicks": 12814333,
+          "elapsedMilliseconds": 1281.4333
         },
         "VisualFirstThumbnail": {
-          "elapsedTicks": 8524484,
-          "elapsedMilliseconds": 852.4484
+          "elapsedTicks": 14749404,
+          "elapsedMilliseconds": 1474.9404
         },
         "AllItemsPublished": {
-          "elapsedTicks": 71812399,
-          "elapsedMilliseconds": 7181.2399
+          "elapsedTicks": 67987817,
+          "elapsedMilliseconds": 6798.7817
         },
         "VisualFirstMeaningfulCard": {
-          "elapsedTicks": 83635148,
-          "elapsedMilliseconds": 8363.5148
+          "elapsedTicks": 85082155,
+          "elapsedMilliseconds": 8508.2155
         },
         "StartupTerminal": {
-          "elapsedTicks": 100645566,
-          "elapsedMilliseconds": 10064.5566
+          "elapsedTicks": 99431345,
+          "elapsedMilliseconds": 9943.1345
         }
-      }
+      },
+      "requests": [],
+      "registrations": [],
+      "dispatcherBatches": [],
+      "resourceCheckpoints": [
+        {
+          "kind": "PhaseStart",
+          "elapsedTicks": 5283,
+          "workingSetBytes": 85987328,
+          "managedHeapBytes": 2423256,
+          "gc0CollectionCount": 1,
+          "gc1CollectionCount": 0,
+          "gc2CollectionCount": 0,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "VisualFirstThumbnail",
+          "elapsedTicks": 14749478,
+          "workingSetBytes": 172355584,
+          "managedHeapBytes": 7227864,
+          "gc0CollectionCount": 6,
+          "gc1CollectionCount": 5,
+          "gc2CollectionCount": 4,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "VisualFirstMeaningfulCard",
+          "elapsedTicks": 85082221,
+          "workingSetBytes": 1421852672,
+          "managedHeapBytes": 40880496,
+          "gc0CollectionCount": 79,
+          "gc1CollectionCount": 61,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "StartupTerminal",
+          "elapsedTicks": 99431458,
+          "workingSetBytes": 2010529792,
+          "managedHeapBytes": 45792384,
+          "gc0CollectionCount": 79,
+          "gc1CollectionCount": 61,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "FirstSteady",
+          "elapsedTicks": 104996294,
+          "workingSetBytes": 2013843456,
+          "managedHeapBytes": 45630136,
+          "gc0CollectionCount": 80,
+          "gc1CollectionCount": 62,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "PhaseEnd",
+          "elapsedTicks": 105057539,
+          "workingSetBytes": 2013863936,
+          "managedHeapBytes": 45638360,
+          "gc0CollectionCount": 80,
+          "gc1CollectionCount": 62,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        }
+      ],
+      "checkpointMaximum": {
+        "workingSetBytes": 2013863936,
+        "managedHeapBytes": 45792384,
+        "registrationCount": 0,
+        "decodedStrongReferenceCount": 0,
+        "ownerSlotBound": 0
+      },
+      "gcPhaseDelta": {
+        "gen0": 79,
+        "gen1": 62,
+        "gen2": 56
+      },
+      "fallbackInitialization": null,
+      "activeRegistrationCount": 0,
+      "maxRegistrationCount": 0
     },
     "viewport": {
       "windowWidth": 1500,
@@ -64,7 +169,7 @@
       "workingAreaHeight": 1032
     },
     "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
-    "outputLibrarySha256": "82A1F5421DB058D79D580EEF8382C31398AAB5E6142057D2963F4B14BACE4973",
+    "outputLibrarySha256": "61E6A0728B93DD6B9ED8D7A73585EB118F94BD27095AE4392A3E40464DDD21B8",
     "warmPreparation": {
       "itemCount": 662,
       "realizedContainerCount": 662,
@@ -75,7 +180,7 @@
     "valid": true,
     "invalidReason": null,
     "timing": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "phase": "Warm",
       "markers": {
         "StartupMeasurementBegin": {
@@ -83,34 +188,138 @@
           "elapsedMilliseconds": 0
         },
         "MainWindowLoaded": {
-          "elapsedTicks": 590653,
-          "elapsedMilliseconds": 59.0653
+          "elapsedTicks": 577585,
+          "elapsedMilliseconds": 57.7585
         },
         "LibraryLoaded": {
-          "elapsedTicks": 1052336,
-          "elapsedMilliseconds": 105.2336
+          "elapsedTicks": 1351315,
+          "elapsedMilliseconds": 135.1315
         },
         "FirstBatchPublished": {
-          "elapsedTicks": 1475123,
-          "elapsedMilliseconds": 147.5123
+          "elapsedTicks": 1918194,
+          "elapsedMilliseconds": 191.8194
         },
         "VisualFirstThumbnail": {
-          "elapsedTicks": 2010900,
-          "elapsedMilliseconds": 201.09
+          "elapsedTicks": 2091303,
+          "elapsedMilliseconds": 209.1303
         },
         "AllItemsPublished": {
-          "elapsedTicks": 39915680,
-          "elapsedMilliseconds": 3991.568
+          "elapsedTicks": 25172467,
+          "elapsedMilliseconds": 2517.2467
         },
         "VisualFirstMeaningfulCard": {
-          "elapsedTicks": 50316384,
-          "elapsedMilliseconds": 5031.6384
+          "elapsedTicks": 41565331,
+          "elapsedMilliseconds": 4156.5331
         },
         "StartupTerminal": {
-          "elapsedTicks": 64628861,
-          "elapsedMilliseconds": 6462.8861
+          "elapsedTicks": 55919348,
+          "elapsedMilliseconds": 5591.9348
         }
-      }
+      },
+      "requests": [],
+      "registrations": [],
+      "dispatcherBatches": [],
+      "resourceCheckpoints": [
+        {
+          "kind": "PhaseStart",
+          "elapsedTicks": 46,
+          "workingSetBytes": 2009468928,
+          "managedHeapBytes": 45745288,
+          "gc0CollectionCount": 80,
+          "gc1CollectionCount": 62,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "VisualFirstThumbnail",
+          "elapsedTicks": 2091372,
+          "workingSetBytes": 2007769088,
+          "managedHeapBytes": 47858504,
+          "gc0CollectionCount": 81,
+          "gc1CollectionCount": 62,
+          "gc2CollectionCount": 56,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "VisualFirstMeaningfulCard",
+          "elapsedTicks": 41565424,
+          "workingSetBytes": 1454178304,
+          "managedHeapBytes": 46876008,
+          "gc0CollectionCount": 127,
+          "gc1CollectionCount": 93,
+          "gc2CollectionCount": 82,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "StartupTerminal",
+          "elapsedTicks": 55919442,
+          "workingSetBytes": 2039590912,
+          "managedHeapBytes": 45159432,
+          "gc0CollectionCount": 129,
+          "gc1CollectionCount": 95,
+          "gc2CollectionCount": 83,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "FirstSteady",
+          "elapsedTicks": 61175308,
+          "workingSetBytes": 1447219200,
+          "managedHeapBytes": 33155896,
+          "gc0CollectionCount": 129,
+          "gc1CollectionCount": 95,
+          "gc2CollectionCount": 83,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        },
+        {
+          "kind": "PhaseEnd",
+          "elapsedTicks": 61211643,
+          "workingSetBytes": 1447223296,
+          "managedHeapBytes": 33155896,
+          "gc0CollectionCount": 129,
+          "gc1CollectionCount": 95,
+          "gc2CollectionCount": 83,
+          "loaderCacheEntryCount": 0,
+          "realizedNonFallbackItemSourceCount": 0,
+          "registrationCount": 0,
+          "decodedStrongReferenceCount": 0,
+          "ownerSlotBound": 0
+        }
+      ],
+      "checkpointMaximum": {
+        "workingSetBytes": 2039590912,
+        "managedHeapBytes": 47858504,
+        "registrationCount": 0,
+        "decodedStrongReferenceCount": 0,
+        "ownerSlotBound": 0
+      },
+      "gcPhaseDelta": {
+        "gen0": 49,
+        "gen1": 33,
+        "gen2": 27
+      },
+      "fallbackInitialization": null,
+      "activeRegistrationCount": 0,
+      "maxRegistrationCount": 0
     },
     "viewport": {
       "windowWidth": 1500,
@@ -132,7 +341,7 @@
       "workingAreaHeight": 1032
     },
     "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
-    "outputLibrarySha256": "835A02B76FCAC0EEB2A9A09AC3A1B8DF992E903A10264D8DB741D8A5356669F1",
+    "outputLibrarySha256": "363B38C7F9014AEABCAA3F475A87800AC5674CF5E0A35C12C8443C0679CB7F76",
     "warmPreparation": null
   },
   "environmentCompatibility": {
@@ -144,8 +353,8 @@
     "powerSchemeLabel": "\uADE0\uD615 \uC870\uC815"
   },
   "buildProvenance": {
-    "commitSha": "c4f32287a4377d0b97cf3370b8892560d68e8f1c",
-    "binarySha256": "C83282194813E178EBBEDB1AF9035DE496A95D8E41726D7EAA444FA56C79B099",
+    "commitSha": "56d7e1d272b959c8d761c4faf7ce0b3e7cc9ad11",
+    "binarySha256": "00ECF747ED12B62BE408F0EF7506E4E927A2D976728B4257FAA7FC0F9120D6C3",
     "dirtyWorktree": true
   }
 }
