@@ -292,7 +292,7 @@ namespace Airi.Tests
         }
 
         [Fact]
-        public void FetchMissingMetadataWithCrawlerAsync_WhenCrawlerStartInProgress_SecondCallOnlyUpdatesStatus()
+        public void ManualFetch_RapidDoubleExecute_AcquiresOneLeaseAndRunsOnce()
         {
             RunInStaAsync(async () =>
             {
@@ -371,10 +371,17 @@ namespace Airi.Tests
                         "./Videos/abc123.mp4",
                         new VideoMeta("ABC-123", null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty),
                         1,
-                        DateTime.UtcNow),
+                    DateTime.UtcNow),
                     string.Empty);
+                var lease = Assert.IsType<LibraryMutationLease>(
+                    viewModel.TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata));
 
-                await InvokePrivateTask(viewModel, "ProcessMetadataForPathAsync", "./Videos/abc123.mp4");
+                await InvokePrivateTask(
+                    viewModel,
+                    "ProcessMetadataForPathAsync",
+                    "./Videos/abc123.mp4",
+                    lease);
+                viewModel.ReleaseLibraryMutation(lease);
 
                 Assert.Equal(0, fixture.Factory.StartCount);
                 Assert.Equal(1, fallback.CallCount);

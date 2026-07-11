@@ -995,6 +995,109 @@ public sealed class MainViewModelStartupLoadingTests
         Assert.Equal(0, fixture.Store.SaveCount);
     });
 
+    [Fact]
+    public Task MutationOwnerChange_RaisesCanExecuteAndProjectionNotifications() => WpfTestHost.RunAsync(() =>
+    {
+        using var fixture = new Fixture();
+        using var viewModel = fixture.CreateViewModel();
+        viewModel.SetStartupState(StartupLibraryState.Publishing);
+        viewModel.SetStartupState(StartupLibraryState.Ready);
+        var changes = new List<string>();
+        var canExecuteChanges = 0;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not null)
+            {
+                changes.Add(args.PropertyName);
+            }
+        };
+        viewModel.FetchMetadataCommand.CanExecuteChanged += (_, _) => canExecuteChanges++;
+
+        var lease = Assert.IsType<LibraryMutationLease>(
+            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+        viewModel.ReleaseLibraryMutation(lease);
+
+        Assert.True(changes.Count(name => name == nameof(MainViewModel.CanMutateLibrary)) >= 2);
+        Assert.True(changes.Count(name => name == nameof(MainViewModel.IsFetchingMetadata)) >= 2);
+        Assert.True(canExecuteChanges >= 2);
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task EditorLease_SaveCancelAndException_ReleaseSameIdentity() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        using var viewModel = fixture.CreateViewModel();
+        viewModel.SetStartupState(StartupLibraryState.Publishing);
+        viewModel.SetStartupState(StartupLibraryState.Ready);
+        Guid? identityAtSave = null;
+        fixture.Store.SaveOverride = (_, _) =>
+        {
+            Assert.Equal(LibraryMutationOwner.EditorSave, viewModel.CurrentMutationLease?.Owner);
+            identityAtSave = viewModel.CurrentMutationLease?.Identity;
+            return Task.FromException(new IOException("save failed"));
+        };
+        var item = new VideoItem
+        {
+            LibraryPath = "./Videos/editor.mp4",
+            Title = "Before",
+            Actors = Array.Empty<string>(),
+            Tags = Array.Empty<string>()
+        };
+
+        await Assert.ThrowsAsync<IOException>(() => viewModel.ApplyMetadataEditAsync(
+            item,
+            new MetadataEditResult(
+                "After",
+                null,
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                string.Empty,
+                "resources/noimage.jpg")));
+
+        Assert.NotNull(identityAtSave);
+        Assert.Null(viewModel.CurrentMutationLease);
+        Assert.True(viewModel.CanMutateLibrary);
+    });
+
+    [Fact]
+    public Task AutoQueue_AfterScanSave_PreemptsManualFetch() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        using var viewModel = fixture.CreateViewModel();
+        LibraryMutationOwner? readyOwner = null;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainViewModel.StartupState) &&
+                viewModel.StartupState == StartupLibraryState.Ready)
+            {
+                readyOwner = viewModel.CurrentMutationLease?.Owner;
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(LibraryMutationOwner.AutoMetadata, readyOwner);
+    });
+
+    [Fact]
+    public Task ScanFailureStatus_IsNotOverwrittenDuringReadyCleanup() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromException<LibraryScanResult>(
+            new IOException("scan unavailable"));
+        using var viewModel = fixture.CreateViewModel();
+
+        await viewModel.InitializeAsync();
+        var status = viewModel.StatusMessage;
+        await Task.Delay(25);
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(status, viewModel.StatusMessage);
+        Assert.Contains("scan unavailable", status, StringComparison.OrdinalIgnoreCase);
+    });
+
     private sealed class Fixture : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "AiriStartupTests", Guid.NewGuid().ToString("N"));

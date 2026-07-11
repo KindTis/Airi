@@ -122,7 +122,8 @@ namespace Airi
 
         private async Task OpenMetadataEditorAsync()
         {
-            if (ViewModel.SelectedVideo is null)
+            var selected = ViewModel.SelectedVideo;
+            if (selected is null)
             {
                 return;
             }
@@ -135,14 +136,14 @@ namespace Airi
 
             try
             {
-                var dialog = new MetadataEditorWindow(ViewModel.SelectedVideo)
+                var dialog = new MetadataEditorWindow(selected)
                 {
                     Owner = this
                 };
 
                 if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
                 {
-                    await ViewModel.ApplyMetadataEditAsync(ViewModel.SelectedVideo, result, lease);
+                    await ViewModel.ApplyMetadataEditAsync(selected, result, lease);
                 }
             }
             finally

@@ -1152,7 +1152,7 @@ namespace Airi.ViewModels
             var preserveStatusMessage = false;
             try
             {
-                if (!await EnsureCrawlerReadyAsync().ConfigureAwait(false))
+                if (!await EnsureCrawlerReadyAsync(_lifetimeCts.Token).ConfigureAwait(false))
                 {
                     preserveStatusMessage = true;
                     return;
@@ -1192,7 +1192,10 @@ namespace Airi.ViewModels
                         StatusMessage = $"[{index}/{total}] Fetching metadata for {displayName}...";
                     });
 
-                    var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
+                    var updatedEntry = await _webMetadataService.EnrichAsync(
+                        entry,
+                        query,
+                        _lifetimeCts.Token).ConfigureAwait(false);
                     if (updatedEntry is null)
                     {
                         await _dispatcher.InvokeAsync(() =>
@@ -1202,6 +1205,7 @@ namespace Airi.ViewModels
                         continue;
                     }
 
+                    await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
                     UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
 
                     await _dispatcher.InvokeAsync(() =>
@@ -1210,7 +1214,8 @@ namespace Airi.ViewModels
                         StatusMessage = $"[{index}/{total}] Metadata updated for {displayName}.";
                     });
 
-                    await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+                    await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
+                    await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
                 }
             }
             finally
@@ -1639,7 +1644,7 @@ namespace Airi.ViewModels
             }
         }
 
-        private async Task ProcessMetadataQueueAsync(LibraryMutationLease? preacquiredLease = null)
+        private async Task ProcessMetadataQueueAsync(LibraryMutationLease lease)
         {
             bool hasItems;
             lock (_metadataQueueLock)
@@ -1652,25 +1657,11 @@ namespace Airi.ViewModels
                 return;
             }
 
-            var lease = preacquiredLease;
-            if (lease is null)
+            if (lease.Owner != LibraryMutationOwner.AutoMetadata)
             {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    if (CanMutateLibrary)
-                    {
-                        lease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
-                    }
-                });
+                throw new InvalidOperationException("Metadata queue processing requires an AutoMetadata lease.");
             }
-            else
-            {
-                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-            }
-            if (lease is null)
-            {
-                return;
-            }
+            await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
 
             try
             {
@@ -1688,7 +1679,7 @@ namespace Airi.ViewModels
                         _metadataScheduled.Remove(normalizedPath);
                     }
 
-                    await ProcessMetadataForPathAsync(normalizedPath).ConfigureAwait(false);
+                    await ProcessMetadataForPathAsync(normalizedPath, lease).ConfigureAwait(false);
                 }
             }
             finally
@@ -1701,7 +1692,9 @@ namespace Airi.ViewModels
             }
         }
 
-        private async Task ProcessMetadataForPathAsync(string normalizedPath)
+        private async Task ProcessMetadataForPathAsync(
+            string normalizedPath,
+            LibraryMutationLease lease)
         {
             var entry = FindEntry(normalizedPath);
             if (entry is null)
@@ -1722,7 +1715,10 @@ namespace Airi.ViewModels
 
             try
             {
-                var updatedEntry = await _webMetadataService.EnrichAsync(entry, query, CancellationToken.None).ConfigureAwait(false);
+                var updatedEntry = await _webMetadataService.EnrichAsync(
+                    entry,
+                    query,
+                    _lifetimeCts.Token).ConfigureAwait(false);
                 if (updatedEntry is null)
                 {
                     await _dispatcher.InvokeAsync(() =>
@@ -1732,6 +1728,7 @@ namespace Airi.ViewModels
                     return;
                 }
 
+                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
                 UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
 
                 await _dispatcher.InvokeAsync(() =>
@@ -1740,7 +1737,12 @@ namespace Airi.ViewModels
                     StatusMessage = $"Metadata updated for {displayName}.";
                 });
 
-                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
+                await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -1815,24 +1817,6 @@ namespace Airi.ViewModels
                 }
 
                 _metadataScheduled.Remove(normalizedPath);
-            }
-        }
-
-        private void RequestMetadataProcessing()
-        {
-            lock (_metadataQueueLock)
-            {
-                if (_pendingMetadata.Count == 0)
-                {
-                    return;
-                }
-
-                if (_metadataProcessingTask is not null && !_metadataProcessingTask.IsCompleted)
-                {
-                    return;
-                }
-
-                _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync());
             }
         }
 
@@ -1920,6 +1904,10 @@ namespace Airi.ViewModels
             {
                 return;
             }
+            if (lease.Owner != LibraryMutationOwner.EditorSave)
+            {
+                throw new InvalidOperationException("Metadata edits require an EditorSave lease.");
+            }
 
             var actors = result.Actors ?? Array.Empty<string>();
             var tags = result.Tags ?? Array.Empty<string>();
@@ -1965,6 +1953,7 @@ namespace Airi.ViewModels
                 return entry with { Meta = updatedMeta };
             });
 
+            await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
             await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
 
             await _dispatcher.InvokeAsync(() =>
