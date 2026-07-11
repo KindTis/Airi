@@ -481,6 +481,7 @@ namespace Airi.ViewModels
             long runtimeIdentity;
             Guid identity;
             CancellationTokenSource requestCancellation;
+            bool releaseLoadedOwner;
 
             lock (_thumbnailRuntimeLock)
             {
@@ -494,6 +495,7 @@ namespace Airi.ViewModels
 
                 state.InFlight?.Cancellation.Cancel();
                 state.InFlight?.Cancellation.Dispose();
+                releaseLoadedOwner = state.Realization?.Outcome == ThumbnailRequestOutcome.Loaded;
                 state.Generation++;
                 generation = state.Generation;
                 runtimeIdentity = state.RuntimeIdentity;
@@ -508,6 +510,12 @@ namespace Airi.ViewModels
                 state.InFlight = new ThumbnailInFlight(generation, identity, requestCancellation);
             }
 
+            if (releaseLoadedOwner)
+            {
+                _performanceProbe.LeaveDecodedStrongReferenceOwner(
+                    ThumbnailDecodedOwnerKind.RealizedItemSource,
+                    runtimeIdentity);
+            }
             item.BeginThumbnailLoad(_thumbnailImageLoader.FallbackSource);
             _performanceProbe.RecordThumbnailRequest(
                 runtimeIdentity,
@@ -529,11 +537,15 @@ namespace Airi.ViewModels
             ArgumentNullException.ThrowIfNull(item);
             _dispatcher.VerifyAccess();
 
+            long runtimeIdentity = 0;
+            bool releaseLoadedOwner = false;
             lock (_thumbnailRuntimeLock)
             {
                 if (_thumbnailRuntime.TryGetValue(item, out var state) &&
                     (state.Realization is not null || state.InFlight is not null))
                 {
+                    runtimeIdentity = state.RuntimeIdentity;
+                    releaseLoadedOwner = state.Realization?.Outcome == ThumbnailRequestOutcome.Loaded;
                     state.Generation++;
                     state.InFlight?.Cancellation.Cancel();
                     state.InFlight?.Cancellation.Dispose();
@@ -542,6 +554,12 @@ namespace Airi.ViewModels
                 }
             }
 
+            if (releaseLoadedOwner)
+            {
+                _performanceProbe.LeaveDecodedStrongReferenceOwner(
+                    ThumbnailDecodedOwnerKind.RealizedItemSource,
+                    runtimeIdentity);
+            }
             item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
         }
 
@@ -572,6 +590,33 @@ namespace Airi.ViewModels
                     state.InFlight is not null,
                     state.Realization?.SourcePath,
                     state.Realization?.DecodePixelWidth ?? 0);
+            }
+        }
+
+        internal int GetThumbnailInFlightCount()
+        {
+            lock (_thumbnailRuntimeLock)
+            {
+                return _thumbnailRuntime.Values.Count(state => state.InFlight is not null);
+            }
+        }
+
+        internal int GetThumbnailRuntimeStateCount()
+        {
+            lock (_thumbnailRuntimeLock)
+            {
+                return _thumbnailRuntime.Count;
+            }
+        }
+
+        internal int GetLoadedThumbnailItemSourceCount()
+        {
+            lock (_thumbnailRuntimeLock)
+            {
+                return _thumbnailRuntime.Count(pair =>
+                    pair.Value.Realization?.Outcome == ThumbnailRequestOutcome.Loaded &&
+                    pair.Key.ThumbnailSource is { } source &&
+                    !ReferenceEquals(source, _thumbnailImageLoader.FallbackSource));
             }
         }
 
@@ -2193,6 +2238,9 @@ namespace Airi.ViewModels
                 {
                     item.CompleteThumbnailLoad(result.Source);
                     state.Realization = realization with { Outcome = ThumbnailRequestOutcome.Loaded };
+                    _performanceProbe.EnterDecodedStrongReferenceOwner(
+                        ThumbnailDecodedOwnerKind.RealizedItemSource,
+                        state.RuntimeIdentity);
                     _performanceProbe.TryMark(StartupTimingMarker.FirstThumbnailApplied);
                 }
 
@@ -2275,16 +2323,26 @@ namespace Airi.ViewModels
         private void RemoveThumbnailRuntimeState(VideoItem item)
         {
             ThumbnailInFlight? slot = null;
+            long runtimeIdentity = 0;
+            bool releaseLoadedOwner = false;
             lock (_thumbnailRuntimeLock)
             {
                 if (_thumbnailRuntime.Remove(item, out var state))
                 {
                     slot = state.InFlight;
+                    runtimeIdentity = state.RuntimeIdentity;
+                    releaseLoadedOwner = state.Realization?.Outcome == ThumbnailRequestOutcome.Loaded;
                 }
             }
 
             slot?.Cancellation.Cancel();
             slot?.Cancellation.Dispose();
+            if (releaseLoadedOwner)
+            {
+                _performanceProbe.LeaveDecodedStrongReferenceOwner(
+                    ThumbnailDecodedOwnerKind.RealizedItemSource,
+                    runtimeIdentity);
+            }
             item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
         }
 

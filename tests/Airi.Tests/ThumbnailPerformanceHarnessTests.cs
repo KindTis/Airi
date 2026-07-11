@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Airi.Domain;
@@ -99,6 +100,91 @@ public sealed class ThumbnailPerformanceHarnessTests
         probe.LeaveImageRegistration(1, 2);
         probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Warm);
         Assert.Equal(ThumbnailMeasurementPhase.Warm, probe.EndMeasurementPhase().Phase);
+    }
+
+    [Fact]
+    public void BeginMeasurementPhase_WithActiveDecode_RejectsBoundary()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+
+        Assert.Throws<InvalidOperationException>(() => probe.BeginMeasurementPhase(
+            ThumbnailMeasurementPhase.Cold,
+            new ThumbnailPhaseBoundaryState(
+                ActiveDecodeCount: 1,
+                ViewModelInFlightCount: 0,
+                RegistrationCount: 0,
+                PreviousRuntimeStateCount: 0,
+                DispatcherDrained: true)));
+    }
+
+    [Fact]
+    public void EndMeasurementPhase_RejectsUnstableOrInFlightSeal()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.TryMark(StartupTimingMarker.StartupTerminal);
+
+        Assert.Throws<InvalidOperationException>(() => probe.EndMeasurementPhase(
+            new ThumbnailPhaseSealState(
+                ActiveDecodeCount: 0,
+                ViewModelInFlightCount: 1,
+                StableFor500Milliseconds: false,
+                AllActiveRegistrationsTerminal: true)));
+
+        var snapshot = probe.EndMeasurementPhase(new ThumbnailPhaseSealState(0, 0, true, true));
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint =>
+            checkpoint.Kind == ThumbnailResourceCheckpointKind.PhaseEnd);
+    }
+
+    [Fact]
+    public void Snapshot_MemoryMetricsUseAbsoluteGaugesAndGcPhaseDeltas()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.TryMark(StartupTimingMarker.VisualFirstMeaningfulCard);
+        probe.TryMark(StartupTimingMarker.VisualFirstThumbnail);
+        probe.RecordFirstSteadyCheckpoint();
+        probe.TryMark(StartupTimingMarker.StartupTerminal);
+
+        var snapshot = probe.EndMeasurementPhase(new ThumbnailPhaseSealState(0, 0, true, true));
+
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint => checkpoint.Kind == ThumbnailResourceCheckpointKind.PhaseStart);
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint => checkpoint.Kind == ThumbnailResourceCheckpointKind.VisualFirstMeaningfulCard);
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint => checkpoint.Kind == ThumbnailResourceCheckpointKind.VisualFirstThumbnail);
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint => checkpoint.Kind == ThumbnailResourceCheckpointKind.FirstSteady);
+        Assert.Contains(snapshot.ResourceCheckpoints, checkpoint => checkpoint.Kind == ThumbnailResourceCheckpointKind.StartupTerminal);
+        Assert.All(snapshot.ResourceCheckpoints, checkpoint =>
+        {
+            Assert.True(checkpoint.WorkingSetBytes > 0);
+            Assert.True(checkpoint.ManagedHeapBytes > 0);
+            Assert.True(checkpoint.Gc0CollectionCount >= 0);
+            Assert.True(checkpoint.Gc1CollectionCount >= 0);
+            Assert.True(checkpoint.Gc2CollectionCount >= 0);
+        });
+        Assert.Equal(snapshot.ResourceCheckpoints.Max(x => x.WorkingSetBytes), snapshot.CheckpointMaximum.WorkingSetBytes);
+        Assert.Equal(snapshot.ResourceCheckpoints.Max(x => x.ManagedHeapBytes), snapshot.CheckpointMaximum.ManagedHeapBytes);
+        Assert.True(snapshot.GcPhaseDelta.Gen0 >= 0);
+        Assert.True(snapshot.GcPhaseDelta.Gen1 >= 0);
+        Assert.True(snapshot.GcPhaseDelta.Gen2 >= 0);
+    }
+
+    [Fact]
+    public void PerformanceProbe_DecodedOwnerGaugeCanExposeOwnerOutsideBound()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.EnterDecodedStrongReferenceOwner(ThumbnailDecodedOwnerKind.LoaderCache, 10);
+        probe.EnterDecodedStrongReferenceOwner(ThumbnailDecodedOwnerKind.RealizedItemSource, 20);
+        probe.EnterDecodedStrongReferenceOwner(ThumbnailDecodedOwnerKind.Unexpected, 30);
+        probe.RecordFirstSteadyCheckpoint();
+        probe.TryMark(StartupTimingMarker.StartupTerminal);
+
+        var snapshot = probe.EndMeasurementPhase(new ThumbnailPhaseSealState(0, 0, true, true));
+        var checkpoint = Assert.Single(snapshot.ResourceCheckpoints,
+            value => value.Kind == ThumbnailResourceCheckpointKind.FirstSteady);
+        Assert.Equal(3, checkpoint.DecodedStrongReferenceCount);
+        Assert.Equal(2, checkpoint.OwnerSlotBound);
+        Assert.True(checkpoint.DecodedStrongReferenceCount > checkpoint.OwnerSlotBound);
     }
 
     [Fact]
@@ -270,7 +356,11 @@ public sealed class ThumbnailPerformanceHarnessTests
         await WpfTestHost.RunAsync(async () =>
         {
             var probe = ThumbnailPerformanceProbe.CreateEnabled();
-            var sharedLoader = CreateHarnessThumbnailLoader(probe);
+            probe.BeginMeasurementPhase(
+                ThumbnailMeasurementPhase.Cold,
+                new ThumbnailPhaseBoundaryState(0, 0, 0, 0, true));
+            probe.TryMark(StartupTimingMarker.StartupMeasurementBegin);
+            var sharedLoader = await ThumbnailImageLoader.CreateAsync(probe, CancellationToken.None);
             var cold = await MeasurePhaseAsync(
                 iterationRoot,
                 coldStorePath,
@@ -331,8 +421,19 @@ public sealed class ThumbnailPerformanceHarnessTests
     {
         var inputHash = ComputeSha256(storePath);
         var loaderStart = sharedLoader.GetDiagnostics();
-        probe.BeginMeasurementPhase(phase);
-        probe.TryMark(StartupTimingMarker.StartupMeasurementBegin);
+        if (!probe.IsActive)
+        {
+            WpfTestHost.DrainDispatcher(Application.Current.Dispatcher);
+            probe.BeginMeasurementPhase(
+                phase,
+                new ThumbnailPhaseBoundaryState(
+                    loaderStart.ActiveDecodeCount,
+                    ViewModelInFlightCount: 0,
+                    probe.GetActiveRegistrationCount(),
+                    PreviousRuntimeStateCount: 0,
+                    DispatcherDrained: true));
+            probe.TryMark(StartupTimingMarker.StartupMeasurementBegin);
+        }
 
         var store = new LibraryStore(storePath);
         var viewModel = CreateViewModel(iterationRoot, store, probe, sharedLoader);
@@ -355,8 +456,8 @@ public sealed class ThumbnailPerformanceHarnessTests
             probe.HasMarker(StartupTimingMarker.StartupTerminal),
             () => $"Phase {phase}; markers: {string.Join(", ", probe.GetRecordedMarkers())}; {window.GetLegacyThumbnailDiagnostic()}",
             timeout: TimeSpan.FromMinutes(2));
-        await Task.Delay(500);
-        WpfTestHost.DrainDispatcher(window.Dispatcher);
+        await WaitForPhaseSteadyAsync(window, viewModel, sharedLoader);
+        probe.RecordFirstSteadyCheckpoint();
 
         var dpi = VisualTreeHelper.GetDpi(window);
         var workArea = SystemParameters.WorkArea;
@@ -387,7 +488,11 @@ public sealed class ThumbnailPerformanceHarnessTests
         var invalidReason = compatible
             ? null
             : $"Requires 100% DPI and at least 1500x1000 DIP working area; observed {dpi.DpiScaleX:F2}x{dpi.DpiScaleY:F2}, {workArea.Width:F0}x{workArea.Height:F0}.";
-        var snapshot = probe.EndMeasurementPhase();
+        var snapshot = probe.EndMeasurementPhase(new ThumbnailPhaseSealState(
+            sharedLoader.GetDiagnostics().ActiveDecodeCount,
+            viewModel.GetThumbnailInFlightCount(),
+            StableFor500Milliseconds: true,
+            window.AreActiveThumbnailRegistrationsTerminalForTests()));
         var loaderEnd = sharedLoader.GetDiagnostics();
         var nonFallbackSources = window.GetRealizedNonFallbackThumbnailSourceCount(sharedLoader.FallbackSource);
         var gates = BuildPhaseGates(
@@ -414,6 +519,9 @@ public sealed class ThumbnailPerformanceHarnessTests
 
         window.Close();
         WpfTestHost.DrainDispatcher(Application.Current.Dispatcher);
+        Assert.Equal(0, viewModel.GetThumbnailInFlightCount());
+        Assert.Equal(0, viewModel.GetThumbnailRuntimeStateCount());
+        Assert.Equal(sharedLoader.GetDiagnostics().CacheEntryCount, probe.GetDecodedStrongReferenceOwnerCount());
         var outputHash = ComputeSha256(storePath);
 
         return new ThumbnailPerformancePhaseResult(
@@ -434,7 +542,9 @@ public sealed class ThumbnailPerformanceHarnessTests
                 loaderEnd.MaxConcurrentDecodeCount,
                 loaderStart.CacheEntryCount,
                 loaderEnd.CacheEntryCount,
-                loaderEnd.RecencyNodeCount));
+                loaderEnd.RecencyNodeCount,
+                loaderEnd.FallbackInitializationThreadId,
+                loaderEnd.FallbackInitializationElapsedTicks));
     }
 
     private static PhaseGateResults BuildPhaseGates(
@@ -461,7 +571,8 @@ public sealed class ThumbnailPerformanceHarnessTests
             loaderEnd.CacheEntryCount == loaderEnd.RecencyNodeCount && loaderEnd.CacheEntryCount <= 96,
             snapshot.DispatcherBatches.All(batch => batch.ElapsedTicks <= Stopwatch.Frequency / 10),
             nonFallbackSources <= snapshot.ActiveRegistrationCount,
-            loaderEnd.CacheEntryCount <= 96 + nonFallbackSources);
+            snapshot.ResourceCheckpoints.All(checkpoint =>
+                checkpoint.DecodedStrongReferenceCount <= checkpoint.OwnerSlotBound));
     }
 
     private static async Task<StructuralValidationSnapshot> CaptureStructuralValidationAsync(
@@ -484,33 +595,65 @@ public sealed class ThumbnailPerformanceHarnessTests
 
         foreach (var (name, index) in positions)
         {
+            var traversalMaximum = window.GetRealizedVideoContainerCount();
+            ItemsChangedEventHandler observe = (_, _) =>
+                traversalMaximum = Math.Max(traversalMaximum, window.GetRealizedVideoContainerCount());
+            window.GetVideoListForTests().ItemContainerGenerator.ItemsChanged += observe;
             window.ScrollVideoToIndex(index);
-            WpfTestHost.DrainDispatcher(window.Dispatcher);
-            await WaitUntilAsync(
-                () => loader.GetDiagnostics().ActiveDecodeCount == 0,
-                timeout: TimeSpan.FromSeconds(30));
-            await Task.Delay(500);
-            WpfTestHost.DrainDispatcher(window.Dispatcher);
-            var firstCount = window.GetRealizedVideoContainerCount();
-            var firstRegistrations = window.GetThumbnailRegistrationCountForTests();
-            await Task.Delay(20);
-            WpfTestHost.DrainDispatcher(window.Dispatcher);
-            var steadyCount = window.GetRealizedVideoContainerCount();
-            var steadyRegistrations = window.GetThumbnailRegistrationCountForTests();
-            Assert.Equal(firstCount, steadyCount);
-            Assert.Equal(firstRegistrations, steadyRegistrations);
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            var stableSince = DateTime.UtcNow;
+            var previous = (-1, -1, -1);
+            var steadyCount = 0;
+            var steadyRegistrations = 0;
+            var steadySources = 0;
+            try
+            {
+                while (DateTime.UtcNow < deadline)
+                {
+                    WpfTestHost.DrainDispatcher(window.Dispatcher);
+                    steadyCount = window.GetRealizedVideoContainerCount();
+                    steadyRegistrations = window.GetThumbnailRegistrationCountForTests();
+                    steadySources = window.GetRealizedNonFallbackThumbnailSourceCount(loader.FallbackSource);
+                    traversalMaximum = Math.Max(traversalMaximum, steadyCount);
+                    var current = (steadyCount, steadyRegistrations, steadySources);
+                    var quiescent = loader.GetDiagnostics().ActiveDecodeCount == 0 &&
+                                    viewModel.GetThumbnailInFlightCount() == 0 &&
+                                    window.AreActiveThumbnailRegistrationsTerminalForTests();
+                    if (quiescent && current == previous)
+                    {
+                        if (DateTime.UtcNow - stableSince >= TimeSpan.FromMilliseconds(500))
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        previous = current;
+                        stableSince = DateTime.UtcNow;
+                    }
+                    await Task.Delay(20);
+                }
+            }
+            finally
+            {
+                window.GetVideoListForTests().ItemContainerGenerator.ItemsChanged -= observe;
+            }
+            Assert.True(DateTime.UtcNow < deadline, $"Structural position '{name}' did not become stable.");
             var scroll = Assert.IsType<ScrollViewer>(window.GetVideoScrollViewer());
             var extent = window.GetFirstVideoContainerExtent();
             var columns = Math.Max(1, (int)Math.Floor(scroll.ViewportWidth / Math.Max(1, extent.Width)));
             var visibleRows = Math.Max(1, (int)Math.Ceiling(scroll.ViewportHeight / Math.Max(1, extent.Height)));
             var hardLimit = ((3 * visibleRows) + 1) * columns;
             Assert.InRange(steadyCount, 1, hardLimit);
+            Assert.InRange(traversalMaximum, 1, hardLimit);
             sections.Add(new StructuralPositionSnapshot(
                 name,
                 index,
                 scroll.VerticalOffset,
                 steadyCount,
+                traversalMaximum,
                 steadyRegistrations,
+                steadySources,
                 extent.Width,
                 extent.Height,
                 columns,
@@ -519,7 +662,45 @@ public sealed class ThumbnailPerformanceHarnessTests
 
         return new StructuralValidationSnapshot(
             sections,
-            sections.All(section => section.RealizedContainerCount <= section.HardLimit));
+            sections.All(section =>
+                section.RealizedContainerCount <= section.HardLimit &&
+                section.TraversalMaximumContainerCount <= section.HardLimit));
+    }
+
+    private static async Task WaitForPhaseSteadyAsync(
+        MainWindow window,
+        MainViewModel viewModel,
+        ThumbnailImageLoader loader)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var stableSince = DateTime.UtcNow;
+        var previous = (-1, -1, -1);
+        while (DateTime.UtcNow < deadline)
+        {
+            WpfTestHost.DrainDispatcher(window.Dispatcher);
+            var current = (
+                window.GetRealizedVideoContainerCount(),
+                window.GetThumbnailRegistrationCountForTests(),
+                window.GetRealizedNonFallbackThumbnailSourceCount(loader.FallbackSource));
+            var quiescent = loader.GetDiagnostics().ActiveDecodeCount == 0 &&
+                            viewModel.GetThumbnailInFlightCount() == 0 &&
+                            window.AreActiveThumbnailRegistrationsTerminalForTests();
+            if (quiescent && current == previous)
+            {
+                if (DateTime.UtcNow - stableSince >= TimeSpan.FromMilliseconds(500))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                previous = current;
+                stableSince = DateTime.UtcNow;
+            }
+            await Task.Delay(20);
+        }
+
+        Assert.Fail("The performance phase did not reach a 500ms stable terminal state.");
     }
 
     private static MainViewModel CreateViewModel(
@@ -647,7 +828,9 @@ public sealed class ThumbnailPerformanceHarnessTests
         int MaxConcurrentDecodeCount,
         int StartCacheEntryCount,
         int CacheEntryCount,
-        int RecencyNodeCount);
+        int RecencyNodeCount,
+        int FallbackInitializationThreadId,
+        long FallbackInitializationElapsedTicks);
 
     private sealed record PhaseGateResults(
         string FirstCardBeforeAllItems,
@@ -668,7 +851,9 @@ public sealed class ThumbnailPerformanceHarnessTests
         int Index,
         double VerticalOffset,
         int RealizedContainerCount,
+        int TraversalMaximumContainerCount,
         int RegistrationCount,
+        int RealizedNonFallbackSourceCount,
         double ItemWidth,
         double ItemHeight,
         int Columns,

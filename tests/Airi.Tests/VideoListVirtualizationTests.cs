@@ -150,9 +150,9 @@ public sealed class VideoListVirtualizationTests
         var hardLimit = ((3 * visibleRows) + 1) * columns;
         var middle = await MeasureAtAsync(list, itemCount / 2);
         var last = await MeasureAtAsync(list, itemCount - 1);
-        var maximum = Math.Max(top, Math.Max(middle, last));
+        var maximum = Math.Max(top.TraversalMaximum, Math.Max(middle.TraversalMaximum, last.TraversalMaximum));
         window.Close();
-        return (top, middle, last, maximum, columns, hardLimit);
+        return (top.Steady, middle.Steady, last.Steady, maximum, columns, hardLimit);
     }
 
     private static Window CreateWindow(ListBox list)
@@ -170,15 +170,28 @@ public sealed class VideoListVirtualizationTests
         return window;
     }
 
-    private static async Task<int> MeasureAtAsync(ListBox list, int index)
+    private static async Task<(int Steady, int TraversalMaximum)> MeasureAtAsync(ListBox list, int index)
     {
-        await ScrollToAsync(list, index);
-        var first = CountRealized(list);
-        await Task.Delay(500);
-        WpfTestHost.DrainDispatcher(list.Dispatcher);
-        var second = CountRealized(list);
-        Assert.Equal(first, second);
-        return second;
+        var traversalMaximum = CountRealized(list);
+        ItemsChangedEventHandler observe = (_, _) =>
+            traversalMaximum = Math.Max(traversalMaximum, CountRealized(list));
+        list.ItemContainerGenerator.ItemsChanged += observe;
+        try
+        {
+            await ScrollToAsync(list, index);
+            traversalMaximum = Math.Max(traversalMaximum, CountRealized(list));
+            var first = CountRealized(list);
+            await Task.Delay(500);
+            WpfTestHost.DrainDispatcher(list.Dispatcher);
+            var second = CountRealized(list);
+            traversalMaximum = Math.Max(traversalMaximum, second);
+            Assert.Equal(first, second);
+            return (second, traversalMaximum);
+        }
+        finally
+        {
+            list.ItemContainerGenerator.ItemsChanged -= observe;
+        }
     }
 
     private static async Task ScrollToAsync(ListBox list, int index)

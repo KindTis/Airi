@@ -253,6 +253,18 @@ namespace Airi
 
         internal int GetThumbnailRegistrationCountForTests() => _thumbnailRegistrations.Count;
 
+        internal bool AreActiveThumbnailRegistrationsTerminalForTests() =>
+            _thumbnailRegistrations.Values
+                .DistinctBy(item => RuntimeHelpers.GetHashCode(item))
+                .All(item =>
+                {
+                    var diagnostics = ViewModel.GetThumbnailRuntimeDiagnostics(item);
+                    return diagnostics.Exists &&
+                           !diagnostics.HasInFlight &&
+                           diagnostics.Outcome is "Loaded" or "Failed" &&
+                           item.ThumbnailLoadState is ThumbnailLoadState.Loaded or ThumbnailLoadState.Failed;
+                });
+
         private async Task ChangeThumbnailImageDataContextAsync(
             Image image,
             VideoItem? newItem,

@@ -245,7 +245,7 @@ function Get-PowerSchemeLabel {
 }
 
 function Get-Median([double[]]$Values) {
-    if (-not $Values -or $Values.Count -eq 0) {
+    if ($null -eq $Values -or $Values.Count -eq 0) {
         return $null
     }
     $sorted = @($Values | Sort-Object)
@@ -396,6 +396,16 @@ foreach ($dataset in $Datasets) {
         })
         $card = @($validValues | ForEach-Object { [double]$_.timing.markers.VisualFirstMeaningfulCard.elapsedMilliseconds })
         $thumbnail = @($validValues | ForEach-Object { [double]$_.timing.markers.VisualFirstThumbnail.elapsedMilliseconds })
+        $firstSteady = @($validValues | ForEach-Object {
+            @($_.timing.resourceCheckpoints | Where-Object kind -eq 'FirstSteady')[0]
+        })
+        $firstSteadyWorkingSet = @($firstSteady | ForEach-Object { [double]$_.workingSetBytes })
+        $firstSteadyManagedHeap = @($firstSteady | ForEach-Object { [double]$_.managedHeapBytes })
+        $checkpointMaxWorkingSet = @($validValues | ForEach-Object { [double]$_.timing.checkpointMaximum.workingSetBytes })
+        $checkpointMaxManagedHeap = @($validValues | ForEach-Object { [double]$_.timing.checkpointMaximum.managedHeapBytes })
+        $gc0 = @($validValues | ForEach-Object { [double]$_.timing.gcPhaseDelta.gen0 })
+        $gc1 = @($validValues | ForEach-Object { [double]$_.timing.gcPhaseDelta.gen1 })
+        $gc2 = @($validValues | ForEach-Object { [double]$_.timing.gcPhaseDelta.gen2 })
         $phases[$phaseName] = [ordered]@{
             validIterations = $validValues.Count
             totalIterations = $phaseValues.Count
@@ -406,18 +416,106 @@ foreach ($dataset in $Datasets) {
             firstMeaningfulCardWorstMs = if ($card.Count) { ($card | Measure-Object -Maximum).Maximum } else { $null }
             firstThumbnailMedianMs = Get-Median $thumbnail
             firstThumbnailWorstMs = if ($thumbnail.Count) { ($thumbnail | Measure-Object -Maximum).Maximum } else { $null }
+            firstSteadyWorkingSetMedianBytes = Get-Median $firstSteadyWorkingSet
+            firstSteadyWorkingSetWorstBytes = if ($firstSteadyWorkingSet.Count) { ($firstSteadyWorkingSet | Measure-Object -Maximum).Maximum } else { $null }
+            firstSteadyManagedHeapMedianBytes = Get-Median $firstSteadyManagedHeap
+            firstSteadyManagedHeapWorstBytes = if ($firstSteadyManagedHeap.Count) { ($firstSteadyManagedHeap | Measure-Object -Maximum).Maximum } else { $null }
+            checkpointMaxWorkingSetMedianBytes = Get-Median $checkpointMaxWorkingSet
+            checkpointMaxWorkingSetWorstBytes = if ($checkpointMaxWorkingSet.Count) { ($checkpointMaxWorkingSet | Measure-Object -Maximum).Maximum } else { $null }
+            checkpointMaxManagedHeapMedianBytes = Get-Median $checkpointMaxManagedHeap
+            checkpointMaxManagedHeapWorstBytes = if ($checkpointMaxManagedHeap.Count) { ($checkpointMaxManagedHeap | Measure-Object -Maximum).Maximum } else { $null }
+            gc0PhaseDeltaMedian = Get-Median $gc0
+            gc0PhaseDeltaWorst = if ($gc0.Count) { ($gc0 | Measure-Object -Maximum).Maximum } else { $null }
+            gc1PhaseDeltaMedian = Get-Median $gc1
+            gc1PhaseDeltaWorst = if ($gc1.Count) { ($gc1 | Measure-Object -Maximum).Maximum } else { $null }
+            gc2PhaseDeltaMedian = Get-Median $gc2
+            gc2PhaseDeltaWorst = if ($gc2.Count) { ($gc2 | Measure-Object -Maximum).Maximum } else { $null }
         }
     }
     $datasetSummaries[$dataset] = $phases
 }
 
+$mediumToStress = [ordered]@{}
+$mediumStressGuardRow = [ordered]@{}
+if ($datasetSummaries.Contains('medium') -and $datasetSummaries.Contains('stress')) {
+    foreach ($phaseName in @('cold', 'warm')) {
+        $medium = $datasetSummaries['medium'][$phaseName]
+        $stress = $datasetSummaries['stress'][$phaseName]
+        $mediumToStress[$phaseName] = [ordered]@{
+            firstMeaningfulCardMedianDeltaMs = $stress.firstMeaningfulCardMedianMs - $medium.firstMeaningfulCardMedianMs
+            firstMeaningfulCardWorstDeltaMs = $stress.firstMeaningfulCardWorstMs - $medium.firstMeaningfulCardWorstMs
+            firstThumbnailMedianDeltaMs = $stress.firstThumbnailMedianMs - $medium.firstThumbnailMedianMs
+            firstThumbnailWorstDeltaMs = $stress.firstThumbnailWorstMs - $medium.firstThumbnailWorstMs
+            firstSteadyWorkingSetMedianDeltaBytes = $stress.firstSteadyWorkingSetMedianBytes - $medium.firstSteadyWorkingSetMedianBytes
+            firstSteadyWorkingSetWorstDeltaBytes = $stress.firstSteadyWorkingSetWorstBytes - $medium.firstSteadyWorkingSetWorstBytes
+            firstSteadyManagedHeapMedianDeltaBytes = $stress.firstSteadyManagedHeapMedianBytes - $medium.firstSteadyManagedHeapMedianBytes
+            firstSteadyManagedHeapWorstDeltaBytes = $stress.firstSteadyManagedHeapWorstBytes - $medium.firstSteadyManagedHeapWorstBytes
+            checkpointMaxWorkingSetMedianDeltaBytes = $stress.checkpointMaxWorkingSetMedianBytes - $medium.checkpointMaxWorkingSetMedianBytes
+            checkpointMaxWorkingSetWorstDeltaBytes = $stress.checkpointMaxWorkingSetWorstBytes - $medium.checkpointMaxWorkingSetWorstBytes
+            checkpointMaxManagedHeapMedianDeltaBytes = $stress.checkpointMaxManagedHeapMedianBytes - $medium.checkpointMaxManagedHeapMedianBytes
+            checkpointMaxManagedHeapWorstDeltaBytes = $stress.checkpointMaxManagedHeapWorstBytes - $medium.checkpointMaxManagedHeapWorstBytes
+            gc0PhaseDeltaMedianDifference = $stress.gc0PhaseDeltaMedian - $medium.gc0PhaseDeltaMedian
+            gc0PhaseDeltaWorstDifference = $stress.gc0PhaseDeltaWorst - $medium.gc0PhaseDeltaWorst
+            gc1PhaseDeltaMedianDifference = $stress.gc1PhaseDeltaMedian - $medium.gc1PhaseDeltaMedian
+            gc1PhaseDeltaWorstDifference = $stress.gc1PhaseDeltaWorst - $medium.gc1PhaseDeltaWorst
+            gc2PhaseDeltaMedianDifference = $stress.gc2PhaseDeltaMedian - $medium.gc2PhaseDeltaMedian
+            gc2PhaseDeltaWorstDifference = $stress.gc2PhaseDeltaWorst - $medium.gc2PhaseDeltaWorst
+        }
+
+        $pairPasses = 0
+        for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
+            $mediumDocument = $rawDocuments | Where-Object { $_.dataset -eq 'medium' -and $_.iteration -eq $iteration } | Select-Object -First 1
+            $stressDocument = $rawDocuments | Where-Object { $_.dataset -eq 'stress' -and $_.iteration -eq $iteration } | Select-Object -First 1
+            $pairPass = $null -ne $mediumDocument -and $null -ne $stressDocument -and
+                $mediumDocument.$phaseName.valid -and $stressDocument.$phaseName.valid
+            if ($pairPass) {
+                foreach ($mediumPosition in @($mediumDocument.$phaseName.structuralValidation.positions)) {
+                    $stressPosition = @($stressDocument.$phaseName.structuralValidation.positions | Where-Object name -eq $mediumPosition.name)[0]
+                    if ($null -eq $stressPosition -or
+                        [Math]::Abs([int]$stressPosition.realizedContainerCount - [int]$mediumPosition.realizedContainerCount) -gt [int]$mediumPosition.columns -or
+                        [Math]::Abs([int]$stressPosition.realizedNonFallbackSourceCount - [int]$mediumPosition.realizedNonFallbackSourceCount) -gt [int]$mediumPosition.columns) {
+                        $pairPass = $false
+                        break
+                    }
+                }
+            }
+            if ($pairPass) {
+                $pairPasses++
+            }
+        }
+        $mediumStressGuardRow[$phaseName] = [ordered]@{
+            passIterations = $pairPasses
+            totalIterations = $Iterations
+            allPass = $pairPasses -eq $Iterations
+        }
+    }
+}
+
+$allLocalHardGatesPass = $true
+foreach ($dataset in $Datasets) {
+    foreach ($phaseName in @('cold', 'warm')) {
+        if (-not $datasetSummaries[$dataset][$phaseName].allHardGatesPass) {
+            $allLocalHardGatesPass = $false
+        }
+    }
+}
+$allCrossDatasetHardGatesPass = $mediumStressGuardRow.Count -eq 0 -or
+    (@($mediumStressGuardRow.Values | Where-Object { -not $_.allPass }).Count -eq 0)
+
 $summary = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     mode = $Mode
     machineLabel = $MachineLabel
     commitSha = $commitSha
     dirtyWorktree = $dirty
     iterations = $Iterations
+    allHardGatesPass = $allLocalHardGatesPass -and $allCrossDatasetHardGatesPass
     datasets = $datasetSummaries
+    crossDatasetGates = [ordered]@{
+        mediumStressContainerAndSourceGuardRow = $mediumStressGuardRow
+    }
+    observations = [ordered]@{
+        mediumToStress = $mediumToStress
+    }
 }
 Write-Utf8NoBom (Join-Path $outputRootPath 'summary.json') ($summary | ConvertTo-Json -Depth 20)

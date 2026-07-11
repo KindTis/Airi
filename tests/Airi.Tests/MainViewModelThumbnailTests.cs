@@ -43,6 +43,19 @@ public sealed class MainViewModelThumbnailTests
     });
 
     [Fact]
+    public Task DecodedOwnerGauge_LoadedItemEntersAndReleaseLeavesOwnerSlot() => Run(async fixture =>
+    {
+        var item = fixture.CreateItem("owner.jpg");
+        var request = fixture.ViewModel.RequestThumbnailAsync(item, 200);
+        fixture.Loader.Complete(0, fixture.DecodedA, false);
+        await request;
+        Assert.Equal(1, fixture.Probe.GetDecodedStrongReferenceOwnerCount());
+
+        fixture.ViewModel.ReleaseThumbnail(item);
+        Assert.Equal(0, fixture.Probe.GetDecodedStrongReferenceOwnerCount());
+    });
+
+    [Fact]
     public Task RequestThumbnailAsync_PathChanged_DropsLateOldResult() => Run(async fixture =>
     {
         var item = fixture.CreateItem("old.jpg");
@@ -278,6 +291,7 @@ public sealed class MainViewModelThumbnailTests
             _root = Path.Combine(Path.GetTempPath(), "AiriMainViewModelThumbnailTests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_root);
             Loader = new FakeLoader();
+            Probe = ThumbnailPerformanceProbe.CreateEnabled();
             DecodedA = CreateBitmap(0x44);
             DecodedB = CreateBitmap(0x88);
             FallbackFile = Path.Combine(_root, "fallback.jpg");
@@ -297,12 +311,13 @@ public sealed class MainViewModelThumbnailTests
                 provider,
                 source,
                 new NoopCrawlerFactory(),
-                ThumbnailPerformanceProbe.Disabled,
+                Probe,
                 Loader);
         }
 
         public MainViewModel ViewModel { get; }
         public FakeLoader Loader { get; }
+        public ThumbnailPerformanceProbe Probe { get; }
         public ImageSource DecodedA { get; }
         public ImageSource DecodedB { get; }
         public string FallbackFile { get; }

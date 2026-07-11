@@ -25,7 +25,8 @@ internal readonly record struct ThumbnailImageLoaderDiagnostics(
     int CacheEntryCount,
     int RecencyNodeCount,
     int FileChangeRetryAttemptCount,
-    int FallbackInitializationThreadId);
+    int FallbackInitializationThreadId,
+    long FallbackInitializationElapsedTicks);
 
 internal readonly record struct ThumbnailFileStamp(DateTime LastWriteUtc, long Length);
 
@@ -68,7 +69,10 @@ internal readonly record struct ThumbnailFailureRecord(
 
 public sealed class ThumbnailImageLoader : IThumbnailImageLoader
 {
-    private sealed record CacheEntry(ImageSource Source, LinkedListNode<ThumbnailCacheKey> Node);
+    private sealed record CacheEntry(
+        ImageSource Source,
+        LinkedListNode<ThumbnailCacheKey> Node,
+        long OwnerIdentity);
 
     private sealed class BitmapDecoder : IThumbnailBitmapDecoder
     {
@@ -97,6 +101,8 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
     private readonly string _fallbackPath;
     private readonly int _capacity;
     private readonly int _fallbackInitializationThreadId;
+    private readonly long _fallbackInitializationElapsedTicks;
+    private long _nextDecodedOwnerIdentity;
     private int _cacheMissRequestCount;
     private int _fileOpenCount;
     private int _lastFileOpenThreadId;
@@ -114,7 +120,8 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
         string fallbackPath,
         int capacity,
         int maxConcurrency,
-        int fallbackInitializationThreadId = 0)
+        int fallbackInitializationThreadId = 0,
+        long fallbackInitializationElapsedTicks = 0)
     {
         ArgumentNullException.ThrowIfNull(fallbackSource);
         ArgumentNullException.ThrowIfNull(performanceProbe);
@@ -139,6 +146,7 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
         _capacity = capacity;
         _decodeGate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
         _fallbackInitializationThreadId = fallbackInitializationThreadId;
+        _fallbackInitializationElapsedTicks = fallbackInitializationElapsedTicks;
     }
 
     public ImageSource FallbackSource { get; }
@@ -155,6 +163,7 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
         return Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var started = Stopwatch.GetTimestamp();
             var workerThreadId = Environment.CurrentManagedThreadId;
             var fallbackPath = LibraryPathHelper.ResolveToAbsolute("resources/noimage.jpg");
             ImageSource fallback;
@@ -172,6 +181,9 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
                 fallback = CreateGeneratedFallback();
             }
 
+            var elapsedTicks = Math.Max(1, Stopwatch.GetTimestamp() - started);
+            performanceProbe.RecordFallbackInitialization(elapsedTicks, workerThreadId);
+
             return new ThumbnailImageLoader(
                 fallback,
                 decoder: null,
@@ -182,7 +194,8 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
                 fallbackPath,
                 capacity: 96,
                 maxConcurrency: 4,
-                fallbackInitializationThreadId: workerThreadId);
+                fallbackInitializationThreadId: workerThreadId,
+                fallbackInitializationElapsedTicks: elapsedTicks);
         }, cancellationToken);
     }
 
@@ -315,7 +328,8 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
             cacheCount,
             recencyCount,
             Volatile.Read(ref _fileChangeRetryAttemptCount),
-            _fallbackInitializationThreadId);
+            _fallbackInitializationThreadId,
+            _fallbackInitializationElapsedTicks);
     }
 
     private ThumbnailImageResult FallbackResult => new(FallbackSource, true);
@@ -420,12 +434,21 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
             }
 
             var node = _recency.AddFirst(key);
-            _cache.Add(key, new CacheEntry(source, node));
+            var ownerIdentity = Interlocked.Increment(ref _nextDecodedOwnerIdentity);
+            _cache.Add(key, new CacheEntry(source, node, ownerIdentity));
+            _performanceProbe.EnterDecodedStrongReferenceOwner(
+                ThumbnailDecodedOwnerKind.LoaderCache,
+                ownerIdentity);
             while (_cache.Count > _capacity)
             {
                 var tail = _recency.Last ?? throw new InvalidOperationException("LRU recency list is empty during eviction.");
                 _recency.RemoveLast();
-                _cache.Remove(tail.Value);
+                if (_cache.Remove(tail.Value, out var evicted))
+                {
+                    _performanceProbe.LeaveDecodedStrongReferenceOwner(
+                        ThumbnailDecodedOwnerKind.LoaderCache,
+                        evicted.OwnerIdentity);
+                }
             }
             AssertCacheInvariants();
             return source;

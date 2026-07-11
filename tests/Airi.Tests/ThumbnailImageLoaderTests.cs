@@ -74,10 +74,19 @@ public sealed class ThumbnailImageLoaderTests
     public Task CreateAsync_FallbackIsFrozenStableAndCreatedOffDispatcher() => WpfTestHost.RunAsync(async () =>
     {
         var callerThread = Environment.CurrentManagedThreadId;
-        var loader = await ThumbnailImageLoader.CreateAsync(ThumbnailPerformanceProbe.CreateEnabled(), CancellationToken.None);
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.TryMark(StartupTimingMarker.StartupMeasurementBegin);
+        var loader = await ThumbnailImageLoader.CreateAsync(probe, CancellationToken.None);
+        var diagnostics = loader.GetDiagnostics();
+        var snapshot = probe.EndMeasurementPhase();
         Assert.True(loader.FallbackSource.IsFrozen);
         Assert.Same(loader.FallbackSource, loader.FallbackSource);
-        Assert.NotEqual(callerThread, loader.GetDiagnostics().FallbackInitializationThreadId);
+        Assert.NotEqual(callerThread, diagnostics.FallbackInitializationThreadId);
+        Assert.True(diagnostics.FallbackInitializationElapsedTicks > 0);
+        Assert.NotNull(snapshot.FallbackInitialization);
+        Assert.Equal(diagnostics.FallbackInitializationThreadId, snapshot.FallbackInitialization.Value.ThreadId);
+        Assert.Equal(diagnostics.FallbackInitializationElapsedTicks, snapshot.FallbackInitialization.Value.ElapsedTicks);
     });
 
     [Fact]
@@ -127,7 +136,10 @@ public sealed class ThumbnailImageLoaderTests
     [Fact]
     public Task LoadAsync_NinetySevenKeys_EvictsToNinetySixEntries() => Run(async fixture =>
     {
-        var loader = fixture.CreateLoader(new DelegateDecoder((_, _) => fixture.CreateFrozenBitmap(8, 8, 0x38)));
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        var loader = fixture.CreateLoader(
+            new DelegateDecoder((_, _) => fixture.CreateFrozenBitmap(8, 8, 0x38)),
+            performanceProbe: probe);
         for (var index = 0; index < 97; index++)
         {
             await loader.LoadAsync(fixture.CreateBytes($"lru-{index}.bin", new byte[] { (byte)index, 1 }), 100, CancellationToken.None);
@@ -135,6 +147,7 @@ public sealed class ThumbnailImageLoaderTests
         var diagnostics = loader.GetDiagnostics();
         Assert.Equal(96, diagnostics.CacheEntryCount);
         Assert.Equal(diagnostics.CacheEntryCount, diagnostics.RecencyNodeCount);
+        Assert.Equal(96, probe.GetDecodedStrongReferenceOwnerCount());
     });
 
     [Fact]
@@ -344,11 +357,12 @@ public sealed class ThumbnailImageLoaderTests
 
         public ThumbnailImageLoader CreateLoader(
             IThumbnailBitmapDecoder? decoder = null,
-            string? fallbackPath = null) =>
+            string? fallbackPath = null,
+            ThumbnailPerformanceProbe? performanceProbe = null) =>
             new(
                 FallbackSource,
                 decoder,
-                ThumbnailPerformanceProbe.Disabled,
+                performanceProbe ?? ThumbnailPerformanceProbe.Disabled,
                 Failures.Add,
                 fallbackPath ?? FallbackPath,
                 capacity: 96,
