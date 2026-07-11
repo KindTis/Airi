@@ -39,7 +39,8 @@ namespace Airi.Tests
                 var viewModel = fixture.CreateViewModel();
 
                 SetPrivateField(viewModel, "_isInitialLoading", false);
-                SetPrivateField(viewModel, "_isScanning", true);
+                viewModel.SetStartupState(StartupLibraryState.Publishing);
+                viewModel.SetStartupState(StartupLibraryState.Scanning);
 
                 Assert.True(viewModel.ShowActorSkeleton);
 
@@ -58,7 +59,8 @@ namespace Airi.Tests
                 var viewModel = fixture.CreateViewModel();
 
                 SetPrivateField(viewModel, "_isInitialLoading", false);
-                SetPrivateField(viewModel, "_isScanning", true);
+                viewModel.SetStartupState(StartupLibraryState.Publishing);
+                viewModel.SetStartupState(StartupLibraryState.Scanning);
 
                 Assert.True(viewModel.ShowVideoSkeleton);
 

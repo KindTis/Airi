@@ -34,7 +34,11 @@ namespace Airi
         private readonly Dictionary<Image, int> _thumbnailRegistrationWidths = new();
         private readonly Dictionary<VideoItem, int> _thumbnailRegistrationCounts = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<VideoItem, int> _thumbnailRequestedWidths = new(ReferenceEqualityComparer.Instance);
+        private Task _initializationTask = Task.CompletedTask;
+        private bool _initializationStarted;
         public MainViewModel ViewModel { get; }
+        internal Task InitializationTask => _initializationTask;
+        internal bool InitializationStarted => _initializationStarted;
 
         public MainWindow()
             : this(ThumbnailImageLoader.CreateWithGeneratedFallback())
@@ -123,14 +127,27 @@ namespace Airi
                 return;
             }
 
-            var dialog = new MetadataEditorWindow(ViewModel.SelectedVideo)
+            var lease = ViewModel.TryBeginMetadataEditorMutation();
+            if (lease is null)
             {
-                Owner = this
-            };
+                return;
+            }
 
-            if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
+            try
             {
-                await ViewModel.ApplyMetadataEditAsync(ViewModel.SelectedVideo, result);
+                var dialog = new MetadataEditorWindow(ViewModel.SelectedVideo)
+                {
+                    Owner = this
+                };
+
+                if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
+                {
+                    await ViewModel.ApplyMetadataEditAsync(ViewModel.SelectedVideo, result, lease);
+                }
+            }
+            finally
+            {
+                ViewModel.EndMetadataEditorMutation(lease);
             }
         }
 
@@ -138,10 +155,33 @@ namespace Airi
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
+            if (_initializationStarted)
+            {
+                return;
+            }
+
+            _initializationStarted = true;
+            Loaded -= OnLoaded;
             AppLogger.Info("MainWindow loaded. Starting view model initialization.");
             _performanceProbe.TryMark(StartupTimingMarker.MainWindowLoaded);
-            await ViewModel.InitializeAsync();
-            AppLogger.Info("View model initialization complete.");
+            _initializationTask = ViewModel.InitializeAsync();
+            try
+            {
+                await _initializationTask;
+                AppLogger.Info("View model initialization complete.");
+            }
+            catch (OperationCanceledException) when (ViewModel.LifetimeToken.IsCancellationRequested)
+            {
+                AppLogger.Info("View model initialization ended because the window closed.");
+            }
+            catch (Exception ex) when (ViewModel.StartupState == StartupLibraryState.Faulted)
+            {
+                _ = ex;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Unhandled view model initialization failure.", ex);
+            }
         }
 
         private async void OnThumbnailImageLoaded(object sender, RoutedEventArgs e)
@@ -586,6 +626,7 @@ namespace Airi
 
         protected override void OnClosed(System.EventArgs e)
         {
+            Loaded -= OnLoaded;
             DetachPerformanceRendering();
             ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;

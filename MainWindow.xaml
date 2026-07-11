@@ -284,7 +284,7 @@
 
         <!-- Top command bar -->
         <Border Grid.Row="0" Background="{StaticResource CommandBarBrush}" Margin="24, 12, 24, 12" Padding="20" CornerRadius="16">
-            <Grid IsEnabled="{Binding CanUseCommandBar}">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>

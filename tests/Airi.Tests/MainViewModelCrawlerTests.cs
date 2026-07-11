@@ -228,12 +228,14 @@ namespace Airi.Tests
             {
                 using var fixture = new ViewModelFixture();
                 var viewModel = fixture.CreateViewModel();
-                SetPrivateField(viewModel, "_isFetchingMetadata", true);
+                var lease = Assert.IsType<LibraryMutationLease>(
+                    viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
 
                 await InvokePrivateTask(viewModel, "FetchMissingMetadataWithCrawlerAsync");
 
                 Assert.Equal(0, fixture.Factory.StartCount);
                 Assert.Equal("Metadata fetch already in progress.", viewModel.StatusMessage);
+                viewModel.ReleaseLibraryMutation(lease);
             });
         }
 
@@ -514,7 +516,7 @@ namespace Airi.Tests
                     translationService ?? NullTranslationService.Instance,
                     "KO");
 
-                return new MainViewModel(
+                var viewModel = new MainViewModel(
                     libraryStore,
                     libraryScanner,
                     metadataService,
@@ -522,6 +524,9 @@ namespace Airi.Tests
                     oneFourOneJavSource,
                     Factory,
                     new TestThumbnailImageLoader());
+                viewModel.SetStartupState(StartupLibraryState.Publishing);
+                viewModel.SetStartupState(StartupLibraryState.Ready);
+                return viewModel;
             }
 
             public void Dispose()

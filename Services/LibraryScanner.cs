@@ -16,7 +16,7 @@ namespace Airi.Services
         IReadOnlyList<VideoEntry> MissingEntries,
         IReadOnlyList<UpdatedFile> UpdatedEntries);
 
-    public sealed class LibraryScanner
+    public sealed class LibraryScanner : ILibraryScanner
     {
         private readonly FileSystemScanner _fileSystemScanner;
 

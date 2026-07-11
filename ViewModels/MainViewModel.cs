@@ -19,6 +19,27 @@ using Airi.Web;
 
 namespace Airi.ViewModels
 {
+    public enum StartupLibraryState
+    {
+        Loading,
+        Publishing,
+        Scanning,
+        ApplyingScan,
+        SavingScan,
+        Ready,
+        Faulted
+    }
+
+    internal enum LibraryMutationOwner
+    {
+        StartupScan,
+        AutoMetadata,
+        ManualFetch,
+        EditorSave
+    }
+
+    internal sealed record LibraryMutationLease(LibraryMutationOwner Owner, Guid Identity);
+
     internal readonly record struct ThumbnailRuntimeDiagnostics(
         bool Exists,
         long RuntimeIdentity,
@@ -69,7 +90,7 @@ namespace Airi.ViewModels
         private const int InitialLoadBatchSize = 40;
         private readonly Random _random = new();
         private readonly ILibraryStore _libraryStore;
-        private readonly LibraryScanner _libraryScanner;
+        private readonly ILibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
         private readonly CrawlerSessionProvider _crawlerSessionProvider;
@@ -90,6 +111,7 @@ namespace Airi.ViewModels
         private readonly string _fallbackThumbnailUri;
         private bool _isInitialized;
         private readonly SemaphoreSlim _initializationGate = new(1, 1);
+        private readonly CancellationTokenSource _lifetimeCts = new();
         private readonly SemaphoreSlim _crawlerStartGate = new(1, 1);
         private readonly object _crawlerStateLock = new();
         private IOneFourOneJavCrawlerSessionHandle? _crawlerHandle;
@@ -111,10 +133,9 @@ namespace Airi.ViewModels
         private string _selectedActor = AllActorsLabel;
         private string _statusMessage = string.Empty;
         private VideoItem? _selectedVideo;
-        private bool _isScanning;
-        private bool _isFetchingMetadata;
         private bool _isCrawlerRunning;
-        private bool _canUseCommandBar = true;
+        private StartupLibraryState _startupState = StartupLibraryState.Loading;
+        private LibraryMutationLease? _mutationLease;
         private SortOption _selectedSortOption;
         private bool _showMissingMetadataOnly;
         private bool _isInitialLoading = true;
@@ -153,7 +174,7 @@ namespace Airi.ViewModels
 
         public MainViewModel(
             ILibraryStore libraryStore,
-            LibraryScanner libraryScanner,
+            ILibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
             CrawlerSessionProvider crawlerSessionProvider,
             OneFourOneJavMetaSource oneFourOneJavSource,
@@ -173,7 +194,7 @@ namespace Airi.ViewModels
 
         internal MainViewModel(
             ILibraryStore libraryStore,
-            LibraryScanner libraryScanner,
+            ILibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
             CrawlerSessionProvider crawlerSessionProvider,
             OneFourOneJavMetaSource oneFourOneJavSource,
@@ -216,7 +237,9 @@ namespace Airi.ViewModels
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
-            FetchMetadataCommand = new RelayCommand(async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false));
+            FetchMetadataCommand = new RelayCommand(
+                async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false),
+                _ => CanMutateLibrary);
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
             StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync(CancellationToken.None).ConfigureAwait(false), _ => !IsCrawlerRunning);
 
@@ -288,32 +311,24 @@ namespace Airi.ViewModels
             private set => SetProperty(ref _statusMessage, value);
         }
 
-        public bool IsScanning
-        {
-            get => _isScanning;
-            private set
-            {
-                if (SetProperty(ref _isScanning, value))
-                {
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowActorSkeleton)));
-                    UpdateStatus(updateMessage: false);
-                }
-            }
-        }
+        public StartupLibraryState StartupState => _startupState;
 
-        public bool IsFetchingMetadata
-        {
-            get => _isFetchingMetadata;
-            private set
-            {
-                if (SetProperty(ref _isFetchingMetadata, value))
-                {
-                    CanUseCommandBar = !value;
-                    UpdateStatus(updateMessage: false);
-                }
-            }
-        }
+        public bool IsScanning => StartupState is
+            StartupLibraryState.Scanning or
+            StartupLibraryState.ApplyingScan or
+            StartupLibraryState.SavingScan;
+
+        public bool IsFetchingMetadata => _mutationLease?.Owner is
+            LibraryMutationOwner.AutoMetadata or
+            LibraryMutationOwner.ManualFetch;
+
+        public bool CanMutateLibrary =>
+            !_disposed && StartupState == StartupLibraryState.Ready && _mutationLease is null;
+
+        public bool CanUseCommandBar => true;
+
+        internal CancellationToken LifetimeToken => _lifetimeCts.Token;
+        internal LibraryMutationLease? CurrentMutationLease => _mutationLease;
 
         public bool IsCrawlerRunning
         {
@@ -325,12 +340,6 @@ namespace Airi.ViewModels
                     StartCrawlerCommand?.RaiseCanExecuteChanged();
                 }
             }
-        }
-
-        public bool CanUseCommandBar
-        {
-            get => _canUseCommandBar;
-            private set => SetProperty(ref _canUseCommandBar, value);
         }
 
         public bool IsInitialLoading
@@ -348,6 +357,96 @@ namespace Airi.ViewModels
 
         public bool ShowVideoSkeleton => IsInitialLoading || (IsScanning && Videos.Count == 0);
         public bool ShowActorSkeleton => IsInitialLoading || (IsScanning && Actors.Count <= 1);
+
+        internal void SetStartupState(StartupLibraryState next)
+        {
+            _dispatcher.VerifyAccess();
+            if (_startupState == next)
+            {
+                return;
+            }
+
+            var allowed = (_startupState, next) switch
+            {
+                (StartupLibraryState.Loading, StartupLibraryState.Publishing or StartupLibraryState.Faulted) => true,
+                (StartupLibraryState.Publishing, StartupLibraryState.Scanning or StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
+                (StartupLibraryState.Scanning, StartupLibraryState.ApplyingScan or StartupLibraryState.Ready) => true,
+                (StartupLibraryState.ApplyingScan, StartupLibraryState.SavingScan or StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
+                (StartupLibraryState.SavingScan, StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
+                _ => false
+            };
+            if (!allowed)
+            {
+                throw new InvalidOperationException($"Invalid startup library state transition: {_startupState} -> {next}.");
+            }
+
+            var wasScanning = IsScanning;
+            _startupState = next;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StartupState)));
+            if (wasScanning != IsScanning)
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScanning)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowActorSkeleton)));
+            }
+            RaiseMutationStateChanged();
+            UpdateStatus(updateMessage: false);
+        }
+
+        internal LibraryMutationLease? TryBeginLibraryMutation(LibraryMutationOwner owner)
+        {
+            _dispatcher.VerifyAccess();
+            if (_disposed || _mutationLease is not null)
+            {
+                return null;
+            }
+
+            var lease = new LibraryMutationLease(owner, Guid.NewGuid());
+            _mutationLease = lease;
+            RaiseMutationStateChanged();
+            return lease;
+        }
+
+        internal void ReleaseLibraryMutation(LibraryMutationLease lease)
+        {
+            _dispatcher.VerifyAccess();
+            if (_mutationLease?.Identity != lease.Identity || _mutationLease.Owner != lease.Owner)
+            {
+                return;
+            }
+
+            _mutationLease = null;
+            RaiseMutationStateChanged();
+        }
+
+        internal LibraryMutationLease? TryBeginMetadataEditorMutation()
+        {
+            _dispatcher.VerifyAccess();
+            if (!CanMutateLibrary)
+            {
+                StatusMessage = "Library is busy. Try again when startup work completes.";
+                return null;
+            }
+            return TryBeginLibraryMutation(LibraryMutationOwner.EditorSave);
+        }
+
+        internal void EndMetadataEditorMutation(LibraryMutationLease lease) => ReleaseLibraryMutation(lease);
+
+        private void EnsureCurrentLease(LibraryMutationLease lease)
+        {
+            _dispatcher.VerifyAccess();
+            if (_mutationLease?.Identity != lease.Identity || _mutationLease.Owner != lease.Owner)
+            {
+                throw new InvalidOperationException("The active library mutation lease changed unexpectedly.");
+            }
+        }
+
+        private void RaiseMutationStateChanged()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanMutateLibrary)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsFetchingMetadata)));
+            FetchMetadataCommand?.RaiseCanExecuteChanged();
+        }
 
         public Task RequestThumbnailAsync(
             VideoItem item,
@@ -460,12 +559,18 @@ namespace Airi.ViewModels
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_isInitialized)
             {
                 return;
             }
 
             await _initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            LibraryMutationLease? startupLease = null;
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _lifetimeCts.Token);
+            var startupToken = linkedCts.Token;
             try
             {
                 if (_isInitialized)
@@ -473,17 +578,75 @@ namespace Airi.ViewModels
                     return;
                 }
 
-                await _dispatcher.InvokeAsync(() => StatusMessage = "Loading library...");
-                var loadedLibrary = await _libraryStore.LoadAsync().ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    startupLease = TryBeginLibraryMutation(LibraryMutationOwner.StartupScan)
+                        ?? throw new InvalidOperationException("A library mutation is already active.");
+                    StatusMessage = "Loading library...";
+                });
+                var loadedLibrary = await _libraryStore.LoadAsync(startupToken).ConfigureAwait(false);
                 _performanceProbe.TryMark(StartupTimingMarker.LibraryLoaded);
                 _startupPublishesStoredLibrary = loadedLibrary.Videos.Count > 0;
                 var mappedVideos = loadedLibrary.Videos.Select(MapVideo).ToList();
                 AppLogger.Info($"Library loaded. Videos: {loadedLibrary.Videos.Count}.");
 
-                await LoadLibraryDataAsync(loadedLibrary, mappedVideos, cancellationToken).ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() => SetStartupState(StartupLibraryState.Publishing));
+                await LoadLibraryDataAsync(loadedLibrary, mappedVideos, startupToken).ConfigureAwait(false);
 
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    EnsureCurrentLease(startupLease!);
+                    SetStartupState(StartupLibraryState.Scanning);
+                    StatusMessage = "Scanning library...";
+                });
+                await RunStartupScanAsync(startupLease!, startupToken).ConfigureAwait(false);
                 _isInitialized = true;
-                _ = RunStartupScanAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (!_lifetimeCts.IsCancellationRequested)
+            {
+                if (startupLease is not null)
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (StartupState != StartupLibraryState.Loading)
+                        {
+                            SetStartupState(StartupLibraryState.Ready);
+                        }
+                        ReleaseLibraryMutation(startupLease);
+                    });
+                }
+                _isInitialized = false;
+                throw;
+            }
+            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (!_lifetimeCts.IsCancellationRequested)
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (StartupState == StartupLibraryState.Scanning)
+                        {
+                            SetStartupState(StartupLibraryState.ApplyingScan);
+                        }
+                        if (StartupState != StartupLibraryState.Faulted)
+                        {
+                            SetStartupState(StartupLibraryState.Faulted);
+                        }
+                        if (startupLease is not null)
+                        {
+                            ReleaseLibraryMutation(startupLease);
+                        }
+                        IsInitialLoading = false;
+                        StatusMessage = $"Library initialization failed: {ex.Message}";
+                    });
+                    AppLogger.Error("Library initialization failed.", ex);
+                    _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
+                }
+                throw;
             }
             finally
             {
@@ -541,79 +704,55 @@ namespace Airi.ViewModels
             });
         }
 
-        private async Task RunStartupScanAsync(CancellationToken cancellationToken)
+        private async Task RunStartupScanAsync(
+            LibraryMutationLease startupLease,
+            CancellationToken cancellationToken)
         {
-            if (IsScanning)
-            {
-                return;
-            }
+            AppLogger.Info("Initiating initial library scan.");
+            var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
 
             await _dispatcher.InvokeAsync(() =>
             {
-                IsScanning = true;
-                StatusMessage = "Scanning library...";
+                EnsureCurrentLease(startupLease);
+                SetStartupState(StartupLibraryState.ApplyingScan);
+                ApplyScanResult(result);
+                SetStartupState(StartupLibraryState.SavingScan);
             });
-            AppLogger.Info("Initiating initial library scan.");
 
-            try
+            await _libraryStore.SaveAsync(_library, cancellationToken).ConfigureAwait(false);
+
+            await _dispatcher.InvokeAsync(() =>
             {
-                var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    ApplyScanResult(result);
-                });
-
-                await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
-                    AppLogger.Info(StatusMessage);
-                });
-            }
-            catch (OperationCanceledException)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = "Scan cancelled.";
-                    AppLogger.Info(StatusMessage);
-                });
-            }
-            catch (Exception ex)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Scan failed: {ex.Message}";
-                    AppLogger.Error(StatusMessage, ex);
-                });
-            }
-            finally
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    IsScanning = false;
-                    IsInitialLoading = false;
-
-                    if (!IsFetchingMetadata)
-                    {
-                        StatusMessage = BuildLibrarySummary();
-                    }
-
-                    UpdateStatus(updateMessage: false);
-                });
-                _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
-            }
+                EnsureCurrentLease(startupLease);
+                StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
+                AppLogger.Info(StatusMessage);
+                IsInitialLoading = false;
+                SetStartupState(StartupLibraryState.Ready);
+                ReleaseLibraryMutation(startupLease);
+                UpdateStatus(updateMessage: false);
+            });
+            _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
         }
 
         private async Task FetchMissingMetadataWithCrawlerAsync()
         {
-            if (IsFetchingMetadata)
+            LibraryMutationLease? lease = null;
+            await _dispatcher.InvokeAsync(() =>
             {
-                await _dispatcher.InvokeAsync(() =>
+                if (IsFetchingMetadata)
                 {
                     StatusMessage = "Metadata fetch already in progress.";
-                });
+                    return;
+                }
+                if (!CanMutateLibrary)
+                {
+                    StatusMessage = "Library is busy. Try again when startup work completes.";
+                    return;
+                }
+                lease = TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch);
+            });
+            if (lease is null)
+            {
                 return;
             }
 
@@ -623,13 +762,13 @@ namespace Airi.ViewModels
                 await _dispatcher.InvokeAsync(() =>
                 {
                     StatusMessage = "No videos require crawler metadata.";
+                    ReleaseLibraryMutation(lease);
                 });
                 return;
             }
 
             await _dispatcher.InvokeAsync(() =>
             {
-                IsFetchingMetadata = true;
                 StatusMessage = $"Crawler metadata fetch starting for {missing.Count} videos.";
             });
 
@@ -703,7 +842,7 @@ namespace Airi.ViewModels
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
-                    IsFetchingMetadata = false;
+                    ReleaseLibraryMutation(lease);
                     if (!preserveStatusMessage)
                     {
                         StatusMessage = BuildLibrarySummary();
@@ -1049,7 +1188,18 @@ namespace Airi.ViewModels
                 return;
             }
 
-            await _dispatcher.InvokeAsync(() => IsFetchingMetadata = true);
+            LibraryMutationLease? lease = null;
+            await _dispatcher.InvokeAsync(() =>
+            {
+                if (CanMutateLibrary)
+                {
+                    lease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
+                }
+            });
+            if (lease is null)
+            {
+                return;
+            }
 
             try
             {
@@ -1074,7 +1224,7 @@ namespace Airi.ViewModels
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
-                    IsFetchingMetadata = false;
+                    ReleaseLibraryMutation(lease);
                     StatusMessage = BuildLibrarySummary();
                 });
             }
@@ -1253,6 +1403,28 @@ namespace Airi.ViewModels
         }
         public async Task ApplyMetadataEditAsync(VideoItem item, MetadataEditResult result)
         {
+            LibraryMutationLease? lease = null;
+            await _dispatcher.InvokeAsync(() => lease = TryBeginMetadataEditorMutation());
+            if (lease is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await ApplyMetadataEditAsync(item, result, lease).ConfigureAwait(false);
+            }
+            finally
+            {
+                await _dispatcher.InvokeAsync(() => EndMetadataEditorMutation(lease));
+            }
+        }
+
+        internal async Task ApplyMetadataEditAsync(
+            VideoItem item,
+            MetadataEditResult result,
+            LibraryMutationLease lease)
+        {
             if (item is null)
             {
                 return;
@@ -1267,6 +1439,7 @@ namespace Airi.ViewModels
 
             await _dispatcher.InvokeAsync(() =>
             {
+                EnsureCurrentLease(lease);
                 var oldThumbnailPath = item.ThumbnailPath;
                 var realizedWidth = GetRealizedThumbnailWidth(item);
                 item.Title = title;
@@ -1301,7 +1474,7 @@ namespace Airi.ViewModels
                 return entry with { Meta = updatedMeta };
             });
 
-            await _libraryStore.SaveAsync(_library).ConfigureAwait(false);
+            await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
 
             await _dispatcher.InvokeAsync(() =>
             {
@@ -1443,6 +1616,9 @@ namespace Airi.ViewModels
 
             _dispatcher.VerifyAccess();
             _disposed = true;
+            _lifetimeCts.Cancel();
+            _mutationLease = null;
+            RaiseMutationStateChanged();
             Videos.CollectionChanged -= OnVideosCollectionChanged;
             Actors.CollectionChanged -= OnActorsCollectionChanged;
 

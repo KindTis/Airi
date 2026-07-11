@@ -10,6 +10,7 @@ namespace Airi.Infrastructure
         private static string _logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "log");
         private static string _logPath = string.Empty;
         private static bool _initialized;
+        internal static Action<string, string, Exception?>? TestObserver { get; set; }
 
         public static void Initialize(string? baseDirectory = null)
         {
@@ -60,6 +61,7 @@ namespace Airi.Infrastructure
                 }
 
                 File.AppendAllText(_logPath, builder.ToString());
+                TestObserver?.Invoke(level, message, exception);
             }
         }
     }
