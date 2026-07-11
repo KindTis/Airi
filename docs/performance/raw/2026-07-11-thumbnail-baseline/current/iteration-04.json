@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "dataset": "current",
+  "iteration": 4,
+  "mode": "Baseline",
+  "cold": {
+    "valid": true,
+    "invalidReason": null,
+    "timing": {
+      "schemaVersion": 1,
+      "phase": "Cold",
+      "markers": {
+        "StartupMeasurementBegin": {
+          "elapsedTicks": 0,
+          "elapsedMilliseconds": 0
+        },
+        "MainWindowLoaded": {
+          "elapsedTicks": 3440054,
+          "elapsedMilliseconds": 344.0054
+        },
+        "LibraryLoaded": {
+          "elapsedTicks": 6422761,
+          "elapsedMilliseconds": 642.2761
+        },
+        "FirstBatchPublished": {
+          "elapsedTicks": 7417168,
+          "elapsedMilliseconds": 741.7168
+        },
+        "VisualFirstThumbnail": {
+          "elapsedTicks": 8800468,
+          "elapsedMilliseconds": 880.0468
+        },
+        "AllItemsPublished": {
+          "elapsedTicks": 72388447,
+          "elapsedMilliseconds": 7238.8447
+        },
+        "VisualFirstMeaningfulCard": {
+          "elapsedTicks": 84721993,
+          "elapsedMilliseconds": 8472.1993
+        },
+        "StartupTerminal": {
+          "elapsedTicks": 101105239,
+          "elapsedMilliseconds": 10110.5239
+        }
+      }
+    },
+    "viewport": {
+      "windowWidth": 1500,
+      "windowHeight": 1000,
+      "viewportWidth": 1159,
+      "viewportHeight": 763,
+      "firstItemWidth": 286,
+      "firstItemHeight": 276,
+      "dpiScaleX": 1,
+      "dpiScaleY": 1,
+      "horizontalOffset": 0,
+      "verticalOffset": 0,
+      "realizedContainerCount": 662,
+      "searchQuery": "",
+      "selectedActor": "All Actors",
+      "missingOnly": false,
+      "sortLabel": "\uCD9C\uC2DC\uC77C \uB0B4\uB9BC\uCC28\uC21C",
+      "workingAreaWidth": 1920,
+      "workingAreaHeight": 1032
+    },
+    "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
+    "outputLibrarySha256": "4912D097868122F161837E429A87178EE208A56764124B2BFCACC3E43F67C046",
+    "warmPreparation": {
+      "itemCount": 662,
+      "realizedContainerCount": 662,
+      "timingSnapshotStayedSealed": true
+    }
+  },
+  "warm": {
+    "valid": true,
+    "invalidReason": null,
+    "timing": {
+      "schemaVersion": 1,
+      "phase": "Warm",
+      "markers": {
+        "StartupMeasurementBegin": {
+          "elapsedTicks": 0,
+          "elapsedMilliseconds": 0
+        },
+        "MainWindowLoaded": {
+          "elapsedTicks": 669726,
+          "elapsedMilliseconds": 66.9726
+        },
+        "LibraryLoaded": {
+          "elapsedTicks": 1261417,
+          "elapsedMilliseconds": 126.1417
+        },
+        "FirstBatchPublished": {
+          "elapsedTicks": 1627847,
+          "elapsedMilliseconds": 162.7847
+        },
+        "VisualFirstThumbnail": {
+          "elapsedTicks": 2249626,
+          "elapsedMilliseconds": 224.9626
+        },
+        "AllItemsPublished": {
+          "elapsedTicks": 37359843,
+          "elapsedMilliseconds": 3735.9843
+        },
+        "VisualFirstMeaningfulCard": {
+          "elapsedTicks": 47384380,
+          "elapsedMilliseconds": 4738.438
+        },
+        "StartupTerminal": {
+          "elapsedTicks": 61438797,
+          "elapsedMilliseconds": 6143.8797
+        }
+      }
+    },
+    "viewport": {
+      "windowWidth": 1500,
+      "windowHeight": 1000,
+      "viewportWidth": 1159,
+      "viewportHeight": 763,
+      "firstItemWidth": 286,
+      "firstItemHeight": 276,
+      "dpiScaleX": 1,
+      "dpiScaleY": 1,
+      "horizontalOffset": 0,
+      "verticalOffset": 0,
+      "realizedContainerCount": 662,
+      "searchQuery": "",
+      "selectedActor": "All Actors",
+      "missingOnly": false,
+      "sortLabel": "\uCD9C\uC2DC\uC77C \uB0B4\uB9BC\uCC28\uC21C",
+      "workingAreaWidth": 1920,
+      "workingAreaHeight": 1032
+    },
+    "inputLibrarySha256": "96E4D0470947989437D2BB64AF8138B0292426B4EB38BAFFCE9633E034237BE0",
+    "outputLibrarySha256": "276FBAE4F5C33CB0CCB89ACAD1F88AD8B65470021C70A2A12A025435FE02BBB9",
+    "warmPreparation": null
+  },
+  "environmentCompatibility": {
+    "machineLabel": "local-windows",
+    "osBuild": "Microsoft Windows NT 10.0.26200.0",
+    "runtime": ".NET 9.0.17",
+    "processArchitecture": "X64",
+    "configuration": "Release",
+    "powerSchemeLabel": "\uADE0\uD615 \uC870\uC815"
+  },
+  "buildProvenance": {
+    "commitSha": "c4f32287a4377d0b97cf3370b8892560d68e8f1c",
+    "binarySha256": "C83282194813E178EBBEDB1AF9035DE496A95D8E41726D7EAA444FA56C79B099",
+    "dirtyWorktree": true
+  }
+}

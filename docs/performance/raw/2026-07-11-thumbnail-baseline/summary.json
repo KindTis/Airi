@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "mode": "Baseline",
+  "machineLabel": "local-windows",
+  "commitSha": "c4f32287a4377d0b97cf3370b8892560d68e8f1c",
+  "dirtyWorktree": true,
+  "iterations": 5,
+  "datasets": {
+    "current": {
+      "cold": {
+        "validIterations": 5,
+        "totalIterations": 5,
+        "allValid": true,
+        "firstMeaningfulCardMedianMs": 8363.5148,
+        "firstMeaningfulCardWorstMs": 12484.1864,
+        "firstThumbnailMedianMs": 852.4484,
+        "firstThumbnailWorstMs": 1395.0628
+      },
+      "warm": {
+        "validIterations": 5,
+        "totalIterations": 5,
+        "allValid": true,
+        "firstMeaningfulCardMedianMs": 4894.7996,
+        "firstMeaningfulCardWorstMs": 5031.6384,
+        "firstThumbnailMedianMs": 215.1604,
+        "firstThumbnailWorstMs": 227.8298
+      }
+    }
+  }
+}
