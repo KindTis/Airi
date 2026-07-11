@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -309,6 +311,315 @@ public sealed class MainViewModelStartupLoadingTests
         return Task.CompletedTask;
     });
 
+    [Fact]
+    public Task InitializeAsync_HundredEntries_FirstFortyEndsVideoSkeleton() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(100));
+        using var viewModel = fixture.CreateViewModel();
+        Task? initialization = null;
+        var observedFirstBatch = false;
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 40)
+            {
+                observedFirstBatch = true;
+                Assert.False(viewModel.ShowVideoSkeleton);
+                Assert.True(viewModel.ShowActorSkeleton);
+                Assert.NotNull(initialization);
+                Assert.False(initialization!.IsCompleted);
+            }
+        };
+
+        initialization = viewModel.InitializeAsync();
+        await initialization;
+
+        Assert.True(observedFirstBatch);
+        Assert.Equal(100, viewModel.Videos.Count);
+        Assert.False(viewModel.ShowActorSkeleton);
+    });
+
+    [Fact]
+    public Task InitializeAsync_FirstBatchKeepsActorSkeletonUntilFinalRefresh() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(100));
+        using var viewModel = fixture.CreateViewModel();
+        var actorSkeletonAtFirstBatch = false;
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 40)
+            {
+                actorSkeletonAtFirstBatch = viewModel.ShowActorSkeleton;
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.True(actorSkeletonAtFirstBatch);
+        Assert.False(viewModel.IsActorListLoading);
+        Assert.True(viewModel.Actors.Count > 1);
+    });
+
+    [Fact]
+    public Task InitializeAsync_FirstCollectionEventPrecedesInitializationCompletion() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(2));
+        using var viewModel = fixture.CreateViewModel();
+        Task? initialization = null;
+        var incompleteAtFirstEvent = false;
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 1)
+            {
+                incompleteAtFirstEvent = initialization is { IsCompleted: false };
+            }
+        };
+
+        initialization = viewModel.InitializeAsync();
+        await initialization;
+
+        Assert.True(incompleteAtFirstEvent);
+    });
+
+    [Fact]
+    public Task InitializeAsync_EachCollectionBatchIsAtMostConfiguredSize() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(100));
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        using var viewModel = fixture.CreateViewModel(probe);
+
+        await viewModel.InitializeAsync();
+
+        var records = probe.GetDispatcherBatchRecords();
+        Assert.Equal(new[] { 40, 40, 20 }, records
+            .Where(record => record.Kind == "StoredPublish")
+            .Select(record => record.ItemCount));
+        Assert.Single(records, record => record.Kind == "StoredFinalize");
+        _ = probe.EndMeasurementPhase();
+    });
+
+    [Fact]
+    public Task InitializeAsync_OperationCancelDuringPublishing_RecoversWholePersistedLibraryOrFaults() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(100);
+        fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        using var viewModel = fixture.CreateViewModel();
+        using var cancellation = new CancellationTokenSource();
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 40)
+            {
+                cancellation.Cancel();
+            }
+        };
+
+        await viewModel.InitializeAsync(cancellation.Token);
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(100, viewModel.Videos.Count);
+        Assert.Equal(2, fixture.Store.LoadCount);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.Contains("persisted library restored", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    });
+
+    [Fact]
+    public Task InitializeAsync_EmptyLibrary_KeepsSkeletonUntilScanFirstBatch() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishScan = new TaskCompletionSource<LibraryScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Scanner.ScanOverride = (_, _) =>
+        {
+            scanStarted.TrySetResult();
+            return finishScan.Task;
+        };
+        using var viewModel = fixture.CreateViewModel();
+
+        var initialization = viewModel.InitializeAsync();
+        await scanStarted.Task;
+        Assert.Equal(StartupLibraryState.Scanning, viewModel.StartupState);
+        Assert.True(viewModel.ShowVideoSkeleton);
+        Assert.True(viewModel.ShowActorSkeleton);
+        finishScan.TrySetResult(EmptyScanResult());
+        await initialization;
+        Assert.False(viewModel.ShowVideoSkeleton);
+        Assert.False(viewModel.ShowActorSkeleton);
+    });
+
+    [Fact]
+    public Task InitializeAsync_StoredPublishingFailure_RecoversThenReadyWithoutScan() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(5));
+        var failed = false;
+        using var viewModel = fixture.CreateViewModel(
+            storedMapper: (entry, _) =>
+            {
+                if (!failed)
+                {
+                    failed = true;
+                    throw new InvalidOperationException("mapping failed");
+                }
+                return MapEntry(entry);
+            });
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(5, viewModel.Videos.Count);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.Equal(2, fixture.Store.LoadCount);
+    });
+
+    [Fact]
+    public Task InitializeAsync_StoredPublishingRecoveryFailure_EndsSkeletonAndFaults() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => fixture.Store.LoadCount == 1
+            ? Task.FromResult(CreateLibrary(5))
+            : Task.FromException<LibraryData>(new IOException("recovery failed"));
+        using var viewModel = fixture.CreateViewModel(
+            storedMapper: (_, _) => throw new InvalidOperationException("mapping failed"));
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Faulted, viewModel.StartupState);
+        Assert.False(viewModel.ShowVideoSkeleton);
+        Assert.False(viewModel.ShowActorSkeleton);
+        Assert.False(viewModel.CanMutateLibrary);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+    });
+
+    [Fact]
+    public Task InitializeAsync_LoadAndDefaultResetFailure_FaultsWithoutScanOrAutoMetadata() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromException<LibraryData>(
+            new InvalidDataException("reset failed"));
+        using var viewModel = fixture.CreateViewModel();
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => viewModel.InitializeAsync());
+
+        Assert.Equal(StartupLibraryState.Faulted, viewModel.StartupState);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.False(viewModel.IsFetchingMetadata);
+    });
+
+    [Fact]
+    public Task InitializeAsync_NonResettableLoadFailure_TransitionsFaultedWithoutScan() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromException<LibraryData>(
+            new UnauthorizedAccessException("denied"));
+        using var viewModel = fixture.CreateViewModel();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => viewModel.InitializeAsync());
+
+        Assert.Equal(StartupLibraryState.Faulted, viewModel.StartupState);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.Equal(0, fixture.Store.SaveCount);
+    });
+
+    [Fact]
+    public Task InitializeAsync_LifetimeCancellation_DoesNotStartRecoveryOrScan() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var loadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Store.LoadOverride = async token =>
+        {
+            loadStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return new LibraryData();
+        };
+        var viewModel = fixture.CreateViewModel();
+        var initialization = viewModel.InitializeAsync();
+        await loadStarted.Task;
+
+        viewModel.Dispose();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initialization);
+
+        Assert.Equal(1, fixture.Store.LoadCount);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.Equal(StartupLibraryState.Loading, viewModel.StartupState);
+    });
+
+    [Fact]
+    public Task InitializeAsync_LifetimeEndsDuringBatchMapping_DoesNotScheduleOrRunPublishCallback() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(1));
+        var mappingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMapping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        using var viewModel = fixture.CreateViewModel(
+            probe,
+            storedMapper: (entry, token) =>
+            {
+                mappingStarted.TrySetResult();
+                releaseMapping.Task.Wait(token);
+                return MapEntry(entry);
+            });
+
+        var initialization = viewModel.InitializeAsync();
+        await mappingStarted.Task;
+        viewModel.Dispose();
+        releaseMapping.TrySetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initialization);
+
+        Assert.Empty(viewModel.Videos);
+        Assert.Equal(0, fixture.Scanner.ScanCount);
+        Assert.DoesNotContain(probe.GetDispatcherBatchRecords(), record => record.Kind == "StoredPublish");
+        _ = probe.EndMeasurementPhase();
+    });
+
+    [Fact]
+    public Task StoredFinalize_RunsOnDispatcherAndIsMeasuredExactlyOnce() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(5));
+        var dispatcherThread = Environment.CurrentManagedThreadId;
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        using var viewModel = fixture.CreateViewModel(probe);
+
+        await viewModel.InitializeAsync();
+
+        var finalize = Assert.Single(
+            probe.GetDispatcherBatchRecords(),
+            record => record.Kind == "StoredFinalize");
+        Assert.Equal(dispatcherThread, finalize.ThreadId);
+        Assert.True(finalize.ElapsedTicks >= 0);
+        Assert.True(finalize.ElapsedTicks <= Stopwatch.Frequency / 10);
+        _ = probe.EndMeasurementPhase();
+    });
+
+    [Fact]
+    public Task InitializeAsync_StoredMappingRunsOffDispatcher() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(45));
+        var dispatcherThread = Environment.CurrentManagedThreadId;
+        var mappingThreads = new ConcurrentBag<int>();
+        using var viewModel = fixture.CreateViewModel(
+            storedMapper: (entry, _) =>
+            {
+                mappingThreads.Add(Environment.CurrentManagedThreadId);
+                return MapEntry(entry);
+            });
+
+        await viewModel.InitializeAsync();
+
+        Assert.NotEmpty(mappingThreads);
+        Assert.DoesNotContain(dispatcherThread, mappingThreads);
+    });
+
     private sealed class Fixture : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "AiriStartupTests", Guid.NewGuid().ToString("N"));
@@ -322,7 +633,9 @@ public sealed class MainViewModelStartupLoadingTests
             Store = new FakeLibraryStore(Path.Combine(_root, "videos.json"));
         }
 
-        public MainViewModel CreateViewModel()
+        public MainViewModel CreateViewModel(
+            ThumbnailPerformanceProbe? probe = null,
+            Func<VideoEntry, CancellationToken, VideoItem>? storedMapper = null)
         {
             var provider = new CrawlerSessionProvider();
             var source = new OneFourOneJavMetaSource(provider);
@@ -337,7 +650,9 @@ public sealed class MainViewModelStartupLoadingTests
                 provider,
                 source,
                 new NeverCrawlerSessionFactory(),
-                new TestThumbnailImageLoader());
+                probe ?? ThumbnailPerformanceProbe.Disabled,
+                new TestThumbnailImageLoader(),
+                storedMapper);
         }
 
         public void Dispose()
@@ -391,4 +706,43 @@ public sealed class MainViewModelStartupLoadingTests
         public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Crawler is not used by startup tests.");
     }
+
+    private static LibraryData CreateLibrary(int count) => new()
+    {
+        Targets = new List<TargetFolder>
+        {
+            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>(), null)
+        },
+        Videos = Enumerable.Range(0, count)
+            .Select(index => new VideoEntry(
+                $"./Videos/video-{index:D4}.mp4",
+                new VideoMeta(
+                    $"Video {index:D4}",
+                    null,
+                    new[] { $"Actor {index % 7}" },
+                    "resources/noimage.jpg",
+                    Array.Empty<string>(),
+                    string.Empty),
+                index,
+                DateTime.SpecifyKind(new DateTime(2026, 1, 1).AddMinutes(index), DateTimeKind.Utc),
+                DateTime.SpecifyKind(new DateTime(2026, 1, 1).AddMinutes(index), DateTimeKind.Utc)))
+            .ToList()
+    };
+
+    private static VideoItem MapEntry(VideoEntry entry) => new()
+    {
+        LibraryPath = entry.Path,
+        Title = entry.Meta.Title,
+        Actors = entry.Meta.Actors,
+        Tags = entry.Meta.Tags,
+        Description = entry.Meta.Description,
+        ThumbnailPath = entry.Meta.Thumbnail,
+        ThumbnailUri = entry.Meta.Thumbnail
+    };
+
+    private static LibraryScanResult EmptyScanResult() => new(
+        Array.Empty<FileSnapshot>(),
+        Array.Empty<FileSnapshot>(),
+        Array.Empty<VideoEntry>(),
+        Array.Empty<UpdatedFile>());
 }

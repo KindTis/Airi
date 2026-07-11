@@ -46,6 +46,12 @@ internal readonly record struct ThumbnailImageRegistrationRecord(
     long ItemIdentity,
     bool Enter);
 
+internal readonly record struct StartupDispatcherBatchRecord(
+    string Kind,
+    int ItemCount,
+    long ElapsedTicks,
+    int ThreadId);
+
 internal sealed class ThumbnailPerformanceProbe
 {
     public const int SchemaVersion = 1;
@@ -55,6 +61,7 @@ internal sealed class ThumbnailPerformanceProbe
     private readonly Dictionary<StartupTimingMarker, ThumbnailTimingPoint> _markers = new();
     private readonly List<ThumbnailRequestProbeRecord> _requestRecords = new();
     private readonly List<ThumbnailImageRegistrationRecord> _registrationRecords = new();
+    private readonly List<StartupDispatcherBatchRecord> _dispatcherBatchRecords = new();
     private readonly HashSet<(int ImageIdentity, long ItemIdentity)> _activeRegistrations = new();
     private readonly Dictionary<long, int> _activeItemCounts = new();
     private int _maxRegistrationCount;
@@ -100,6 +107,7 @@ internal sealed class ThumbnailPerformanceProbe
             _markers.Clear();
             _requestRecords.Clear();
             _registrationRecords.Clear();
+            _dispatcherBatchRecords.Clear();
             _activeRegistrations.Clear();
             _activeItemCounts.Clear();
             _maxRegistrationCount = 0;
@@ -218,6 +226,31 @@ internal sealed class ThumbnailPerformanceProbe
         lock (_sync)
         {
             return _requestRecords.ToArray();
+        }
+    }
+
+    public void RecordDispatcherBatch(string kind, int itemCount, long elapsedTicks)
+    {
+        lock (_sync)
+        {
+            if (!_enabled || !_active)
+            {
+                return;
+            }
+
+            _dispatcherBatchRecords.Add(new StartupDispatcherBatchRecord(
+                kind,
+                itemCount,
+                elapsedTicks,
+                Environment.CurrentManagedThreadId));
+        }
+    }
+
+    public IReadOnlyList<StartupDispatcherBatchRecord> GetDispatcherBatchRecords()
+    {
+        lock (_sync)
+        {
+            return _dispatcherBatchRecords.ToArray();
         }
     }
 

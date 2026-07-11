@@ -39,6 +39,7 @@ namespace Airi.Tests
                 var viewModel = fixture.CreateViewModel();
 
                 SetPrivateField(viewModel, "_isInitialLoading", false);
+                SetPrivateField(viewModel, "_isActorListLoading", false);
                 viewModel.SetStartupState(StartupLibraryState.Publishing);
                 viewModel.SetStartupState(StartupLibraryState.Scanning);
 
