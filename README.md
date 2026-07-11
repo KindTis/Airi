@@ -1,116 +1,108 @@
-﻿# Airi
+<div align="center">
+  <img src="icon.png" width="96" alt="Airi 아이콘">
+  <h1>Airi</h1>
+  <p>로컬 비디오 라이브러리를 한곳에서 탐색하고 관리하는 Windows 데스크톱 앱</p>
+</div>
 
-Airi는 로컬 비디오 라이브러리를 관리하는 .NET 9 WPF 데스크톱 앱입니다.  
-앱 시작 시 `videos.json`을 로드하고 대상 폴더를 스캔해 파일 상태를 동기화하며, 웹 메타데이터 보강과 수동 편집 기능을 제공합니다.
+## 소개
+
+Airi는 로컬에 보관한 비디오를 자동으로 정리하고 빠르게 탐색할 수 있도록 만든 .NET 9 WPF 애플리케이션입니다. 실행 시 저장된 라이브러리를 불러오고 대상 폴더를 스캔해 신규·누락·변경 파일을 동기화합니다.
 
 ## 주요 기능
 
-- 라이브러리 영속화: `videos.json` 로드/저장 및 기본 타겟(`./Videos`) 자동 생성
-- 파일 시스템 스캔: 신규/누락/변경 파일 감지(`mp4`, `mkv`, `avi`, `wmv` 기본 포함)
-- 탐색/필터: 검색어, 배우 필터, 정렬 옵션, 메타데이터 누락 항목만 보기
-- 재생: 더블클릭 또는 `Random Play`로 기본 플레이어 실행
-- 웹 메타데이터 보강:
-- 웹 메타데이터 소스를 통한 메타데이터/썸네일 수집
-- Selenium 기반 크롤러 연동(`Start Crawler` 후 `Fetch Metadata`)
-- 메타데이터 편집 창:
-- `F1` 키로 편집 창 열기
-- 제목/출시일/설명/배우/태그/썸네일 수동 수정
-- 편집 창의 파싱 버튼으로 크롤러 페이지 결과 반영
-- 선택적 번역: DeepL API 키가 있으면 설명 자동 번역
+- **라이브러리 자동 동기화** — 저장된 라이브러리를 불러오고 지정 폴더의 파일 상태를 반영합니다.
+- **빠른 탐색** — 가상화된 목록과 지연 썸네일 로딩으로 많은 항목도 효율적으로 표시합니다.
+- **검색과 필터** — 제목·배우 검색, 배우 필터, 메타데이터 누락 항목 필터를 제공합니다.
+- **다양한 정렬** — 제목, 출시일, 생성일 기준의 오름차순·내림차순 정렬을 지원합니다.
+- **간편한 재생** — 항목을 더블클릭하거나 무작위 재생 기능으로 기본 미디어 플레이어를 실행합니다.
+- **메타데이터 편집** — 제목, 출시일, 설명, 배우, 태그와 썸네일을 직접 관리할 수 있습니다.
+- **선택적 정보 보강** — 필요한 경우 메타데이터와 설명 번역을 보강할 수 있습니다.
 
-## 기술 스택
-
-- .NET 9 (`net9.0-windows10.0.26100.0`)
-- WPF + MVVM
-- xUnit
-- Selenium WebDriver + ChromeDriver
-- HtmlAgilityPack
-- DeepL.net (선택 기능)
-
-## 프로젝트 구조
-
-- `App.xaml`, `MainWindow.xaml`: 앱 진입점/UI
-- `ViewModels/`: 화면 상태 및 명령(MVVM)
-- `Views/`: 추가 창(XAML, code-behind)
-- `Services/`: 스캔/저장/번역/메타데이터 처리
-- `Domain/`: 도메인 모델(`LibraryData`, `VideoEntry`, `VideoMeta`)
-- `Infrastructure/`: 경로/캐시/로깅/커맨드 유틸리티
-- `Web/`: 외부 메타데이터 소스 및 크롤러
-- `Themes/`, `resources/`, `Videos/`: 테마 및 정적 리소스
-- `tests/Airi.Tests/`: xUnit 테스트 프로젝트
+기본 스캔 대상에는 `mp4`, `mkv`, `avi`, `wmv` 파일이 포함됩니다.
 
 ## 요구 사항
 
-- Windows 10/11 (WPF 대상 프레임워크 기반)
-- .NET 9 SDK
-- 인터넷 연결(웹 메타데이터/크롤러 사용 시)
+- Windows 10 또는 Windows 11
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- 선택 기능 사용 시 인터넷 연결
 
-## 실행 방법
+## 빠른 시작
 
 ```powershell
+git clone https://github.com/KindTis/Airi.git
+cd Airi
 dotnet restore
 dotnet build Airi.sln -c Debug
 dotnet run --project Airi.csproj
 ```
 
+처음 실행하면 실행 파일 위치를 기준으로 기본 라이브러리와 `Videos` 스캔 대상이 준비됩니다.
+
+## 기본 사용 흐름
+
+1. 앱을 실행하면 저장된 라이브러리를 먼저 표시한 뒤 대상 폴더를 스캔합니다.
+2. 검색창, 배우 필터와 정렬 옵션으로 원하는 항목을 찾습니다.
+3. 비디오를 더블클릭하거나 **Random Play**를 사용해 재생합니다.
+4. 항목을 선택하고 `F1`을 눌러 메타데이터와 썸네일을 편집합니다.
+5. 필요한 항목에는 선택적 정보 보강 기능을 사용합니다.
+
+## 선택적 번역 설정
+
+설명 번역이 필요하면 실행 전에 환경 변수를 설정합니다.
+
+```powershell
+$env:DEEPL_AUTH_KEY = "your-api-key"
+$env:DEEPL_TARGET_LANG = "KO"
+dotnet run --project Airi.csproj
+```
+
+`DEEPL_AUTH_KEY`가 없으면 번역 기능은 자동으로 비활성화됩니다. `DEEPL_TARGET_LANG`의 기본값은 `KO`입니다.
+
+## 데이터 위치
+
+아래 경로는 모두 실행 파일 디렉터리를 기준으로 합니다.
+
+| 용도 | 기본 경로 |
+| --- | --- |
+| 라이브러리 데이터 | `videos.json` |
+| 기본 스캔 대상 | `Videos/` |
+| 로그 | `log/airi_*.log` |
+| 썸네일 캐시 | `cache/` |
+| 기본 썸네일 | `resources/noimage.jpg` |
+
+## 기술 스택
+
+- .NET 9
+- WPF 및 MVVM
+- Newtonsoft.Json
+- VirtualizingWrapPanel
+- xUnit
+- DeepL.net(선택적 번역)
+
+## 프로젝트 구조
+
+```text
+Airi/
+├─ ViewModels/       화면 상태와 명령
+├─ Views/            추가 WPF 창
+├─ Services/         라이브러리 스캔, 저장과 메타데이터 처리
+├─ Domain/           라이브러리 도메인 모델
+├─ Infrastructure/   경로, 캐시, 로깅과 공통 유틸리티
+├─ Themes/           WPF 스타일과 테마
+├─ resources/        기본 이미지 등 정적 리소스
+└─ tests/Airi.Tests/ xUnit 테스트 프로젝트
+```
+
 ## 테스트
+
+전체 테스트를 실행합니다.
 
 ```powershell
 dotnet test tests/Airi.Tests/Airi.Tests.csproj -c Debug
 ```
 
-커버리지:
+코드 커버리지를 수집하려면 다음 명령을 사용합니다.
 
 ```powershell
 dotnet test tests/Airi.Tests/Airi.Tests.csproj --collect:"XPlat Code Coverage"
 ```
-
-현재 테스트는 주로 아래 영역을 검증합니다.
-
-- 파일 스캐너/라이브러리 스캐너
-- 라이브러리 저장소(`LibraryStore`)
-- 경로 정규화(`LibraryPathHelper`)
-- 썸네일 캐시
-- 메타데이터 서비스(`WebMetadataService`)
-- 번역 Null 서비스
-- ViewModel 일부 동작
-
-## 환경 변수(선택)
-
-- `DEEPL_AUTH_KEY`: 설정 시 DeepL 번역 활성화
-- `DEEPL_TARGET_LANG`: 번역 대상 언어 코드(기본값 `KO`)
-
-둘 중 `DEEPL_AUTH_KEY`가 없으면 번역은 자동 비활성화됩니다.
-
-## 데이터/로그/캐시 경로
-
-기본 경로는 실행 파일 기준(AppDomain BaseDirectory)입니다.
-
-- 라이브러리 파일: `videos.json`
-- 로그: `log/airi_*.log`
-- 썸네일 캐시: `cache/`
-- 기본 이미지: `resources/noimage.jpg`
-
-## 기본 라이브러리 동작
-
-- `videos.json`이 없으면 기본 라이브러리를 생성합니다.
-- 기본 타겟 폴더는 `./Videos`입니다.
-- 디버그 빌드에서는 샘플 항목이 초기 데이터로 추가될 수 있습니다.
-- 릴리스 빌드에서는 실제 파일이 없는 항목을 정규화 과정에서 제거합니다.
-
-## 크롤러 사용 흐름
-
-1. 앱 하단 `Start Crawler` 버튼 클릭
-2. 크롬 브라우저 세션이 열리면 크롤러 준비 완료
-3. 상단 `Fetch Metadata`로 메타데이터 일괄 보강
-4. 필요 시 비디오 선택 후 `F1` -> 편집 창의 파싱 버튼 실행
-5. 브라우저 창을 닫으면 크롤러 세션이 종료됨
-
-## 확장 포인트
-
-- 새 메타데이터 소스 추가:
-- `Web/IWebVideoMetaSource` 구현
-- `MainWindow.xaml.cs`의 `metadataSources`에 등록
-- 번역기 교체/추가:
-- `Services/ITextTranslationService` 구현
-- `WebMetadataService` 또는 크롤러 서비스에 주입
