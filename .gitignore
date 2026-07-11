@@ -81,3 +81,6 @@ desktop.ini
 
 # graphify 출력물
 graphify-out/
+
+# 로컬 문서
+docs/
