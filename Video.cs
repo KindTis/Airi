@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Media;
 
 namespace Airi
 {
@@ -9,6 +10,14 @@ namespace Airi
     {
         Available,
         Missing
+    }
+
+    public enum ThumbnailLoadState
+    {
+        NotRequested,
+        Loading,
+        Loaded,
+        Failed
     }
 
     /// <summary>
@@ -28,6 +37,8 @@ namespace Airi
         private string _thumbnailUri = string.Empty;
         private string _thumbnailPath = string.Empty;
         private string _description = string.Empty;
+        private ImageSource? _thumbnailSource;
+        private ThumbnailLoadState _thumbnailLoadState;
 
         public string LibraryPath { get; init; } = string.Empty;
 
@@ -85,6 +96,18 @@ namespace Airi
         {
             get => _thumbnailPath;
             set => SetField(ref _thumbnailPath, value ?? string.Empty);
+        }
+
+        public ImageSource? ThumbnailSource
+        {
+            get => _thumbnailSource;
+            private set => SetField(ref _thumbnailSource, value);
+        }
+
+        public ThumbnailLoadState ThumbnailLoadState
+        {
+            get => _thumbnailLoadState;
+            private set => SetField(ref _thumbnailLoadState, value);
         }
 
         public string Description
@@ -152,6 +175,30 @@ namespace Airi
             LastModifiedUtc = lastModifiedUtc;
             Presence = presence;
             CreatedUtc = createdUtc;
+        }
+
+        public void BeginThumbnailLoad(ImageSource fallbackSource)
+        {
+            ThumbnailSource = fallbackSource ?? throw new ArgumentNullException(nameof(fallbackSource));
+            ThumbnailLoadState = ThumbnailLoadState.Loading;
+        }
+
+        public void CompleteThumbnailLoad(ImageSource source)
+        {
+            ThumbnailSource = source ?? throw new ArgumentNullException(nameof(source));
+            ThumbnailLoadState = ThumbnailLoadState.Loaded;
+        }
+
+        public void FailThumbnailLoad(ImageSource fallbackSource)
+        {
+            ThumbnailSource = fallbackSource ?? throw new ArgumentNullException(nameof(fallbackSource));
+            ThumbnailLoadState = ThumbnailLoadState.Failed;
+        }
+
+        public void ReleaseThumbnail(ImageSource fallbackSource)
+        {
+            ThumbnailSource = fallbackSource ?? throw new ArgumentNullException(nameof(fallbackSource));
+            ThumbnailLoadState = ThumbnailLoadState.NotRequested;
         }
 
         protected void OnPropertyChanged(string propertyName)
