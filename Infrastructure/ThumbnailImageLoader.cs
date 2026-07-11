@@ -231,7 +231,7 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
             return FallbackResult;
         }
 
-        decodePixelWidth = Math.Clamp(decodePixelWidth, 64, 520);
+        decodePixelWidth = Math.Clamp(decodePixelWidth, 64, 960);
         var initialStamp = ReadMetadata(absolutePath);
         if (initialStamp is null)
         {

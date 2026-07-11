@@ -25,6 +25,17 @@ public sealed class ThumbnailImageLoaderTests
     });
 
     [Fact]
+    public Task LoadAsync_TooltipWidthAboveCardLimit_DecodesRequestedWidth() => Run(async fixture =>
+    {
+        var path = fixture.CreateImage("tooltip.jpg", 1200, 800, 0x42);
+        var loader = fixture.CreateLoader();
+        var result = await loader.LoadAsync(path, 720, CancellationToken.None);
+        var bitmap = Assert.IsAssignableFrom<BitmapSource>(result.Source);
+        Assert.InRange(bitmap.PixelWidth, 521, 720);
+        Assert.False(result.IsFallback);
+    });
+
+    [Fact]
     public Task LoadAsync_ReturnsFrozenSource() => Run(async fixture =>
     {
         var result = await fixture.CreateLoader().LoadAsync(

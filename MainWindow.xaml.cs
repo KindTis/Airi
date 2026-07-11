@@ -41,6 +41,7 @@ namespace Airi
         private readonly Dictionary<Image, int> _thumbnailRegistrationWidths = new();
         private readonly Dictionary<VideoItem, int> _thumbnailRegistrationCounts = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<VideoItem, int> _thumbnailRequestedWidths = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<ToolTip, CancellationTokenSource> _tooltipCoverRequests = new();
         private Task _initializationTask = Task.CompletedTask;
         private bool _initializationStarted;
         public MainViewModel ViewModel { get; }
@@ -100,12 +101,13 @@ namespace Airi
 
         internal MainWindow(
             MainViewModel viewModel,
-            ThumbnailPerformanceProbe? performanceProbe = null)
+            ThumbnailPerformanceProbe? performanceProbe = null,
+            IThumbnailImageLoader? thumbnailImageLoader = null)
         {
             InitializeComponent();
             _translationService = NullTranslationService.Instance;
             _performanceProbe = performanceProbe ?? ThumbnailPerformanceProbe.Disabled;
-            _thumbnailImageLoader = null;
+            _thumbnailImageLoader = thumbnailImageLoader;
             ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
             WireViewModelEvents();
         }
@@ -245,6 +247,78 @@ namespace Airi
         internal static int CalculateThumbnailDecodeWidth(double actualWidth, double dpiScaleX) =>
             Math.Clamp((int)Math.Ceiling(actualWidth * dpiScaleX), 64, 520);
 
+        internal static int CalculateTooltipDecodeWidth(double dpiScaleX) =>
+            Math.Clamp((int)Math.Ceiling(480d * dpiScaleX), 64, 960);
+
+        internal async Task LoadTooltipCoverAsync(
+            ListBoxItem container,
+            ToolTip tooltip,
+            VideoItem item,
+            double dpiScaleX)
+        {
+            CancelTooltipCoverRequest(tooltip);
+            tooltip.PlacementTarget = container;
+            tooltip.Content = item;
+            tooltip.Tag = item.ThumbnailSource;
+            if (_thumbnailImageLoader is null)
+            {
+                return;
+            }
+
+            var request = new CancellationTokenSource();
+            _tooltipCoverRequests[tooltip] = request;
+            try
+            {
+                var result = await _thumbnailImageLoader.LoadAsync(
+                    item.ThumbnailPath,
+                    CalculateTooltipDecodeWidth(dpiScaleX),
+                    request.Token);
+                if (!result.IsFallback &&
+                    !request.IsCancellationRequested &&
+                    _tooltipCoverRequests.TryGetValue(tooltip, out var current) &&
+                    ReferenceEquals(current, request) &&
+                    ReferenceEquals(container.DataContext, item) &&
+                    ReferenceEquals(tooltip.PlacementTarget, container) &&
+                    ReferenceEquals(tooltip.Content, item))
+                {
+                    tooltip.Tag = result.Source;
+                }
+            }
+            catch (OperationCanceledException) when (request.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                if (_tooltipCoverRequests.TryGetValue(tooltip, out var current) && ReferenceEquals(current, request))
+                {
+                    _tooltipCoverRequests.Remove(tooltip);
+                }
+                request.Dispose();
+            }
+        }
+
+        internal void CloseVideoTooltip(ListBoxItem container, ToolTip tooltip)
+        {
+            if (!ReferenceEquals(tooltip.PlacementTarget, container))
+            {
+                return;
+            }
+
+            CancelTooltipCoverRequest(tooltip);
+            tooltip.IsOpen = false;
+            tooltip.Tag = null;
+            tooltip.Content = null;
+            tooltip.PlacementTarget = null;
+        }
+
+        private void CancelTooltipCoverRequest(ToolTip tooltip)
+        {
+            if (_tooltipCoverRequests.TryGetValue(tooltip, out var request))
+            {
+                request.Cancel();
+            }
+        }
+
         internal Task RegisterThumbnailImageForTestsAsync(Image image) =>
             image.DataContext is VideoItem item
                 ? RegisterThumbnailImageAsync(image, item)
@@ -278,7 +352,6 @@ namespace Airi
             bool isLoaded)
         {
             UnregisterThumbnailImage(image);
-            image.DataContext = newItem;
             if (isLoaded && newItem is not null)
             {
                 await RegisterThumbnailImageAsync(image, newItem);
@@ -592,14 +665,27 @@ namespace Airi
             TryPlayVideo(video);
         }
 
-        private void OnVideoItemMouseEnter(object sender, MouseEventArgs e)
+        private async void OnVideoItemMouseEnter(object sender, MouseEventArgs e)
         {
-            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
+            if (sender is ListBoxItem item &&
+                item.DataContext is VideoItem video &&
+                ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
                 tooltip.PlacementTarget = item;
                 tooltip.Placement = PlacementMode.Relative;
+                tooltip.Content = video;
+                tooltip.Tag = video.ThumbnailSource;
                 UpdateTooltipPosition(item, tooltip, e);
                 tooltip.IsOpen = true;
+
+                try
+                {
+                    await LoadTooltipCoverAsync(item, tooltip, video, VisualTreeHelper.GetDpi(item).DpiScaleX);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Unexpected tooltip cover request failure.", ex);
+                }
             }
         }
 
@@ -615,7 +701,7 @@ namespace Airi
         {
             if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
-                tooltip.IsOpen = false;
+                CloseVideoTooltip(item, tooltip);
             }
         }
 
@@ -678,6 +764,11 @@ namespace Airi
             DetachPerformanceRendering();
             ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
+            foreach (var request in _tooltipCoverRequests.Values.ToArray())
+            {
+                request.Cancel();
+            }
+            _tooltipCoverRequests.Clear();
             foreach (var image in _thumbnailRegistrations.Keys.ToArray())
             {
                 UnregisterThumbnailImage(image);

@@ -157,7 +157,8 @@
                 </Border.Effect>
                 <StackPanel MaxWidth="480">
                     <Border Height="350" CornerRadius="18" ClipToBounds="True" Margin="0,0,0,16">
-                        <Image Source="{Binding ThumbnailSource}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Image Source="{Binding RelativeSource={RelativeSource AncestorType={x:Type ToolTip}}, Path=Tag}"
+                               Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
                     <StackPanel Margin="0,6,0,8">
@@ -474,7 +475,7 @@
                             <Setter Property="ToolTipService.ShowDuration" Value="2147483647"/>
                             <Setter Property="ToolTip">
                                 <Setter.Value>
-                                    <ToolTip Placement="Relative" Content="{Binding Mode=OneWay}" ContentTemplate="{StaticResource VideoTooltipTemplate}"/>
+                                    <ToolTip Placement="Relative" ContentTemplate="{StaticResource VideoTooltipTemplate}"/>
                                 </Setter.Value>
                             </Setter>
                             <EventSetter Event="MouseEnter" Handler="OnVideoItemMouseEnter"/>
