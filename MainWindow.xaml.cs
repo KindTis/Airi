@@ -1,11 +1,18 @@
 using System;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Markup;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
 using Airi.Infrastructure;
 using Airi.Services;
@@ -19,12 +26,15 @@ namespace Airi
     {
         private readonly HttpClient _httpClient = new();
         private readonly ITextTranslationService _translationService;
+        private readonly ThumbnailPerformanceProbe _performanceProbe;
+        private bool _performanceRenderingAttached;
         public MainViewModel ViewModel { get; }
 
         public MainWindow()
         {
             InitializeComponent();
             AppLogger.Info("Initializing MainWindow.");
+            _performanceProbe = ThumbnailPerformanceProbe.Disabled;
 
             var deeplAuthKey = Environment.GetEnvironmentVariable("DEEPL_AUTH_KEY");
             if (string.IsNullOrWhiteSpace(deeplAuthKey))
@@ -61,8 +71,25 @@ namespace Airi
                 crawlerSessionProvider,
                 oneFourOneJavSource,
                 crawlerSessionFactory);
+            WireViewModelEvents();
+        }
+
+        internal MainWindow(
+            MainViewModel viewModel,
+            ThumbnailPerformanceProbe? performanceProbe = null)
+        {
+            InitializeComponent();
+            _translationService = NullTranslationService.Instance;
+            _performanceProbe = performanceProbe ?? ThumbnailPerformanceProbe.Disabled;
+            ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+            WireViewModelEvents();
+        }
+
+        private void WireViewModelEvents()
+        {
             DataContext = ViewModel;
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
+            ViewModel.Videos.CollectionChanged += OnPerformanceVideosChanged;
             Loaded += OnLoaded;
         }
 
@@ -98,8 +125,189 @@ namespace Airi
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             AppLogger.Info("MainWindow loaded. Starting view model initialization.");
+            _performanceProbe.TryMark(StartupTimingMarker.MainWindowLoaded);
             await ViewModel.InitializeAsync();
             AppLogger.Info("View model initialization complete.");
+        }
+
+        private void OnPerformanceVideosChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (!_performanceProbe.IsActive || ViewModel.Videos.Count == 0 || _performanceRenderingAttached)
+            {
+                return;
+            }
+
+            CompositionTarget.Rendering += OnPerformanceRendering;
+            _performanceRenderingAttached = true;
+        }
+
+        private void OnPerformanceRendering(object? sender, EventArgs e)
+        {
+            if (!_performanceProbe.IsActive)
+            {
+                DetachPerformanceRendering();
+                return;
+            }
+
+            var realizedContainers = EnumerableRealizedVideoContainers();
+            var meaningfulCard = realizedContainers.FirstOrDefault(container =>
+                container.IsVisible && container.ActualWidth > 0 && container.ActualHeight > 0);
+            if (meaningfulCard is not null && !ViewModel.ShowVideoSkeleton)
+            {
+                _performanceProbe.TryMark(StartupTimingMarker.VisualFirstMeaningfulCard);
+            }
+
+            foreach (var container in realizedContainers)
+            {
+                foreach (var image in EnumerateVisualDescendants<Image>(container))
+                {
+                    if (IsEligibleLegacyThumbnail(image))
+                    {
+                        _performanceProbe.TryMark(StartupTimingMarker.VisualFirstThumbnail);
+                        break;
+                    }
+                }
+
+                if (_performanceProbe.HasMarker(StartupTimingMarker.VisualFirstThumbnail))
+                {
+                    break;
+                }
+            }
+
+            if (_performanceProbe.HasMarker(StartupTimingMarker.VisualFirstMeaningfulCard) &&
+                _performanceProbe.HasMarker(StartupTimingMarker.VisualFirstThumbnail))
+            {
+                DetachPerformanceRendering();
+            }
+        }
+
+        private List<ListBoxItem> EnumerableRealizedVideoContainers()
+        {
+            var result = new List<ListBoxItem>();
+            for (var index = 0; index < VideoList.Items.Count; index++)
+            {
+                if (VideoList.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem container)
+                {
+                    result.Add(container);
+                }
+            }
+
+            return result;
+        }
+
+        private static IEnumerable<T> EnumerateVisualDescendants<T>(DependencyObject parent)
+            where T : DependencyObject
+        {
+            var count = VisualTreeHelper.GetChildrenCount(parent);
+            for (var index = 0; index < count; index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is T match)
+                {
+                    yield return match;
+                }
+
+                foreach (var descendant in EnumerateVisualDescendants<T>(child))
+                {
+                    yield return descendant;
+                }
+            }
+        }
+
+        private static bool IsEligibleLegacyThumbnail(Image image)
+        {
+            if (!string.Equals(image.Tag as string, "MainCardThumbnail", StringComparison.Ordinal) ||
+                image.DataContext is not VideoItem item ||
+                image.ActualWidth <= 0 ||
+                image.ActualHeight <= 0 ||
+                !image.IsVisible ||
+                BindingOperations.GetBindingExpression(image, Image.SourceProperty)?.Status != BindingStatus.Active ||
+                image.Source is not BitmapSource bitmapSource ||
+                bitmapSource.PixelWidth <= 0 ||
+                bitmapSource.PixelHeight <= 0)
+            {
+                return false;
+            }
+
+            if (bitmapSource is BitmapImage downloading && downloading.IsDownloading)
+            {
+                return false;
+            }
+
+            var expected = LibraryPathHelper.ResolveToAbsolute(item.ThumbnailPath);
+            var fallback = LibraryPathHelper.ResolveToAbsolute("resources/noimage.jpg");
+            if (string.IsNullOrWhiteSpace(expected) ||
+                string.Equals(expected, fallback, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var sourceUri = bitmapSource is BitmapImage bitmapImage
+                ? bitmapImage.UriSource
+                : Uri.TryCreate(bitmapSource.ToString(), UriKind.Absolute, out var convertedUri)
+                    ? convertedUri
+                    : null;
+            if (sourceUri is null || !sourceUri.IsFile)
+            {
+                return false;
+            }
+
+            return string.Equals(
+                Path.GetFullPath(sourceUri.LocalPath),
+                Path.GetFullPath(expected),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal string GetLegacyThumbnailDiagnostic()
+        {
+            var images = EnumerableRealizedVideoContainers()
+                .SelectMany(container => EnumerateVisualDescendants<Image>(container))
+                .Where(image => string.Equals(image.Tag as string, "MainCardThumbnail", StringComparison.Ordinal))
+                .Select(image =>
+                {
+                    var source = image.Source;
+                    var bitmap = source as BitmapSource;
+                    var uri = (source as BitmapImage)?.UriSource?.ToString() ?? "<none>";
+                    var baseUri = (source as IUriContext)?.BaseUri?.ToString() ?? "<none>";
+                    var binding = BindingOperations.GetBindingExpression(image, Image.SourceProperty)?.Status.ToString() ?? "<none>";
+                    return $"source={source?.GetType().FullName ?? "<null>"}; value={source}; uri={uri}; baseUri={baseUri}; pixels={bitmap?.PixelWidth ?? 0}x{bitmap?.PixelHeight ?? 0}; actual={image.ActualWidth}x{image.ActualHeight}; visible={image.IsVisible}; binding={binding}; data={image.DataContext?.GetType().Name ?? "<null>"}";
+                });
+            return string.Join(" | ", images);
+        }
+
+        internal int GetRealizedVideoContainerCount() => EnumerableRealizedVideoContainers().Count;
+
+        internal ScrollViewer? GetVideoScrollViewer() =>
+            EnumerateVisualDescendants<ScrollViewer>(VideoList).FirstOrDefault();
+
+        internal Size GetFirstVideoContainerExtent()
+        {
+            var container = EnumerableRealizedVideoContainers().FirstOrDefault();
+            return container is null
+                ? new Size(0, 0)
+                : new Size(container.ActualWidth, container.ActualHeight);
+        }
+
+        internal void ScrollVideoToIndex(int index)
+        {
+            if (index < 0 || index >= VideoList.Items.Count)
+            {
+                return;
+            }
+
+            VideoList.ScrollIntoView(VideoList.Items[index]);
+            UpdateLayout();
+        }
+
+        private void DetachPerformanceRendering()
+        {
+            if (!_performanceRenderingAttached)
+            {
+                return;
+            }
+
+            CompositionTarget.Rendering -= OnPerformanceRendering;
+            _performanceRenderingAttached = false;
         }
 
         private void VideoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -201,6 +409,8 @@ namespace Airi
         protected override void OnClosed(System.EventArgs e)
         {
             base.OnClosed(e);
+            DetachPerformanceRendering();
+            ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
             _httpClient.Dispose();
             if (_translationService is IDisposable disposableTranslation)

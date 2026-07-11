@@ -33,6 +33,7 @@ namespace Airi.ViewModels
         private readonly CrawlerSessionProvider _crawlerSessionProvider;
         private readonly OneFourOneJavMetaSource _oneFourOneJavSource;
         private readonly IOneFourOneJavCrawlerSessionFactory _crawlerSessionFactory;
+        private readonly ThumbnailPerformanceProbe _performanceProbe;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
@@ -70,6 +71,7 @@ namespace Airi.ViewModels
         private SortOption _selectedSortOption;
         private bool _showMissingMetadataOnly;
         private bool _isInitialLoading = true;
+        private bool _startupPublishesStoredLibrary;
 
         public ObservableCollection<VideoItem> Videos { get; }
         public ObservableCollection<string> Actors { get; }
@@ -109,6 +111,25 @@ namespace Airi.ViewModels
             CrawlerSessionProvider crawlerSessionProvider,
             OneFourOneJavMetaSource oneFourOneJavSource,
             IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory)
+            : this(
+                libraryStore,
+                libraryScanner,
+                webMetadataService,
+                crawlerSessionProvider,
+                oneFourOneJavSource,
+                crawlerSessionFactory,
+                ThumbnailPerformanceProbe.Disabled)
+        {
+        }
+
+        internal MainViewModel(
+            LibraryStore libraryStore,
+            LibraryScanner libraryScanner,
+            WebMetadataService webMetadataService,
+            CrawlerSessionProvider crawlerSessionProvider,
+            OneFourOneJavMetaSource oneFourOneJavSource,
+            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
+            ThumbnailPerformanceProbe performanceProbe)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
@@ -116,6 +137,7 @@ namespace Airi.ViewModels
             _crawlerSessionProvider = crawlerSessionProvider ?? throw new ArgumentNullException(nameof(crawlerSessionProvider));
             _oneFourOneJavSource = oneFourOneJavSource ?? throw new ArgumentNullException(nameof(oneFourOneJavSource));
             _crawlerSessionFactory = crawlerSessionFactory ?? throw new ArgumentNullException(nameof(crawlerSessionFactory));
+            _performanceProbe = performanceProbe ?? throw new ArgumentNullException(nameof(performanceProbe));
             var applicationDispatcher = Application.Current?.Dispatcher;
             _dispatcher = applicationDispatcher is not null && applicationDispatcher.CheckAccess()
                 ? applicationDispatcher
@@ -293,6 +315,8 @@ namespace Airi.ViewModels
 
                 await _dispatcher.InvokeAsync(() => StatusMessage = "Loading library...");
                 var loadedLibrary = await _libraryStore.LoadAsync().ConfigureAwait(false);
+                _performanceProbe.TryMark(StartupTimingMarker.LibraryLoaded);
+                _startupPublishesStoredLibrary = loadedLibrary.Videos.Count > 0;
                 var mappedVideos = loadedLibrary.Videos.Select(MapVideo).ToList();
                 AppLogger.Info($"Library loaded. Videos: {loadedLibrary.Videos.Count}.");
 
@@ -331,6 +355,16 @@ namespace Airi.ViewModels
                         var item = mappedVideos[currentIndex + offset];
                         RegisterVideo(item);
                         Videos.Add(item);
+                    }
+
+                    if (currentIndex == 0 && batchCount > 0)
+                    {
+                        _performanceProbe.TryMark(StartupTimingMarker.FirstBatchPublished);
+                    }
+
+                    if (currentIndex + batchCount >= mappedVideos.Count)
+                    {
+                        _performanceProbe.TryMark(StartupTimingMarker.AllItemsPublished);
                     }
                 }, DispatcherPriority.Background).Task.ConfigureAwait(false);
 
@@ -408,6 +442,7 @@ namespace Airi.ViewModels
 
                     UpdateStatus(updateMessage: false);
                 });
+                _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
             }
         }
 
@@ -808,6 +843,7 @@ namespace Airi.ViewModels
                 }
             }
 
+            var firstScanItem = true;
             foreach (var newFile in result.NewFiles)
             {
                 var entry = CreateEntryFromSnapshot(newFile);
@@ -817,6 +853,17 @@ namespace Airi.ViewModels
                 Videos.Add(item);
                 AppLogger.Info($"Added new library entry: {entry.Path}");
                 EnqueueMetadataForProcessing(entry.Path);
+
+                if (!_startupPublishesStoredLibrary && firstScanItem)
+                {
+                    _performanceProbe.TryMark(StartupTimingMarker.FirstBatchPublished);
+                    firstScanItem = false;
+                }
+            }
+
+            if (!_startupPublishesStoredLibrary && result.NewFiles.Count > 0)
+            {
+                _performanceProbe.TryMark(StartupTimingMarker.AllItemsPublished);
             }
 
             var scanTimestamp = DateTime.UtcNow;

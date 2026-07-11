@@ -9,11 +9,19 @@ namespace Airi
     /// </summary>
     public partial class App : Application
     {
+        internal bool SuppressMainWindowCreation { get; set; }
+
         protected override void OnStartup(StartupEventArgs e)
         {
             AppLogger.Initialize(AppDomain.CurrentDomain.BaseDirectory);
             AppLogger.Info("Application starting up.");
             base.OnStartup(e);
+
+            if (!SuppressMainWindowCreation)
+            {
+                MainWindow = new MainWindow();
+                MainWindow.Show();
+            }
         }
 
         protected override void OnExit(ExitEventArgs e)
