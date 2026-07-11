@@ -77,7 +77,8 @@ namespace Airi
                 webMetadataService,
                 crawlerSessionProvider,
                 oneFourOneJavSource,
-                crawlerSessionFactory);
+                crawlerSessionFactory,
+                thumbnailImageLoader);
             WireViewModelEvents();
         }
 

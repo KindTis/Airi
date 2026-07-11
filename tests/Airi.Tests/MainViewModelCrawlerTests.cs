@@ -520,7 +520,8 @@ namespace Airi.Tests
                     metadataService,
                     Provider,
                     oneFourOneJavSource,
-                    Factory);
+                    Factory,
+                    new TestThumbnailImageLoader());
             }
 
             public void Dispose()

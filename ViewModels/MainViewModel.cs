@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -18,11 +19,52 @@ using Airi.Web;
 
 namespace Airi.ViewModels
 {
+    internal readonly record struct ThumbnailRuntimeDiagnostics(
+        bool Exists,
+        long RuntimeIdentity,
+        long Generation,
+        string? Outcome,
+        bool HasInFlight,
+        string? SourcePath,
+        int DecodePixelWidth)
+    {
+        public static ThumbnailRuntimeDiagnostics Missing { get; } =
+            new(false, 0, 0, null, false, null, 0);
+    }
+
     /// <summary>
     /// Loads persisted library data, exposes UI-facing collections, and coordinates scanning/diff and web metadata enrichment.
     /// </summary>
-    public class MainViewModel : INotifyPropertyChanged
+    public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
+        private enum ThumbnailRequestOutcome
+        {
+            Loading,
+            Loaded,
+            Failed,
+            Cancelled
+        }
+
+        private sealed class ThumbnailRuntimeState
+        {
+            public long RuntimeIdentity { get; init; }
+            public long Generation { get; set; }
+            public ThumbnailRealization? Realization { get; set; }
+            public ThumbnailInFlight? InFlight { get; set; }
+        }
+
+        private sealed record ThumbnailRealization(
+            long Generation,
+            Guid Identity,
+            string SourcePath,
+            int DecodePixelWidth,
+            ThumbnailRequestOutcome Outcome);
+
+        private sealed record ThumbnailInFlight(
+            long Generation,
+            Guid Identity,
+            CancellationTokenSource Cancellation);
+
         private const string AllActorsLabel = "All Actors";
         private const int InitialLoadBatchSize = 40;
         private readonly Random _random = new();
@@ -34,11 +76,16 @@ namespace Airi.ViewModels
         private readonly OneFourOneJavMetaSource _oneFourOneJavSource;
         private readonly IOneFourOneJavCrawlerSessionFactory _crawlerSessionFactory;
         private readonly ThumbnailPerformanceProbe _performanceProbe;
+        private readonly IThumbnailImageLoader _thumbnailImageLoader;
         private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
         private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, string> _thumbnailUriCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, string> _thumbnailUriCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _thumbnailRuntimeLock = new();
+        private readonly Dictionary<VideoItem, ThumbnailRuntimeState> _thumbnailRuntime = new(ReferenceEqualityComparer.Instance);
+        private long _nextThumbnailRuntimeIdentity;
+        private bool _disposed;
         private Task _metadataProcessingTask = Task.CompletedTask;
         private readonly string _fallbackThumbnailUri;
         private bool _isInitialized;
@@ -110,7 +157,8 @@ namespace Airi.ViewModels
             WebMetadataService webMetadataService,
             CrawlerSessionProvider crawlerSessionProvider,
             OneFourOneJavMetaSource oneFourOneJavSource,
-            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory)
+            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
+            IThumbnailImageLoader thumbnailImageLoader)
             : this(
                 libraryStore,
                 libraryScanner,
@@ -118,7 +166,8 @@ namespace Airi.ViewModels
                 crawlerSessionProvider,
                 oneFourOneJavSource,
                 crawlerSessionFactory,
-                ThumbnailPerformanceProbe.Disabled)
+                ThumbnailPerformanceProbe.Disabled,
+                thumbnailImageLoader)
         {
         }
 
@@ -129,7 +178,8 @@ namespace Airi.ViewModels
             CrawlerSessionProvider crawlerSessionProvider,
             OneFourOneJavMetaSource oneFourOneJavSource,
             IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
-            ThumbnailPerformanceProbe performanceProbe)
+            ThumbnailPerformanceProbe performanceProbe,
+            IThumbnailImageLoader thumbnailImageLoader)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
@@ -138,6 +188,7 @@ namespace Airi.ViewModels
             _oneFourOneJavSource = oneFourOneJavSource ?? throw new ArgumentNullException(nameof(oneFourOneJavSource));
             _crawlerSessionFactory = crawlerSessionFactory ?? throw new ArgumentNullException(nameof(crawlerSessionFactory));
             _performanceProbe = performanceProbe ?? throw new ArgumentNullException(nameof(performanceProbe));
+            _thumbnailImageLoader = thumbnailImageLoader ?? throw new ArgumentNullException(nameof(thumbnailImageLoader));
             var applicationDispatcher = Application.Current?.Dispatcher;
             _dispatcher = applicationDispatcher is not null && applicationDispatcher.CheckAccess()
                 ? applicationDispatcher
@@ -297,6 +348,108 @@ namespace Airi.ViewModels
 
         public bool ShowVideoSkeleton => IsInitialLoading || (IsScanning && Videos.Count == 0);
         public bool ShowActorSkeleton => IsInitialLoading || (IsScanning && Actors.Count <= 1);
+
+        public Task RequestThumbnailAsync(
+            VideoItem item,
+            int decodePixelWidth,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            _dispatcher.VerifyAccess();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            decodePixelWidth = Math.Clamp(decodePixelWidth, 64, 520);
+            var sourcePath = NormalizeThumbnailSourcePath(item.ThumbnailPath);
+            long generation;
+            Guid identity;
+            CancellationTokenSource requestCancellation;
+
+            lock (_thumbnailRuntimeLock)
+            {
+                var state = GetOrCreateThumbnailRuntimeState(item);
+                if (state.Realization is { } existing &&
+                    StringComparer.OrdinalIgnoreCase.Equals(existing.SourcePath, sourcePath) &&
+                    existing.DecodePixelWidth == decodePixelWidth)
+                {
+                    return Task.CompletedTask;
+                }
+
+                state.InFlight?.Cancellation.Cancel();
+                state.InFlight?.Cancellation.Dispose();
+                state.Generation++;
+                generation = state.Generation;
+                identity = Guid.NewGuid();
+                requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                state.Realization = new ThumbnailRealization(
+                    generation,
+                    identity,
+                    sourcePath,
+                    decodePixelWidth,
+                    ThumbnailRequestOutcome.Loading);
+                state.InFlight = new ThumbnailInFlight(generation, identity, requestCancellation);
+            }
+
+            item.BeginThumbnailLoad(_thumbnailImageLoader.FallbackSource);
+            return LoadAndApplyThumbnailAsync(
+                item,
+                item.ThumbnailPath,
+                sourcePath,
+                decodePixelWidth,
+                generation,
+                identity,
+                requestCancellation.Token);
+        }
+
+        public void ReleaseThumbnail(VideoItem item)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            _dispatcher.VerifyAccess();
+
+            lock (_thumbnailRuntimeLock)
+            {
+                if (_thumbnailRuntime.TryGetValue(item, out var state) &&
+                    (state.Realization is not null || state.InFlight is not null))
+                {
+                    state.Generation++;
+                    state.InFlight?.Cancellation.Cancel();
+                    state.InFlight?.Cancellation.Dispose();
+                    state.InFlight = null;
+                    state.Realization = null;
+                }
+            }
+
+            item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
+        }
+
+        internal long GetOrCreateThumbnailRuntimeIdentity(VideoItem item)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            _dispatcher.VerifyAccess();
+            lock (_thumbnailRuntimeLock)
+            {
+                return GetOrCreateThumbnailRuntimeState(item).RuntimeIdentity;
+            }
+        }
+
+        internal ThumbnailRuntimeDiagnostics GetThumbnailRuntimeDiagnostics(VideoItem item)
+        {
+            lock (_thumbnailRuntimeLock)
+            {
+                if (!_thumbnailRuntime.TryGetValue(item, out var state))
+                {
+                    return ThumbnailRuntimeDiagnostics.Missing;
+                }
+
+                return new ThumbnailRuntimeDiagnostics(
+                    true,
+                    state.RuntimeIdentity,
+                    state.Generation,
+                    state.Realization?.Outcome.ToString(),
+                    state.InFlight is not null,
+                    state.Realization?.SourcePath,
+                    state.Realization?.DecodePixelWidth ?? 0);
+            }
+        }
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
@@ -977,21 +1130,24 @@ namespace Airi.ViewModels
                 var index = Videos.IndexOf(existing);
                 if (index >= 0)
                 {
+                    RemoveThumbnailRuntimeState(existing);
                     Videos[index] = mapped;
+                    RegisterVideo(mapped);
                 }
                 else
                 {
+                    RemoveThumbnailRuntimeState(existing);
                     Videos.Add(mapped);
+                    RegisterVideo(mapped);
                 }
             }
             else
             {
                 Videos.Add(mapped);
+                RegisterVideo(mapped);
             }
 
-            RegisterVideo(mapped);
-
-            if (SelectedVideo?.LibraryPath == normalized)
+            if (ReferenceEquals(SelectedVideo, existing) || SelectedVideo?.LibraryPath == normalized)
             {
                 SelectedVideo = mapped;
             }
@@ -1104,6 +1260,8 @@ namespace Airi.ViewModels
 
             await _dispatcher.InvokeAsync(() =>
             {
+                var oldThumbnailPath = item.ThumbnailPath;
+                var realizedWidth = GetRealizedThumbnailWidth(item);
                 item.Title = title;
                 item.ReleaseDate = result.ReleaseDate;
                 item.Actors = actors;
@@ -1111,6 +1269,15 @@ namespace Airi.ViewModels
                 item.Description = description;
                 item.ThumbnailPath = thumbnailPath;
                 item.ThumbnailUri = thumbnailUri;
+
+                if (!StringComparer.OrdinalIgnoreCase.Equals(oldThumbnailPath, thumbnailPath))
+                {
+                    ReleaseThumbnail(item);
+                    if (realizedWidth > 0)
+                    {
+                        _ = RequestThumbnailAsync(item, realizedWidth);
+                    }
+                }
             });
 
             UpdateLibraryEntry(item.LibraryPath, entry =>
@@ -1181,6 +1348,26 @@ namespace Airi.ViewModels
 
         private void OnVideosCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
+            if (e.OldItems is not null)
+            {
+                foreach (var oldItem in e.OldItems.OfType<VideoItem>())
+                {
+                    RemoveThumbnailRuntimeState(oldItem);
+                }
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                VideoItem[] removed;
+                lock (_thumbnailRuntimeLock)
+                {
+                    removed = _thumbnailRuntime.Keys.Where(item => !Videos.Contains(item)).ToArray();
+                }
+                foreach (var item in removed)
+                {
+                    RemoveThumbnailRuntimeState(item);
+                }
+            }
+
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
         }
 
@@ -1235,8 +1422,235 @@ namespace Airi.ViewModels
                 ThumbnailPath = entry.Meta.Thumbnail
             };
 
+            item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
             item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available, createdUtc);
             return item;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _dispatcher.VerifyAccess();
+            _disposed = true;
+            Videos.CollectionChanged -= OnVideosCollectionChanged;
+            Actors.CollectionChanged -= OnActorsCollectionChanged;
+
+            VideoItem[] items;
+            lock (_thumbnailRuntimeLock)
+            {
+                items = _thumbnailRuntime.Keys.ToArray();
+            }
+            foreach (var item in items)
+            {
+                RemoveThumbnailRuntimeState(item);
+            }
+            DisposeCrawler();
+        }
+
+        private async Task LoadAndApplyThumbnailAsync(
+            VideoItem item,
+            string originalThumbnailPath,
+            string sourcePath,
+            int decodePixelWidth,
+            long generation,
+            Guid identity,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await _thumbnailImageLoader.LoadAsync(
+                    originalThumbnailPath,
+                    decodePixelWidth,
+                    cancellationToken).ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() =>
+                    CompleteThumbnailRequest(
+                        item,
+                        sourcePath,
+                        decodePixelWidth,
+                        generation,
+                        identity,
+                        result));
+            }
+            catch (OperationCanceledException)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                    CompleteThumbnailCancellation(
+                        item,
+                        sourcePath,
+                        decodePixelWidth,
+                        generation,
+                        identity));
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Unexpected thumbnail request failure.", ex);
+                await _dispatcher.InvokeAsync(() =>
+                    CompleteThumbnailRequest(
+                        item,
+                        sourcePath,
+                        decodePixelWidth,
+                        generation,
+                        identity,
+                        new ThumbnailImageResult(_thumbnailImageLoader.FallbackSource, true)));
+            }
+        }
+
+        private void CompleteThumbnailRequest(
+            VideoItem item,
+            string sourcePath,
+            int decodePixelWidth,
+            long generation,
+            Guid identity,
+            ThumbnailImageResult result)
+        {
+            _dispatcher.VerifyAccess();
+            lock (_thumbnailRuntimeLock)
+            {
+                if (!TryGetCurrentThumbnailRequest(
+                        item, sourcePath, decodePixelWidth, generation, identity,
+                        out var state, out var realization, out var slot))
+                {
+                    return;
+                }
+
+                if (result.IsFallback)
+                {
+                    item.FailThumbnailLoad(_thumbnailImageLoader.FallbackSource);
+                    state.Realization = realization with { Outcome = ThumbnailRequestOutcome.Failed };
+                }
+                else
+                {
+                    item.CompleteThumbnailLoad(result.Source);
+                    state.Realization = realization with { Outcome = ThumbnailRequestOutcome.Loaded };
+                    _performanceProbe.TryMark(StartupTimingMarker.FirstThumbnailApplied);
+                }
+
+                slot.Cancellation.Dispose();
+                state.InFlight = null;
+            }
+        }
+
+        private void CompleteThumbnailCancellation(
+            VideoItem item,
+            string sourcePath,
+            int decodePixelWidth,
+            long generation,
+            Guid identity)
+        {
+            _dispatcher.VerifyAccess();
+            lock (_thumbnailRuntimeLock)
+            {
+                if (!TryGetCurrentThumbnailRequest(
+                        item, sourcePath, decodePixelWidth, generation, identity,
+                        out var state, out var realization, out var slot))
+                {
+                    return;
+                }
+
+                item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
+                state.Realization = realization with { Outcome = ThumbnailRequestOutcome.Cancelled };
+                slot.Cancellation.Dispose();
+                state.InFlight = null;
+            }
+        }
+
+        private bool TryGetCurrentThumbnailRequest(
+            VideoItem item,
+            string sourcePath,
+            int decodePixelWidth,
+            long generation,
+            Guid identity,
+            out ThumbnailRuntimeState state,
+            out ThumbnailRealization realization,
+            out ThumbnailInFlight slot)
+        {
+            if (_thumbnailRuntime.TryGetValue(item, out state!) &&
+                state.Generation == generation &&
+                state.Realization is { } currentRealization &&
+                currentRealization.Generation == generation &&
+                currentRealization.Identity == identity &&
+                StringComparer.OrdinalIgnoreCase.Equals(currentRealization.SourcePath, sourcePath) &&
+                currentRealization.DecodePixelWidth == decodePixelWidth &&
+                state.InFlight is { } currentSlot &&
+                currentSlot.Generation == generation &&
+                currentSlot.Identity == identity &&
+                item.ThumbnailLoadState == ThumbnailLoadState.Loading)
+            {
+                realization = currentRealization;
+                slot = currentSlot;
+                return true;
+            }
+
+            realization = null!;
+            slot = null!;
+            return false;
+        }
+
+        private ThumbnailRuntimeState GetOrCreateThumbnailRuntimeState(VideoItem item)
+        {
+            if (_thumbnailRuntime.TryGetValue(item, out var state))
+            {
+                return state;
+            }
+
+            state = new ThumbnailRuntimeState
+            {
+                RuntimeIdentity = Interlocked.Increment(ref _nextThumbnailRuntimeIdentity)
+            };
+            _thumbnailRuntime.Add(item, state);
+            return state;
+        }
+
+        private void RemoveThumbnailRuntimeState(VideoItem item)
+        {
+            ThumbnailInFlight? slot = null;
+            lock (_thumbnailRuntimeLock)
+            {
+                if (_thumbnailRuntime.Remove(item, out var state))
+                {
+                    slot = state.InFlight;
+                }
+            }
+
+            slot?.Cancellation.Cancel();
+            slot?.Cancellation.Dispose();
+            item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
+        }
+
+        private int GetRealizedThumbnailWidth(VideoItem item)
+        {
+            lock (_thumbnailRuntimeLock)
+            {
+                return _thumbnailRuntime.TryGetValue(item, out var state)
+                    ? state.Realization?.DecodePixelWidth ?? 0
+                    : 0;
+            }
+        }
+
+        private static string NormalizeThumbnailSourcePath(string thumbnailPath)
+        {
+            if (string.IsNullOrWhiteSpace(thumbnailPath))
+            {
+                return string.Empty;
+            }
+
+            if (Uri.TryCreate(thumbnailPath.Trim(), UriKind.Absolute, out var uri) && !uri.IsFile)
+            {
+                return "uri:" + thumbnailPath.Trim().ToUpperInvariant();
+            }
+
+            try
+            {
+                return Path.GetFullPath(LibraryPathHelper.ResolveToAbsolute(thumbnailPath));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return "path:" + thumbnailPath.Trim();
+            }
         }
 
         private VideoEntry CreateEntryFromSnapshot(FileSnapshot snapshot)

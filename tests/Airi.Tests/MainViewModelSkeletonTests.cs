@@ -163,7 +163,8 @@ namespace Airi.Tests
                     metadataService,
                     crawlerSessionProvider,
                     oneFourOneJavSource,
-                    crawlerSessionFactory);
+                    crawlerSessionFactory,
+                    new TestThumbnailImageLoader());
             }
 
             public void Dispose()

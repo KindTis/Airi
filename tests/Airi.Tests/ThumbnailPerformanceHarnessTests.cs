@@ -390,7 +390,8 @@ public sealed class ThumbnailPerformanceHarnessTests
             provider,
             source,
             new NoopCrawlerFactory(),
-            probe);
+            probe,
+            new TestThumbnailImageLoader());
     }
 
     private static void WriteJpeg(string path)
