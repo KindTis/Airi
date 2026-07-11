@@ -20,7 +20,7 @@
 | T10 | Task 10 / 모든 library mutation 직렬화 | manual fetch, auto metadata, editor dialog/save가 실행 시점에 같은 lease identity 규칙을 사용하고 store save 최대 동시 실행 수가 1이다. scan status와 read-only interaction을 보존한다. | `ViewModels/MainViewModel.cs`, `MainWindow.xaml.cs`, startup/crawler tests | 구현 | mutation race red/green tests; crawler/read-only 회귀; Debug build | 통과 |  |
 | T11-1 | Task 11 / virtualization·recycling 통합 hard gate | 200/1,000 항목의 top/middle/last container가 계산 상한 이하이고 request membership, file-open bound, concurrency, LRU, source owner bound가 모두 충족된다. | virtualization/realization/loader/VM tests, `Infrastructure/ThumbnailPerformanceProbe.cs` | 구현 | 구조 통합 테스트 전체; 500ms steady barrier; 이동 구간 maximum과 실제 decoded owner gauge hard-gate assertions | 통과 | 140 position의 traversal maximum 위반 0, 240 checkpoint의 owner-bound 위반 0이다. |
 | T11-2 | Task 11 / Release cold·warm 측정 | 네 dataset을 각각 새 Release process에서 5회 실행해 40 phase snapshot을 만들고 모든 적용 hard gate가 5/5 통과한다. baseline 대비 관찰 목표는 실제 median/worst로 기록하며 추정하지 않는다. | performance harness, runner, raw/summary JSON, 성능 문서 | 구현 | Release build; phase boundary; memory/GC checkpoint; baseline/after 재측정; schema/fixture/quiescence/environment 검증 | 통과 | schema v2 baseline 5개와 after 20개를 재측정했고 local/cross-dataset gate가 모두 5/5 통과했다. |
-| T12 | Task 12 / 전체 회귀·smoke·graph | 관련 회귀, 전체 테스트, Debug build 경고 0, production GUI smoke, `graphify update .`를 완료하고 사용자 변경과 관련 없는 파일은 건드리지 않는다. | 전체 저장소, `graphify-out/*` | 보완 후 재검증 예정 | 계획서의 관련 필터; 전체 Debug test/build; 실제 GUI 검색·필터·editor lease/save·종료/재실행; graphify update/status | 재검증 예정 | 계측 보완과 재측정 뒤 전체 검증을 다시 실행한다. `graphify-out/`은 기존 `.gitignore` 대상이며 추적 파일이 0개다. |
+| T12 | Task 12 / 전체 회귀·smoke·graph | 관련 회귀, 전체 테스트, Debug build 경고 0, production GUI smoke, `graphify update .`를 완료하고 사용자 변경과 관련 없는 파일은 건드리지 않는다. | 전체 저장소, `graphify-out/*` | 구현 | 계획서의 관련 필터; 전체 Debug test/build; 실제 GUI 검색·필터·editor lease/save·종료/재실행; graphify update/status | 통과 | `graphify-out/`은 기존 `.gitignore` 대상이며 추적 파일이 0개라 갱신 결과를 별도 commit하지 않는다. |
 
 ## 구현 가정
 
@@ -77,9 +77,9 @@
 - Task 11 Release runner는 synthetic small/medium/stress와 current fixture를 자동 생성·검증하고, 같은 process의 cold snapshot seal→구조 예열→registration/runtime/item-owner 0 cleanup→shared-loader warm startup 순서를 수행한다. commit `c2450a9` 기준 20개 raw와 40개 phase가 모두 valid, local gate 및 medium/stress guard row가 cold/warm 각각 5/5 통과했다.
 - 140개 position의 traversal maximum은 최대 36/limit 40, 240개 checkpoint owner-bound 위반은 0, dispatcher 1,200 batch 최대는 28.1933ms였다. baseline/current와 medium→stress의 firstSteady·checkpointMax working set/managed heap 및 GC delta median/worst를 성능 문서에 기록했다.
 - 최종 schema v2 current baseline 대비 first-card median은 cold +84.94%, warm +95.15%, first-thumbnail median은 cold +16.33%, warm -7.07%다. thumbnail 50% 관찰 목표는 미달했지만 hard gate가 아니다.
-- Task 12 관련 회귀 필터 31개와 전체 Debug 테스트 203개가 실패 0/건너뜀 0으로 통과했다. Debug/Release build는 모두 경고 0/오류 0이었다.
-- 실제 Debug GUI에서 초기 5개 카드, 검색 결과 1개, Missing Metadata Only의 5개 유지, F1 editor 동안 Fetch Metadata 차단, editor save 뒤 lease 해제와 상태 갱신, 종료 후 재실행 시 `videos.json` 5개 복원을 확인했다. 대용량 top/middle/last, Home/End, pixel scroll, stale source와 first-batch 선행 조건은 200/1,000개 WPF 구조 테스트 및 performance harness hard gate로 보완했다.
-- `graphify update .`는 성공해 1,631 nodes, 3,562 edges, 118 communities로 재구축됐다. `graphify-out/`은 기준 commit부터 `.gitignore` 대상이고 `git ls-files graphify-out` 결과가 0이므로 계획의 `git add graphify-out`/commit 단계는 적용 불가능하며 강제 추적하지 않았다.
+- 최종 Task 12 관련 회귀 필터 31개와 전체 Debug 테스트 208개가 실패 0/건너뜀 0으로 통과했다. Debug/Release build는 모두 경고 0/오류 0이었다.
+- 최종 Debug GUI에서 초기 5개 카드, 검색 결과 1개, Missing Metadata Only의 5개 유지, F1 editor 동안 Fetch Metadata 차단, 취소 뒤 lease 해제, 종료 후 재실행 시 `videos.json` 5개 복원을 확인했다. 대용량 top/middle/last, Home/End, pixel scroll, stale source와 first-batch 선행 조건은 200/1,000개 WPF 구조 테스트 및 performance harness hard gate로 보완했다.
+- 최종 `graphify update .`는 성공해 1,660 nodes, 3,653 edges, 122 communities로 재구축됐다. `graphify-out/`은 기준 commit부터 `.gitignore` 대상이고 `git ls-files graphify-out` 결과가 0이므로 계획의 `git add graphify-out`/commit 단계는 적용 불가능하며 강제 추적하지 않았다.
 
 ## 남은 리스크
 
