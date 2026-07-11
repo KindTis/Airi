@@ -25,6 +25,13 @@ namespace Airi
 {
     public partial class MainWindow : Window
     {
+        internal readonly record struct RealizedThumbnailBindingDiagnostic(
+            int ImageIdentity,
+            long ItemIdentity,
+            bool RegistrationMatchesDataContext,
+            bool SourceMatchesCurrentItem,
+            ThumbnailLoadState LoadState);
+
         private readonly HttpClient _httpClient = new();
         private readonly ITextTranslationService _translationService;
         private readonly ThumbnailPerformanceProbe _performanceProbe;
@@ -510,6 +517,29 @@ namespace Airi
             _thumbnailRegistrations.Values
                 .DistinctBy(item => RuntimeHelpers.GetHashCode(item))
                 .Count(item => item.ThumbnailSource is { } source && !ReferenceEquals(source, fallback));
+
+        internal IReadOnlyList<RealizedThumbnailBindingDiagnostic> GetRealizedThumbnailBindingDiagnostics() =>
+            EnumerableRealizedVideoContainers()
+                .SelectMany(container => EnumerateVisualDescendants<Image>(container))
+                .Where(image => string.Equals(image.Tag as string, "MainCardThumbnail", StringComparison.Ordinal))
+                .Select(image =>
+                {
+                    var item = image.DataContext as VideoItem;
+                    var registrationMatches = item is not null &&
+                                              _thumbnailRegistrations.TryGetValue(image, out var registered) &&
+                                              ReferenceEquals(registered, item);
+                    var runtime = item is null
+                        ? ThumbnailRuntimeDiagnostics.Missing
+                        : ViewModel.GetThumbnailRuntimeDiagnostics(item);
+                    return new RealizedThumbnailBindingDiagnostic(
+                        RuntimeHelpers.GetHashCode(image),
+                        runtime.RuntimeIdentity,
+                        registrationMatches,
+                        item is not null &&
+                        ReferenceEquals(image.Source, item.ThumbnailSource),
+                        item?.ThumbnailLoadState ?? ThumbnailLoadState.NotRequested);
+                })
+                .ToArray();
 
         internal ScrollViewer? GetVideoScrollViewer() =>
             EnumerateVisualDescendants<ScrollViewer>(VideoList).FirstOrDefault();

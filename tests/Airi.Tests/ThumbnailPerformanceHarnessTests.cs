@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Airi.Domain;
@@ -225,6 +226,103 @@ public sealed class ThumbnailPerformanceHarnessTests
 
         Assert.Equal(threadIds[0], threadIds[1]);
     }
+
+    [Fact]
+    public Task Virtualization_Recycling_ThumbnailMatchesCurrentDataContext() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = await CreateProductionVirtualizationFixtureAsync(240);
+            await WaitForProductionWindowSteadyAsync(fixture);
+            var top = fixture.Window.GetRealizedThumbnailBindingDiagnostics();
+            Assert.NotEmpty(top);
+            Assert.All(top, AssertCurrentThumbnailBinding);
+            var topOwners = top.ToDictionary(value => value.ImageIdentity, value => value.ItemIdentity);
+
+            fixture.Window.ScrollVideoToIndex(fixture.ViewModel.FilteredVideos.Cast<object>().Count() - 1);
+            await WaitForProductionWindowSteadyAsync(fixture);
+            var last = fixture.Window.GetRealizedThumbnailBindingDiagnostics();
+            Assert.NotEmpty(last);
+            Assert.All(last, AssertCurrentThumbnailBinding);
+            Assert.Contains(last, value =>
+                topOwners.TryGetValue(value.ImageIdentity, out var previousItemIdentity) &&
+                previousItemIdentity != value.ItemIdentity);
+        });
+
+    [Fact]
+    public Task Virtualization_FilterAndSortRefresh_RemainsVirtualized() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = await CreateProductionVirtualizationFixtureAsync(240);
+            await WaitForProductionWindowSteadyAsync(fixture);
+            var retained = fixture.ViewModel.Videos[100];
+            fixture.ViewModel.SelectedVideo = retained;
+
+            foreach (var refresh in new Action[]
+                     {
+                         () => fixture.ViewModel.SearchQuery = "Keep",
+                         () => fixture.ViewModel.SelectedActor = "GroupA",
+                         () => fixture.ViewModel.ShowMissingMetadataOnly = true,
+                         () => fixture.ViewModel.SelectedSortOption = fixture.ViewModel.SortOptions.Single(
+                             option => option.Field == MainViewModel.SortField.Title &&
+                                       option.Direction == System.ComponentModel.ListSortDirection.Descending)
+                     })
+            {
+                var measurement = await MeasureProductionRefreshAsync(fixture, refresh);
+                Assert.Equal(120, fixture.ViewModel.FilteredVideos.Cast<object>().Count());
+                Assert.Same(retained, fixture.ViewModel.SelectedVideo);
+                Assert.Same(retained, fixture.Window.GetVideoListForTests().SelectedItem);
+                Assert.InRange(measurement.SteadyCount, 1, measurement.HardLimit);
+                Assert.InRange(measurement.TraversalMaximum, 1, measurement.HardLimit);
+            }
+
+            Assert.All(
+                fixture.Window.GetRealizedThumbnailBindingDiagnostics(),
+                AssertCurrentThumbnailBinding);
+        });
+
+    [Fact]
+    public Task Virtualization_PixelScrollAndHomeEndNavigationRemainFunctional() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = await CreateProductionVirtualizationFixtureAsync(240);
+            await WaitForProductionWindowSteadyAsync(fixture);
+            var list = fixture.Window.GetVideoListForTests();
+            var scroll = Assert.IsType<ScrollViewer>(fixture.Window.GetVideoScrollViewer());
+            var itemHeight = fixture.Window.GetFirstVideoContainerExtent().Height;
+            var source = list.ItemsSource;
+            scroll.ScrollToTop();
+            list.SelectedIndex = 0;
+            Assert.True(list.Focus());
+            Keyboard.Focus(list);
+            WpfTestHost.DrainDispatcher(list.Dispatcher);
+
+            var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
+            {
+                RoutedEvent = Mouse.MouseWheelEvent,
+                Source = scroll
+            };
+            scroll.RaiseEvent(wheel);
+            await Task.Delay(100);
+            WpfTestHost.DrainDispatcher(list.Dispatcher);
+            var pixelOffset = scroll.VerticalOffset;
+            Assert.InRange(pixelOffset, 1, Math.Max(1, itemHeight - 1));
+
+            RaiseNavigationKey(list, Key.End);
+            await Task.Delay(100);
+            WpfTestHost.DrainDispatcher(list.Dispatcher);
+            Assert.Same(list.Items[list.Items.Count - 1], list.SelectedItem);
+            Assert.Same(list.SelectedItem, fixture.ViewModel.SelectedVideo);
+            Assert.True(scroll.VerticalOffset > pixelOffset);
+            Assert.Same(source, list.ItemsSource);
+
+            RaiseNavigationKey(list, Key.Home);
+            await Task.Delay(100);
+            WpfTestHost.DrainDispatcher(list.Dispatcher);
+            Assert.Same(list.Items[0], list.SelectedItem);
+            Assert.Same(list.SelectedItem, fixture.ViewModel.SelectedVideo);
+            Assert.True(scroll.VerticalOffset < pixelOffset);
+            Assert.Same(source, list.ItemsSource);
+        });
 
     [Fact]
     public void PerformanceSnapshot_CommonSchemaContainsVisualMarkers()
@@ -727,6 +825,144 @@ public sealed class ThumbnailPerformanceHarnessTests
             thumbnailLoader ?? CreateHarnessThumbnailLoader(probe));
     }
 
+    private static async Task<ProductionVirtualizationFixture> CreateProductionVirtualizationFixtureAsync(int itemCount)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AiriProductionVirtualizationTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var store = new LibraryStore(Path.Combine(root, "videos.json"));
+        var videos = Enumerable.Range(0, itemCount)
+            .Select(index =>
+            {
+                var even = index % 2 == 0;
+                return new VideoEntry(
+                    $"./media/{index:D4}.mp4",
+                    new VideoMeta(
+                        $"{(even ? "Keep" : "Drop")} {index:D4}",
+                        DateOnly.FromDateTime(new DateTime(2020, 1, 1).AddDays(index)),
+                        new[] { even ? "GroupA" : "GroupB" },
+                        even ? "resources/noimage.jpg" : $"./cache/{index:D4}.jpg",
+                        Array.Empty<string>(),
+                        string.Empty),
+                    1,
+                    new DateTime(2020, 1, 1).AddMinutes(index),
+                    new DateTime(2020, 1, 1).AddMinutes(index));
+            })
+            .ToList();
+        await store.SaveAsync(new LibraryData { Videos = videos });
+
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        var loader = new DeterministicThumbnailLoader();
+        var provider = new CrawlerSessionProvider();
+        var source = new OneFourOneJavMetaSource(provider);
+        var metadata = new WebMetadataService(
+            new IWebVideoMetaSource[] { new NoopMetaSource() },
+            new ThumbnailCache(root),
+            NullTranslationService.Instance,
+            "KO");
+        var viewModel = new MainViewModel(
+            store,
+            new NoopLibraryScanner(),
+            metadata,
+            provider,
+            source,
+            new NoopCrawlerFactory(),
+            probe,
+            loader);
+        var window = new MainWindow(viewModel, probe)
+        {
+            WindowState = WindowState.Normal,
+            SizeToContent = SizeToContent.Manual,
+            Width = 1200,
+            Height = 820
+        };
+        window.Show();
+        await WaitUntilAsync(
+            () => viewModel.StartupState == StartupLibraryState.Ready &&
+                  viewModel.Videos.Count == itemCount,
+            timeout: TimeSpan.FromSeconds(30));
+        return new ProductionVirtualizationFixture(root, window, viewModel);
+    }
+
+    private static async Task WaitForProductionWindowSteadyAsync(ProductionVirtualizationFixture fixture)
+    {
+        var stableSince = DateTime.UtcNow;
+        var previous = (-1, -1);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+            var current = (
+                fixture.Window.GetRealizedVideoContainerCount(),
+                fixture.Window.GetThumbnailRegistrationCountForTests());
+            var terminal = fixture.ViewModel.GetThumbnailInFlightCount() == 0 &&
+                           fixture.Window.AreActiveThumbnailRegistrationsTerminalForTests();
+            if (terminal && current == previous)
+            {
+                if (DateTime.UtcNow - stableSince >= TimeSpan.FromMilliseconds(500))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                previous = current;
+                stableSince = DateTime.UtcNow;
+            }
+            await Task.Delay(20);
+        }
+
+        Assert.Fail("The production virtualization fixture did not become stable.");
+    }
+
+    private static async Task<(int SteadyCount, int TraversalMaximum, int HardLimit)> MeasureProductionRefreshAsync(
+        ProductionVirtualizationFixture fixture,
+        Action refresh)
+    {
+        var list = fixture.Window.GetVideoListForTests();
+        var traversalMaximum = fixture.Window.GetRealizedVideoContainerCount();
+        ItemsChangedEventHandler observe = (_, _) => traversalMaximum = Math.Max(
+            traversalMaximum,
+            fixture.Window.GetRealizedVideoContainerCount());
+        list.ItemContainerGenerator.ItemsChanged += observe;
+        try
+        {
+            refresh();
+            list.UpdateLayout();
+            await WaitForProductionWindowSteadyAsync(fixture);
+            traversalMaximum = Math.Max(traversalMaximum, fixture.Window.GetRealizedVideoContainerCount());
+        }
+        finally
+        {
+            list.ItemContainerGenerator.ItemsChanged -= observe;
+        }
+
+        var scroll = Assert.IsType<ScrollViewer>(fixture.Window.GetVideoScrollViewer());
+        var extent = fixture.Window.GetFirstVideoContainerExtent();
+        var columns = Math.Max(1, (int)Math.Floor(scroll.ViewportWidth / Math.Max(1, extent.Width)));
+        var visibleRows = Math.Max(1, (int)Math.Ceiling(scroll.ViewportHeight / Math.Max(1, extent.Height)));
+        var hardLimit = ((3 * visibleRows) + 1) * columns;
+        return (fixture.Window.GetRealizedVideoContainerCount(), traversalMaximum, hardLimit);
+    }
+
+    private static void AssertCurrentThumbnailBinding(MainWindow.RealizedThumbnailBindingDiagnostic value)
+    {
+        Assert.True(value.ItemIdentity > 0);
+        Assert.True(value.RegistrationMatchesDataContext);
+        Assert.True(value.SourceMatchesCurrentItem);
+        Assert.Equal(ThumbnailLoadState.Loaded, value.LoadState);
+    }
+
+    private static void RaiseNavigationKey(ListBox list, Key key)
+    {
+        var source = PresentationSource.FromVisual(list) ??
+                     throw new InvalidOperationException("The production list has no presentation source.");
+        list.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, Environment.TickCount, key)
+        {
+            RoutedEvent = Keyboard.KeyDownEvent,
+            Source = list
+        });
+    }
+
     private static ThumbnailImageLoader CreateHarnessThumbnailLoader(ThumbnailPerformanceProbe probe)
     {
         var fallback = new TestThumbnailImageLoader().FallbackSource;
@@ -795,6 +1031,75 @@ public sealed class ThumbnailPerformanceHarnessTests
     {
         public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
             Task.FromException<OneFourOneJavCrawlerStartResult>(new InvalidOperationException("Crawler is disabled in performance tests."));
+    }
+
+    private sealed class NoopLibraryScanner : ILibraryScanner
+    {
+        public Task<LibraryScanResult> ScanAsync(LibraryData library, CancellationToken cancellationToken) =>
+            Task.FromResult(new LibraryScanResult(
+                Array.Empty<FileSnapshot>(),
+                Array.Empty<FileSnapshot>(),
+                Array.Empty<VideoEntry>(),
+                Array.Empty<UpdatedFile>()));
+    }
+
+    private sealed class DeterministicThumbnailLoader : IThumbnailImageLoader
+    {
+        private readonly Dictionary<string, ImageSource> _sources = new(StringComparer.OrdinalIgnoreCase);
+
+        public DeterministicThumbnailLoader()
+        {
+            FallbackSource = CreateSource(0);
+        }
+
+        public ImageSource FallbackSource { get; }
+
+        public Task<ThumbnailImageResult> LoadAsync(
+            string thumbnailPath,
+            int decodePixelWidth,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_sources.TryGetValue(thumbnailPath, out var source))
+            {
+                source = CreateSource((byte)(_sources.Count % 254 + 1));
+                _sources.Add(thumbnailPath, source);
+            }
+            return Task.FromResult(new ThumbnailImageResult(source, false));
+        }
+
+        private static ImageSource CreateSource(byte value)
+        {
+            var pixels = Enumerable.Repeat(value, 4 * 4 * 4).ToArray();
+            var bitmap = BitmapSource.Create(4, 4, 96, 96, PixelFormats.Bgra32, null, pixels, 16);
+            bitmap.Freeze();
+            return bitmap;
+        }
+    }
+
+    private sealed class ProductionVirtualizationFixture : IDisposable
+    {
+        private readonly string _root;
+
+        public ProductionVirtualizationFixture(string root, MainWindow window, MainViewModel viewModel)
+        {
+            _root = root;
+            Window = window;
+            ViewModel = viewModel;
+        }
+
+        public MainWindow Window { get; }
+        public MainViewModel ViewModel { get; }
+
+        public void Dispose()
+        {
+            Window.Close();
+            WpfTestHost.DrainDispatcher(Application.Current.Dispatcher);
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+        }
     }
 
     private sealed record ThumbnailPerformanceRawDocument(
