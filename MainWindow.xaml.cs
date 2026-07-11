@@ -494,6 +494,11 @@ namespace Airi
 
         internal int GetRealizedVideoContainerCount() => EnumerableRealizedVideoContainers().Count;
 
+        internal int GetRealizedNonFallbackThumbnailSourceCount(ImageSource fallback) =>
+            _thumbnailRegistrations.Values
+                .DistinctBy(item => RuntimeHelpers.GetHashCode(item))
+                .Count(item => item.ThumbnailSource is { } source && !ReferenceEquals(source, fallback));
+
         internal ScrollViewer? GetVideoScrollViewer() =>
             EnumerateVisualDescendants<ScrollViewer>(VideoList).FirstOrDefault();
 

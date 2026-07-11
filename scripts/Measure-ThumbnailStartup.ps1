@@ -130,6 +130,108 @@ function New-CurrentFixture {
     Write-Utf8NoBom $manifestPath ($manifest | ConvertTo-Json -Depth 10)
 }
 
+function New-SyntheticFixture([string]$Dataset, [int]$Count) {
+    $datasetRoot = Join-Path $script:fixtureRootPath $Dataset
+    $templatePath = Join-Path $datasetRoot 'library-template/videos.json'
+    $manifestPath = Join-Path $datasetRoot 'manifest.json'
+    if ((Test-Path -LiteralPath $templatePath) -and (Test-Path -LiteralPath $manifestPath)) {
+        return
+    }
+
+    $mediaRoot = Join-Path $datasetRoot 'payload/media'
+    $cacheRoot = Join-Path $datasetRoot 'payload/cache'
+    New-Item -ItemType Directory -Path $mediaRoot, $cacheRoot -Force | Out-Null
+    $fallback = Join-Path $script:releaseRoot 'resources/noimage.jpg'
+    if (-not (Test-Path -LiteralPath $fallback)) {
+        throw "Synthetic thumbnail source is missing: $fallback"
+    }
+
+    $stamp = [DateTime]::SpecifyKind([DateTime]::new(2026, 1, 1, 0, 0, 0), [DateTimeKind]::Utc)
+    $videos = [System.Collections.Generic.List[object]]::new()
+    $manifestEntries = [System.Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $Count; $index++) {
+        $name = '{0:D4}' -f $index
+        $relativeVideo = "./media/$name.mp4"
+        $relativeThumbnail = "./cache/$name.jpg"
+        $mediaPath = Join-Path $mediaRoot "$name.mp4"
+        $thumbnailPath = Join-Path $cacheRoot "$name.jpg"
+        [System.IO.File]::WriteAllBytes($mediaPath, [byte[]](0))
+        Copy-Item -LiteralPath $fallback -Destination $thumbnailPath -Force
+        [System.IO.File]::SetLastWriteTimeUtc($mediaPath, $stamp)
+        [System.IO.File]::SetCreationTimeUtc($mediaPath, $stamp)
+        [System.IO.File]::SetLastWriteTimeUtc($thumbnailPath, $stamp)
+
+        $videos.Add([ordered]@{
+            Path = $relativeVideo
+            Meta = [ordered]@{
+                Title = "Synthetic $name"
+                Date = $null
+                Actors = @("Actor $($index % 17)")
+                Thumbnail = $relativeThumbnail
+                Tags = @()
+                Description = ''
+            }
+            SizeBytes = 1
+            LastModifiedUtc = $stamp.ToString('O')
+            CreatedUtc = $stamp.ToString('O')
+        })
+        $manifestEntries.Add([ordered]@{
+            path = $relativeVideo
+            thumbnailPath = $relativeThumbnail
+            length = 1
+            lastWriteUtc = $stamp.ToString('O')
+        })
+    }
+
+    $library = [ordered]@{
+        Version = 1
+        Targets = @([ordered]@{
+            Root = './media'
+            IncludePatterns = @('*.mp4')
+            ExcludePatterns = @()
+            LastScanUtc = $stamp.ToString('O')
+        })
+        Videos = $videos
+    }
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        dataset = $Dataset
+        itemCount = $Count
+        entries = $manifestEntries
+    }
+    Write-Utf8NoBom $templatePath ($library | ConvertTo-Json -Depth 20)
+    Write-Utf8NoBom $manifestPath ($manifest | ConvertTo-Json -Depth 10)
+}
+
+function Assert-Fixture([string]$DatasetRoot, [string]$TemplatePath, [string]$ManifestPath) {
+    $library = Get-Content -Raw -LiteralPath $TemplatePath | ConvertFrom-Json
+    $manifest = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+    if ([int]$manifest.itemCount -ne $library.Videos.Count -or $manifest.entries.Count -ne $library.Videos.Count) {
+        throw "Fixture count mismatch under $DatasetRoot."
+    }
+
+    $mediaRoot = Join-Path $DatasetRoot 'payload/media'
+    if (@(Get-ChildItem -LiteralPath $mediaRoot -File).Count -ne $library.Videos.Count) {
+        throw "Fixture media count mismatch under $DatasetRoot."
+    }
+    for ($index = 0; $index -lt $manifest.entries.Count; $index++) {
+        $entry = $manifest.entries[$index]
+        if ([string]$library.Videos[$index].Path -ne [string]$entry.path) {
+            throw "Fixture order/path mismatch at index $index under $DatasetRoot."
+        }
+        $mediaPath = Join-Path $mediaRoot ([System.IO.Path]::GetFileName([string]$entry.path))
+        if (-not (Test-Path -LiteralPath $mediaPath) -or (Get-Item -LiteralPath $mediaPath).Length -ne [long]$entry.length) {
+            throw "Fixture media metadata mismatch for $($entry.path)."
+        }
+        if ([string]$entry.thumbnailPath -like './cache/*') {
+            $thumbnailPath = Join-Path (Join-Path $DatasetRoot 'payload/cache') ([System.IO.Path]::GetFileName([string]$entry.thumbnailPath))
+            if (-not (Test-Path -LiteralPath $thumbnailPath)) {
+                throw "Fixture thumbnail is missing: $($entry.thumbnailPath)"
+            }
+        }
+    }
+}
+
 function Get-PowerSchemeLabel {
     try {
         $active = (& powercfg /getactivescheme 2>$null | Out-String).Trim()
@@ -158,13 +260,33 @@ Set-Location $repoRoot
 New-Item -ItemType Directory -Path $fixtureRootPath -Force | Out-Null
 New-Item -ItemType Directory -Path $outputRootPath -Force | Out-Null
 
+& dotnet build Airi.sln -c Release --no-restore -p:NuGetAudit=false
+if ($LASTEXITCODE -ne 0) {
+    throw "Release build failed with exit code $LASTEXITCODE."
+}
+
 if ($Datasets -contains 'current') {
     New-CurrentFixture
 }
+if ($Datasets -contains 'small') {
+    New-SyntheticFixture 'small' 40
+}
+if ($Datasets -contains 'medium') {
+    New-SyntheticFixture 'medium' 200
+}
+if ($Datasets -contains 'stress') {
+    New-SyntheticFixture 'stress' 1000
+}
 
-& dotnet build Airi.sln -c Release
-if ($LASTEXITCODE -ne 0) {
-    throw "Release build failed with exit code $LASTEXITCODE."
+if (($Datasets -contains 'medium') -and ($Datasets -contains 'stress')) {
+    $medium = Get-Content -Raw -LiteralPath (Join-Path $fixtureRootPath 'medium/manifest.json') | ConvertFrom-Json
+    $stress = Get-Content -Raw -LiteralPath (Join-Path $fixtureRootPath 'stress/manifest.json') | ConvertFrom-Json
+    for ($index = 0; $index -lt $medium.entries.Count; $index++) {
+        if ([string]$medium.entries[$index].path -ne [string]$stress.entries[$index].path -or
+            [string]$medium.entries[$index].thumbnailPath -ne [string]$stress.entries[$index].thumbnailPath) {
+            throw "Medium fixture is not the ordered prefix of stress at index $index."
+        }
+    }
 }
 
 $commitSha = (& git rev-parse HEAD).Trim()
@@ -180,6 +302,7 @@ foreach ($dataset in $Datasets) {
     if (-not (Test-Path -LiteralPath $templatePath) -or -not (Test-Path -LiteralPath $manifestPath)) {
         throw "Fixture '$dataset' is incomplete under $datasetRoot."
     }
+    Assert-Fixture $datasetRoot $templatePath $manifestPath
 
     for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
         $iterationRoot = Join-Path $iterationBase (Join-Path $dataset $iteration)
@@ -215,6 +338,7 @@ foreach ($dataset in $Datasets) {
         $env:AIRI_PERF_POWER_SCHEME = $powerScheme
         $env:AIRI_PERF_COMMIT_SHA = $commitSha
         $env:AIRI_PERF_DIRTY = $dirty.ToString().ToLowerInvariant()
+        $env:AIRI_PERF_MANIFEST_SHA256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $manifestPath).Hash
 
         Push-Location $binRoot
         try {
@@ -245,7 +369,7 @@ foreach ($dataset in $Datasets) {
         Copy-Item -LiteralPath $stagingOutput -Destination $rawPath -Force
         $rawFiles.Add($rawPath)
 
-        Remove-Item Env:AIRI_PERF_OUTPUT, Env:AIRI_PERF_ITERATION_ROOT, Env:AIRI_PERF_COLD_STORE, Env:AIRI_PERF_WARM_STORE, Env:AIRI_PERF_DATASET, Env:AIRI_PERF_ITERATION, Env:AIRI_PERF_MODE, Env:AIRI_PERF_MACHINE_LABEL, Env:AIRI_PERF_POWER_SCHEME, Env:AIRI_PERF_COMMIT_SHA, Env:AIRI_PERF_DIRTY -ErrorAction SilentlyContinue
+        Remove-Item Env:AIRI_PERF_OUTPUT, Env:AIRI_PERF_ITERATION_ROOT, Env:AIRI_PERF_COLD_STORE, Env:AIRI_PERF_WARM_STORE, Env:AIRI_PERF_DATASET, Env:AIRI_PERF_ITERATION, Env:AIRI_PERF_MODE, Env:AIRI_PERF_MACHINE_LABEL, Env:AIRI_PERF_POWER_SCHEME, Env:AIRI_PERF_COMMIT_SHA, Env:AIRI_PERF_DIRTY, Env:AIRI_PERF_MANIFEST_SHA256 -ErrorAction SilentlyContinue
         Assert-PathUnder $iterationBase $iterationRoot
         Remove-Item -LiteralPath $iterationRoot -Recurse -Force
     }
@@ -259,12 +383,25 @@ foreach ($dataset in $Datasets) {
     foreach ($phaseName in @('cold', 'warm')) {
         $phaseValues = @($documents | ForEach-Object { $_.$phaseName })
         $validValues = @($phaseValues | Where-Object valid)
+        $hardGatePasses = @($validValues | Where-Object {
+            $_.structuralValidation.allPassed -and
+            $_.gates.firstCardBeforeAllItems -ne 'Fail' -and
+            $_.gates.requestMembership -and
+            $_.gates.fileOpenBound -and
+            $_.gates.decodeConcurrency -and
+            $_.gates.lruInvariant -and
+            $_.gates.dispatcherUnder100Milliseconds -and
+            $_.gates.nonFallbackSourceBound -and
+            $_.gates.ownerSlotBound
+        })
         $card = @($validValues | ForEach-Object { [double]$_.timing.markers.VisualFirstMeaningfulCard.elapsedMilliseconds })
         $thumbnail = @($validValues | ForEach-Object { [double]$_.timing.markers.VisualFirstThumbnail.elapsedMilliseconds })
         $phases[$phaseName] = [ordered]@{
             validIterations = $validValues.Count
             totalIterations = $phaseValues.Count
             allValid = $validValues.Count -eq $phaseValues.Count
+            hardGatePassIterations = $hardGatePasses.Count
+            allHardGatesPass = $hardGatePasses.Count -eq $phaseValues.Count
             firstMeaningfulCardMedianMs = Get-Median $card
             firstMeaningfulCardWorstMs = if ($card.Count) { ($card | Measure-Object -Maximum).Maximum } else { $null }
             firstThumbnailMedianMs = Get-Median $thumbnail

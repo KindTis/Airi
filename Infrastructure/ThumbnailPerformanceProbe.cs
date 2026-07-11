@@ -32,7 +32,12 @@ internal readonly record struct ThumbnailTimingPoint(
 internal sealed record ThumbnailPerformanceSnapshot(
     int SchemaVersion,
     ThumbnailMeasurementPhase Phase,
-    IReadOnlyDictionary<StartupTimingMarker, ThumbnailTimingPoint> Markers);
+    IReadOnlyDictionary<StartupTimingMarker, ThumbnailTimingPoint> Markers,
+    IReadOnlyList<ThumbnailRequestProbeRecord> Requests,
+    IReadOnlyList<ThumbnailImageRegistrationRecord> Registrations,
+    IReadOnlyList<StartupDispatcherBatchRecord> DispatcherBatches,
+    int ActiveRegistrationCount,
+    int MaxRegistrationCount);
 
 internal readonly record struct ThumbnailRequestProbeRecord(
     long ItemIdentity,
@@ -102,14 +107,16 @@ internal sealed class ThumbnailPerformanceProbe
             {
                 throw new InvalidOperationException("A thumbnail measurement phase is already active.");
             }
+            if (_activeRegistrations.Count != 0 || _activeItemCounts.Count != 0)
+            {
+                throw new InvalidOperationException("A thumbnail measurement phase cannot begin with active image registrations.");
+            }
 
             _phase = phase;
             _markers.Clear();
             _requestRecords.Clear();
             _registrationRecords.Clear();
             _dispatcherBatchRecords.Clear();
-            _activeRegistrations.Clear();
-            _activeItemCounts.Clear();
             _maxRegistrationCount = 0;
             _phaseOrigin = Stopwatch.GetTimestamp();
             _active = true;
@@ -165,15 +172,21 @@ internal sealed class ThumbnailPerformanceProbe
     {
         lock (_sync)
         {
-            if (!_enabled || !_active || !_activeRegistrations.Add((imageIdentity, itemIdentity)))
+            if (!_enabled || !_activeRegistrations.Add((imageIdentity, itemIdentity)))
             {
                 return;
             }
 
-            _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, true));
+            if (_active)
+            {
+                _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, true));
+            }
             _activeItemCounts.TryGetValue(itemIdentity, out var count);
             _activeItemCounts[itemIdentity] = count + 1;
-            _maxRegistrationCount = Math.Max(_maxRegistrationCount, _activeRegistrations.Count);
+            if (_active)
+            {
+                _maxRegistrationCount = Math.Max(_maxRegistrationCount, _activeRegistrations.Count);
+            }
         }
     }
 
@@ -181,12 +194,15 @@ internal sealed class ThumbnailPerformanceProbe
     {
         lock (_sync)
         {
-            if (!_enabled || !_active || !_activeRegistrations.Remove((imageIdentity, itemIdentity)))
+            if (!_enabled || !_activeRegistrations.Remove((imageIdentity, itemIdentity)))
             {
                 return;
             }
 
-            _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, false));
+            if (_active)
+            {
+                _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, false));
+            }
             var count = _activeItemCounts[itemIdentity] - 1;
             if (count == 0)
             {
@@ -280,7 +296,12 @@ internal sealed class ThumbnailPerformanceProbe
                 SchemaVersion,
                 _phase,
                 new ReadOnlyDictionary<StartupTimingMarker, ThumbnailTimingPoint>(
-                    new Dictionary<StartupTimingMarker, ThumbnailTimingPoint>(_markers)));
+                    new Dictionary<StartupTimingMarker, ThumbnailTimingPoint>(_markers)),
+                Array.AsReadOnly(_requestRecords.ToArray()),
+                Array.AsReadOnly(_registrationRecords.ToArray()),
+                Array.AsReadOnly(_dispatcherBatchRecords.ToArray()),
+                _activeRegistrations.Count,
+                _maxRegistrationCount);
             _active = false;
             return snapshot;
         }

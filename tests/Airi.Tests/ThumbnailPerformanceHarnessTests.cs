@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Airi.Domain;
@@ -61,6 +62,43 @@ public sealed class ThumbnailPerformanceHarnessTests
         Assert.False(probe.TryMark(StartupTimingMarker.MainWindowLoaded));
         Assert.Single(snapshot.Markers);
         Assert.False(probe.IsActive);
+    }
+
+    [Fact]
+    public void PerformanceProbe_RecordsRequestMembershipMissesAndDispatcherDurations()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.EnterImageRegistration(10, 20);
+        probe.RecordThumbnailRequest(20, 1, "thumbnail.jpg", 320);
+        probe.RecordDispatcherBatch("StoredPublish", 40, 123);
+
+        var snapshot = probe.EndMeasurementPhase();
+
+        var request = Assert.Single(snapshot.Requests);
+        Assert.True(request.InRealizationWindow);
+        var batch = Assert.Single(snapshot.DispatcherBatches);
+        Assert.Equal("StoredPublish", batch.Kind);
+        Assert.Equal(40, batch.ItemCount);
+        Assert.Equal(123, batch.ElapsedTicks);
+        Assert.Equal(1, snapshot.ActiveRegistrationCount);
+        Assert.Equal(1, snapshot.MaxRegistrationCount);
+    }
+
+    [Fact]
+    public void BeginWarm_RequiresZeroRegistrationsAfterColdCleanup()
+    {
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        probe.EnterImageRegistration(1, 2);
+        _ = probe.EndMeasurementPhase();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Warm));
+
+        probe.LeaveImageRegistration(1, 2);
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Warm);
+        Assert.Equal(ThumbnailMeasurementPhase.Warm, probe.EndMeasurementPhase().Phase);
     }
 
     [Fact]
@@ -232,17 +270,22 @@ public sealed class ThumbnailPerformanceHarnessTests
         await WpfTestHost.RunAsync(async () =>
         {
             var probe = ThumbnailPerformanceProbe.CreateEnabled();
+            var sharedLoader = CreateHarnessThumbnailLoader(probe);
             var cold = await MeasurePhaseAsync(
                 iterationRoot,
                 coldStorePath,
                 probe,
+                sharedLoader,
                 ThumbnailMeasurementPhase.Cold,
                 performWarmPreparation: true);
             WpfTestHost.DrainDispatcher(Application.Current.Dispatcher);
+            Assert.Equal(0, probe.GetActiveRegistrationCount());
+            Assert.Equal(0, sharedLoader.GetDiagnostics().ActiveDecodeCount);
             var warm = await MeasurePhaseAsync(
                 iterationRoot,
                 warmStorePath,
                 probe,
+                sharedLoader,
                 ThumbnailMeasurementPhase.Warm,
                 performWarmPreparation: false);
 
@@ -251,6 +294,7 @@ public sealed class ThumbnailPerformanceHarnessTests
                 RequireEnvironment("AIRI_PERF_DATASET"),
                 int.Parse(RequireEnvironment("AIRI_PERF_ITERATION"), System.Globalization.CultureInfo.InvariantCulture),
                 Environment.GetEnvironmentVariable("AIRI_PERF_MODE") ?? "After",
+                RequireEnvironment("AIRI_PERF_MANIFEST_SHA256"),
                 cold,
                 warm,
                 new EnvironmentCompatibility(
@@ -281,15 +325,17 @@ public sealed class ThumbnailPerformanceHarnessTests
         string iterationRoot,
         string storePath,
         ThumbnailPerformanceProbe probe,
+        ThumbnailImageLoader sharedLoader,
         ThumbnailMeasurementPhase phase,
         bool performWarmPreparation)
     {
         var inputHash = ComputeSha256(storePath);
+        var loaderStart = sharedLoader.GetDiagnostics();
         probe.BeginMeasurementPhase(phase);
         probe.TryMark(StartupTimingMarker.StartupMeasurementBegin);
 
         var store = new LibraryStore(storePath);
-        var viewModel = CreateViewModel(iterationRoot, store, probe);
+        var viewModel = CreateViewModel(iterationRoot, store, probe, sharedLoader);
         var window = new MainWindow(viewModel, probe)
         {
             WindowState = WindowState.Normal,
@@ -342,15 +388,24 @@ public sealed class ThumbnailPerformanceHarnessTests
             ? null
             : $"Requires 100% DPI and at least 1500x1000 DIP working area; observed {dpi.DpiScaleX:F2}x{dpi.DpiScaleY:F2}, {workArea.Width:F0}x{workArea.Height:F0}.";
         var snapshot = probe.EndMeasurementPhase();
+        var loaderEnd = sharedLoader.GetDiagnostics();
+        var nonFallbackSources = window.GetRealizedNonFallbackThumbnailSourceCount(sharedLoader.FallbackSource);
+        var gates = BuildPhaseGates(
+            RequireEnvironment("AIRI_PERF_DATASET"),
+            snapshot,
+            loaderStart,
+            loaderEnd,
+            nonFallbackSources);
+        var structural = await CaptureStructuralValidationAsync(
+            window,
+            viewModel,
+            sharedLoader,
+            includeReturnTop: performWarmPreparation);
 
         WarmPreparationSnapshot? warmPreparation = null;
         if (performWarmPreparation)
         {
             var before = snapshot.Markers.Count;
-            window.ScrollVideoToIndex(Math.Max(0, viewModel.Videos.Count - 1));
-            WpfTestHost.DrainDispatcher(window.Dispatcher);
-            window.ScrollVideoToIndex(0);
-            WpfTestHost.DrainDispatcher(window.Dispatcher);
             warmPreparation = new WarmPreparationSnapshot(
                 viewModel.Videos.Count,
                 window.GetRealizedVideoContainerCount(),
@@ -368,7 +423,103 @@ public sealed class ThumbnailPerformanceHarnessTests
             viewport,
             inputHash,
             outputHash,
-            warmPreparation);
+            warmPreparation,
+            structural,
+            gates,
+            new PhaseLoaderDiagnostics(
+                loaderEnd.CacheMissRequestCount - loaderStart.CacheMissRequestCount,
+                loaderEnd.FileOpenCount - loaderStart.FileOpenCount,
+                loaderEnd.FileChangeRetryAttemptCount - loaderStart.FileChangeRetryAttemptCount,
+                loaderEnd.ActiveDecodeCount,
+                loaderEnd.MaxConcurrentDecodeCount,
+                loaderStart.CacheEntryCount,
+                loaderEnd.CacheEntryCount,
+                loaderEnd.RecencyNodeCount));
+    }
+
+    private static PhaseGateResults BuildPhaseGates(
+        string dataset,
+        ThumbnailPerformanceSnapshot snapshot,
+        ThumbnailImageLoaderDiagnostics loaderStart,
+        ThumbnailImageLoaderDiagnostics loaderEnd,
+        int nonFallbackSources)
+    {
+        var firstCardGate = dataset is "current" or "stress"
+            ? snapshot.Markers[StartupTimingMarker.VisualFirstMeaningfulCard].ElapsedTicks <
+              snapshot.Markers[StartupTimingMarker.AllItemsPublished].ElapsedTicks
+                ? "Pass"
+                : "Fail"
+            : "NotApplicable";
+        var phaseMisses = loaderEnd.CacheMissRequestCount - loaderStart.CacheMissRequestCount;
+        var phaseOpens = loaderEnd.FileOpenCount - loaderStart.FileOpenCount;
+        var phaseRetries = loaderEnd.FileChangeRetryAttemptCount - loaderStart.FileChangeRetryAttemptCount;
+        return new PhaseGateResults(
+            firstCardGate,
+            snapshot.Requests.All(request => request.InRealizationWindow),
+            phaseOpens <= phaseMisses + phaseRetries,
+            loaderEnd.MaxConcurrentDecodeCount <= 4,
+            loaderEnd.CacheEntryCount == loaderEnd.RecencyNodeCount && loaderEnd.CacheEntryCount <= 96,
+            snapshot.DispatcherBatches.All(batch => batch.ElapsedTicks <= Stopwatch.Frequency / 10),
+            nonFallbackSources <= snapshot.ActiveRegistrationCount,
+            loaderEnd.CacheEntryCount <= 96 + nonFallbackSources);
+    }
+
+    private static async Task<StructuralValidationSnapshot> CaptureStructuralValidationAsync(
+        MainWindow window,
+        MainViewModel viewModel,
+        ThumbnailImageLoader loader,
+        bool includeReturnTop)
+    {
+        var sections = new List<StructuralPositionSnapshot>();
+        var positions = new List<(string Name, int Index)>
+        {
+            ("top", 0),
+            ("middle", Math.Max(0, viewModel.Videos.Count / 2)),
+            ("last", Math.Max(0, viewModel.Videos.Count - 1))
+        };
+        if (includeReturnTop)
+        {
+            positions.Add(("topReturn", 0));
+        }
+
+        foreach (var (name, index) in positions)
+        {
+            window.ScrollVideoToIndex(index);
+            WpfTestHost.DrainDispatcher(window.Dispatcher);
+            await WaitUntilAsync(
+                () => loader.GetDiagnostics().ActiveDecodeCount == 0,
+                timeout: TimeSpan.FromSeconds(30));
+            await Task.Delay(500);
+            WpfTestHost.DrainDispatcher(window.Dispatcher);
+            var firstCount = window.GetRealizedVideoContainerCount();
+            var firstRegistrations = window.GetThumbnailRegistrationCountForTests();
+            await Task.Delay(20);
+            WpfTestHost.DrainDispatcher(window.Dispatcher);
+            var steadyCount = window.GetRealizedVideoContainerCount();
+            var steadyRegistrations = window.GetThumbnailRegistrationCountForTests();
+            Assert.Equal(firstCount, steadyCount);
+            Assert.Equal(firstRegistrations, steadyRegistrations);
+            var scroll = Assert.IsType<ScrollViewer>(window.GetVideoScrollViewer());
+            var extent = window.GetFirstVideoContainerExtent();
+            var columns = Math.Max(1, (int)Math.Floor(scroll.ViewportWidth / Math.Max(1, extent.Width)));
+            var visibleRows = Math.Max(1, (int)Math.Ceiling(scroll.ViewportHeight / Math.Max(1, extent.Height)));
+            var hardLimit = ((3 * visibleRows) + 1) * columns;
+            Assert.InRange(steadyCount, 1, hardLimit);
+            sections.Add(new StructuralPositionSnapshot(
+                name,
+                index,
+                scroll.VerticalOffset,
+                steadyCount,
+                steadyRegistrations,
+                extent.Width,
+                extent.Height,
+                columns,
+                hardLimit));
+        }
+
+        return new StructuralValidationSnapshot(
+            sections,
+            sections.All(section => section.RealizedContainerCount <= section.HardLimit));
     }
 
     private static MainViewModel CreateViewModel(
@@ -395,7 +546,7 @@ public sealed class ThumbnailPerformanceHarnessTests
             thumbnailLoader ?? CreateHarnessThumbnailLoader(probe));
     }
 
-    private static IThumbnailImageLoader CreateHarnessThumbnailLoader(ThumbnailPerformanceProbe probe)
+    private static ThumbnailImageLoader CreateHarnessThumbnailLoader(ThumbnailPerformanceProbe probe)
     {
         var fallback = new TestThumbnailImageLoader().FallbackSource;
         return new ThumbnailImageLoader(
@@ -470,6 +621,7 @@ public sealed class ThumbnailPerformanceHarnessTests
         string Dataset,
         int Iteration,
         string Mode,
+        string FixtureManifestSha256,
         ThumbnailPerformancePhaseResult Cold,
         ThumbnailPerformancePhaseResult Warm,
         EnvironmentCompatibility EnvironmentCompatibility,
@@ -482,7 +634,45 @@ public sealed class ThumbnailPerformanceHarnessTests
         ViewportSnapshot Viewport,
         string InputLibrarySha256,
         string OutputLibrarySha256,
-        WarmPreparationSnapshot? WarmPreparation);
+        WarmPreparationSnapshot? WarmPreparation,
+        StructuralValidationSnapshot StructuralValidation,
+        PhaseGateResults Gates,
+        PhaseLoaderDiagnostics Loader);
+
+    private sealed record PhaseLoaderDiagnostics(
+        int CacheMissRequestCount,
+        int FileOpenCount,
+        int FileChangeRetryAttemptCount,
+        int ActiveDecodeCount,
+        int MaxConcurrentDecodeCount,
+        int StartCacheEntryCount,
+        int CacheEntryCount,
+        int RecencyNodeCount);
+
+    private sealed record PhaseGateResults(
+        string FirstCardBeforeAllItems,
+        bool RequestMembership,
+        bool FileOpenBound,
+        bool DecodeConcurrency,
+        bool LruInvariant,
+        bool DispatcherUnder100Milliseconds,
+        bool NonFallbackSourceBound,
+        bool OwnerSlotBound);
+
+    private sealed record StructuralValidationSnapshot(
+        IReadOnlyList<StructuralPositionSnapshot> Positions,
+        bool AllPassed);
+
+    private sealed record StructuralPositionSnapshot(
+        string Name,
+        int Index,
+        double VerticalOffset,
+        int RealizedContainerCount,
+        int RegistrationCount,
+        double ItemWidth,
+        double ItemHeight,
+        int Columns,
+        int HardLimit);
 
     private sealed record ViewportSnapshot(
         double WindowWidth,
