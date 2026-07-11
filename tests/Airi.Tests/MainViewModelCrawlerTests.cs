@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 using Airi.Domain;
 using Airi.Infrastructure;
 using Airi.Services;
@@ -13,6 +12,7 @@ using Xunit;
 
 namespace Airi.Tests
 {
+    [Collection(WpfTestCollection.Name)]
     public sealed class MainViewModelCrawlerTests
     {
         [Fact]
@@ -475,50 +475,7 @@ namespace Airi.Tests
 
         private static void RunInStaAsync(Func<Task> action)
         {
-            Exception? captured = null;
-            using var completed = new ManualResetEventSlim(false);
-
-            var thread = new Thread(() =>
-            {
-                var dispatcher = Dispatcher.CurrentDispatcher;
-                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
-
-                try
-                {
-                    var task = action();
-                    task.ContinueWith(t =>
-                    {
-                        if (t.Exception is not null)
-                        {
-                            captured = t.Exception.InnerException ?? t.Exception;
-                        }
-                        else if (t.IsCanceled)
-                        {
-                            captured = new TaskCanceledException(t);
-                        }
-
-                        dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
-                    }, TaskScheduler.Default);
-                }
-                catch (Exception ex)
-                {
-                    captured = ex;
-                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
-                }
-
-                Dispatcher.Run();
-                completed.Set();
-            });
-
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            completed.Wait();
-            thread.Join();
-
-            if (captured is not null)
-            {
-                throw new Xunit.Sdk.XunitException(captured.ToString());
-            }
+            WpfTestHost.RunAsync(action).GetAwaiter().GetResult();
         }
 
         private sealed class ViewModelFixture : IDisposable

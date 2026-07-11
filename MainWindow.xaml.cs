@@ -299,6 +299,8 @@ namespace Airi
             UpdateLayout();
         }
 
+        internal ListBox GetVideoListForTests() => VideoList;
+
         private void DetachPerformanceRendering()
         {
             if (!_performanceRenderingAttached)

@@ -6,7 +6,6 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using Airi.Infrastructure;
 using Airi.Services;
 using Airi.ViewModels;
@@ -14,6 +13,7 @@ using Airi.Web;
 
 namespace Airi.Tests
 {
+    [Collection(WpfTestCollection.Name)]
     public sealed class MainViewModelSkeletonTests
     {
         [Fact]
@@ -129,34 +129,7 @@ namespace Airi.Tests
 
         private static void RunInSta(Action action)
         {
-            Exception? captured = null;
-            using var completed = new ManualResetEventSlim(false);
-
-            var thread = new Thread(() =>
-            {
-                try
-                {
-                    action();
-                }
-                catch (Exception ex)
-                {
-                    captured = ex;
-                }
-                finally
-                {
-                    completed.Set();
-                }
-            });
-
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            completed.Wait();
-            thread.Join();
-
-            if (captured is not null)
-            {
-                throw new Xunit.Sdk.XunitException(captured.ToString());
-            }
+            WpfTestHost.Run(action);
         }
 
         private sealed class ViewModelFixture : IDisposable
@@ -171,11 +144,6 @@ namespace Airi.Tests
 
             public MainViewModel CreateViewModel()
             {
-                if (Application.Current is null)
-                {
-                    _ = new Application();
-                }
-
                 var libraryPath = Path.Combine(_root, "videos.json");
                 var libraryStore = new LibraryStore(libraryPath);
                 var libraryScanner = new LibraryScanner(new FileSystemScanner());
