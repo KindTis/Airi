@@ -27,14 +27,21 @@ namespace Airi
         private readonly HttpClient _httpClient = new();
         private readonly ITextTranslationService _translationService;
         private readonly ThumbnailPerformanceProbe _performanceProbe;
+        private readonly IThumbnailImageLoader? _thumbnailImageLoader;
         private bool _performanceRenderingAttached;
         public MainViewModel ViewModel { get; }
 
         public MainWindow()
+            : this(ThumbnailImageLoader.CreateWithGeneratedFallback())
+        {
+        }
+
+        public MainWindow(IThumbnailImageLoader thumbnailImageLoader)
         {
             InitializeComponent();
             AppLogger.Info("Initializing MainWindow.");
             _performanceProbe = ThumbnailPerformanceProbe.Disabled;
+            _thumbnailImageLoader = thumbnailImageLoader ?? throw new ArgumentNullException(nameof(thumbnailImageLoader));
 
             var deeplAuthKey = Environment.GetEnvironmentVariable("DEEPL_AUTH_KEY");
             if (string.IsNullOrWhiteSpace(deeplAuthKey))
@@ -81,6 +88,7 @@ namespace Airi
             InitializeComponent();
             _translationService = NullTranslationService.Instance;
             _performanceProbe = performanceProbe ?? ThumbnailPerformanceProbe.Disabled;
+            _thumbnailImageLoader = null;
             ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
             WireViewModelEvents();
         }
