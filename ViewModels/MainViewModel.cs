@@ -361,6 +361,7 @@ namespace Airi.ViewModels
             decodePixelWidth = Math.Clamp(decodePixelWidth, 64, 520);
             var sourcePath = NormalizeThumbnailSourcePath(item.ThumbnailPath);
             long generation;
+            long runtimeIdentity;
             Guid identity;
             CancellationTokenSource requestCancellation;
 
@@ -378,6 +379,7 @@ namespace Airi.ViewModels
                 state.InFlight?.Cancellation.Dispose();
                 state.Generation++;
                 generation = state.Generation;
+                runtimeIdentity = state.RuntimeIdentity;
                 identity = Guid.NewGuid();
                 requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 state.Realization = new ThumbnailRealization(
@@ -390,6 +392,11 @@ namespace Airi.ViewModels
             }
 
             item.BeginThumbnailLoad(_thumbnailImageLoader.FallbackSource);
+            _performanceProbe.RecordThumbnailRequest(
+                runtimeIdentity,
+                generation,
+                sourcePath,
+                decodePixelWidth);
             return LoadAndApplyThumbnailAsync(
                 item,
                 item.ThumbnailPath,

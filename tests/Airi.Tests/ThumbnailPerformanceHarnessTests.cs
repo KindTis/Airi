@@ -374,7 +374,8 @@ public sealed class ThumbnailPerformanceHarnessTests
     private static MainViewModel CreateViewModel(
         string root,
         LibraryStore store,
-        ThumbnailPerformanceProbe probe)
+        ThumbnailPerformanceProbe probe,
+        IThumbnailImageLoader? thumbnailLoader = null)
     {
         var provider = new CrawlerSessionProvider();
         var source = new OneFourOneJavMetaSource(provider);
@@ -391,7 +392,20 @@ public sealed class ThumbnailPerformanceHarnessTests
             source,
             new NoopCrawlerFactory(),
             probe,
-            new TestThumbnailImageLoader());
+            thumbnailLoader ?? CreateHarnessThumbnailLoader(probe));
+    }
+
+    private static IThumbnailImageLoader CreateHarnessThumbnailLoader(ThumbnailPerformanceProbe probe)
+    {
+        var fallback = new TestThumbnailImageLoader().FallbackSource;
+        return new ThumbnailImageLoader(
+            fallback,
+            decoder: null,
+            probe,
+            failureSink: null,
+            LibraryPathHelper.ResolveToAbsolute("resources/noimage.jpg"),
+            capacity: 96,
+            maxConcurrency: 4);
     }
 
     private static void WriteJpeg(string path)

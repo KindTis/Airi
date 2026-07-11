@@ -34,6 +34,18 @@ internal sealed record ThumbnailPerformanceSnapshot(
     ThumbnailMeasurementPhase Phase,
     IReadOnlyDictionary<StartupTimingMarker, ThumbnailTimingPoint> Markers);
 
+internal readonly record struct ThumbnailRequestProbeRecord(
+    long ItemIdentity,
+    long Generation,
+    string NormalizedPath,
+    int DecodePixelWidth,
+    bool InRealizationWindow);
+
+internal readonly record struct ThumbnailImageRegistrationRecord(
+    int ImageIdentity,
+    long ItemIdentity,
+    bool Enter);
+
 internal sealed class ThumbnailPerformanceProbe
 {
     public const int SchemaVersion = 1;
@@ -41,6 +53,11 @@ internal sealed class ThumbnailPerformanceProbe
     private readonly object _sync = new();
     private readonly bool _enabled;
     private readonly Dictionary<StartupTimingMarker, ThumbnailTimingPoint> _markers = new();
+    private readonly List<ThumbnailRequestProbeRecord> _requestRecords = new();
+    private readonly List<ThumbnailImageRegistrationRecord> _registrationRecords = new();
+    private readonly HashSet<(int ImageIdentity, long ItemIdentity)> _activeRegistrations = new();
+    private readonly Dictionary<long, int> _activeItemCounts = new();
+    private int _maxRegistrationCount;
     private bool _active;
     private long _phaseOrigin;
     private ThumbnailMeasurementPhase _phase;
@@ -81,6 +98,11 @@ internal sealed class ThumbnailPerformanceProbe
 
             _phase = phase;
             _markers.Clear();
+            _requestRecords.Clear();
+            _registrationRecords.Clear();
+            _activeRegistrations.Clear();
+            _activeItemCounts.Clear();
+            _maxRegistrationCount = 0;
             _phaseOrigin = Stopwatch.GetTimestamp();
             _active = true;
         }
@@ -128,6 +150,82 @@ internal sealed class ThumbnailPerformanceProbe
         lock (_sync)
         {
             return _markers.Keys.OrderBy(marker => marker).ToArray();
+        }
+    }
+
+    public void EnterImageRegistration(int imageIdentity, long itemIdentity)
+    {
+        lock (_sync)
+        {
+            if (!_enabled || !_active || !_activeRegistrations.Add((imageIdentity, itemIdentity)))
+            {
+                return;
+            }
+
+            _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, true));
+            _activeItemCounts.TryGetValue(itemIdentity, out var count);
+            _activeItemCounts[itemIdentity] = count + 1;
+            _maxRegistrationCount = Math.Max(_maxRegistrationCount, _activeRegistrations.Count);
+        }
+    }
+
+    public void LeaveImageRegistration(int imageIdentity, long itemIdentity)
+    {
+        lock (_sync)
+        {
+            if (!_enabled || !_active || !_activeRegistrations.Remove((imageIdentity, itemIdentity)))
+            {
+                return;
+            }
+
+            _registrationRecords.Add(new ThumbnailImageRegistrationRecord(imageIdentity, itemIdentity, false));
+            var count = _activeItemCounts[itemIdentity] - 1;
+            if (count == 0)
+            {
+                _activeItemCounts.Remove(itemIdentity);
+            }
+            else
+            {
+                _activeItemCounts[itemIdentity] = count;
+            }
+        }
+    }
+
+    public void RecordThumbnailRequest(
+        long itemIdentity,
+        long generation,
+        string normalizedPath,
+        int decodePixelWidth)
+    {
+        lock (_sync)
+        {
+            if (!_enabled || !_active)
+            {
+                return;
+            }
+
+            _requestRecords.Add(new ThumbnailRequestProbeRecord(
+                itemIdentity,
+                generation,
+                normalizedPath,
+                decodePixelWidth,
+                _activeItemCounts.TryGetValue(itemIdentity, out var count) && count > 0));
+        }
+    }
+
+    public IReadOnlyList<ThumbnailRequestProbeRecord> GetRequestRecords()
+    {
+        lock (_sync)
+        {
+            return _requestRecords.ToArray();
+        }
+    }
+
+    public int GetActiveRegistrationCount()
+    {
+        lock (_sync)
+        {
+            return _activeRegistrations.Count;
         }
     }
 

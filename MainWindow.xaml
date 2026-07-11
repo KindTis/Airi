@@ -157,7 +157,7 @@
                 </Border.Effect>
                 <StackPanel MaxWidth="480">
                     <Border Height="350" CornerRadius="18" ClipToBounds="True" Margin="0,0,0,16">
-                        <Image Source="{Binding ThumbnailUri}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Image Source="{Binding ThumbnailSource}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
                     <StackPanel Margin="0,6,0,8">
@@ -510,7 +510,12 @@
                                 </Border.Style>
                                 <StackPanel>
                                     <Grid Height="160" Margin="0,0,0,10" ClipToBounds="True">
-                                        <Image Source="{Binding ThumbnailUri}" Tag="MainCardThumbnail" Stretch="UniformToFill"/>
+                                        <Image Source="{Binding ThumbnailSource}"
+                                               Tag="MainCardThumbnail"
+                                               Loaded="OnThumbnailImageLoaded"
+                                               Unloaded="OnThumbnailImageUnloaded"
+                                               DataContextChanged="OnThumbnailImageDataContextChanged"
+                                               Stretch="UniformToFill"/>
                                         <TextBlock Text="Missing" Foreground="#FFEF4444" Background="#801B1B1B" Padding="6,2" Margin="8" FontWeight="SemiBold"
                                                    HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
                                             <TextBlock.Style>

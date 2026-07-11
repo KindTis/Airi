@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -29,6 +30,10 @@ namespace Airi
         private readonly ThumbnailPerformanceProbe _performanceProbe;
         private readonly IThumbnailImageLoader? _thumbnailImageLoader;
         private bool _performanceRenderingAttached;
+        private readonly Dictionary<Image, VideoItem> _thumbnailRegistrations = new();
+        private readonly Dictionary<Image, int> _thumbnailRegistrationWidths = new();
+        private readonly Dictionary<VideoItem, int> _thumbnailRegistrationCounts = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<VideoItem, int> _thumbnailRequestedWidths = new(ReferenceEqualityComparer.Instance);
         public MainViewModel ViewModel { get; }
 
         public MainWindow()
@@ -139,6 +144,163 @@ namespace Airi
             AppLogger.Info("View model initialization complete.");
         }
 
+        private async void OnThumbnailImageLoaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Image image || image.DataContext is not VideoItem item)
+            {
+                return;
+            }
+
+            try
+            {
+                await RegisterThumbnailImageAsync(image, item);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Unexpected thumbnail request failure.", ex);
+            }
+        }
+
+        private void OnThumbnailImageUnloaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is Image image)
+            {
+                UnregisterThumbnailImage(image);
+            }
+        }
+
+        private async void OnThumbnailImageDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (sender is not Image image)
+            {
+                return;
+            }
+
+            try
+            {
+                await ChangeThumbnailImageDataContextAsync(image, e.NewValue as VideoItem, image.IsLoaded);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Unexpected thumbnail request failure.", ex);
+            }
+        }
+
+        internal static int CalculateThumbnailDecodeWidth(Image image)
+        {
+            ArgumentNullException.ThrowIfNull(image);
+            var dipWidth = image.ActualWidth > 0 ? image.ActualWidth : 260d;
+            var dpi = VisualTreeHelper.GetDpi(image).DpiScaleX;
+            return CalculateThumbnailDecodeWidth(dipWidth, dpi);
+        }
+
+        internal static int CalculateThumbnailDecodeWidth(double actualWidth, double dpiScaleX) =>
+            Math.Clamp((int)Math.Ceiling(actualWidth * dpiScaleX), 64, 520);
+
+        internal Task RegisterThumbnailImageForTestsAsync(Image image) =>
+            image.DataContext is VideoItem item
+                ? RegisterThumbnailImageAsync(image, item)
+                : Task.CompletedTask;
+
+        internal Task ChangeThumbnailImageDataContextForTestsAsync(
+            Image image,
+            VideoItem? newItem,
+            bool isLoaded) =>
+            ChangeThumbnailImageDataContextAsync(image, newItem, isLoaded);
+
+        internal void UnregisterThumbnailImageForTests(Image image) => UnregisterThumbnailImage(image);
+
+        internal int GetThumbnailRegistrationCountForTests() => _thumbnailRegistrations.Count;
+
+        private async Task ChangeThumbnailImageDataContextAsync(
+            Image image,
+            VideoItem? newItem,
+            bool isLoaded)
+        {
+            UnregisterThumbnailImage(image);
+            image.DataContext = newItem;
+            if (isLoaded && newItem is not null)
+            {
+                await RegisterThumbnailImageAsync(image, newItem);
+            }
+        }
+
+        private async Task RegisterThumbnailImageAsync(Image image, VideoItem item)
+        {
+            Dispatcher.VerifyAccess();
+            var width = CalculateThumbnailDecodeWidth(image);
+            if (_thumbnailRegistrations.TryGetValue(image, out var registered))
+            {
+                if (!ReferenceEquals(registered, item))
+                {
+                    UnregisterThumbnailImage(image);
+                }
+                else
+                {
+                    _thumbnailRegistrationWidths[image] = width;
+                    if (_thumbnailRequestedWidths.TryGetValue(item, out var requestedWidth) && width > requestedWidth)
+                    {
+                        _thumbnailRequestedWidths[item] = width;
+                        await ViewModel.RequestThumbnailAsync(item, width);
+                    }
+                    return;
+                }
+            }
+
+            _thumbnailRegistrations.Add(image, item);
+            _thumbnailRegistrationWidths.Add(image, width);
+            _thumbnailRegistrationCounts.TryGetValue(item, out var activeCount);
+            _thumbnailRegistrationCounts[item] = activeCount + 1;
+            var itemIdentity = ViewModel.GetOrCreateThumbnailRuntimeIdentity(item);
+            _performanceProbe.EnterImageRegistration(RuntimeHelpers.GetHashCode(image), itemIdentity);
+
+            if (activeCount == 0)
+            {
+                _thumbnailRequestedWidths[item] = width;
+                await ViewModel.RequestThumbnailAsync(item, width);
+            }
+            else if (_thumbnailRequestedWidths.TryGetValue(item, out var requestedWidth) && width > requestedWidth)
+            {
+                _thumbnailRequestedWidths[item] = width;
+                await ViewModel.RequestThumbnailAsync(item, width);
+            }
+        }
+
+        private void UnregisterThumbnailImage(Image image)
+        {
+            Dispatcher.VerifyAccess();
+            if (!_thumbnailRegistrations.Remove(image, out var item))
+            {
+                return;
+            }
+
+            _thumbnailRegistrationWidths.Remove(image);
+            var itemIdentity = ViewModel.GetOrCreateThumbnailRuntimeIdentity(item);
+            _performanceProbe.LeaveImageRegistration(RuntimeHelpers.GetHashCode(image), itemIdentity);
+            var activeCount = _thumbnailRegistrationCounts[item] - 1;
+            if (activeCount < 0)
+            {
+                throw new InvalidOperationException("Thumbnail image registration count became negative.");
+            }
+
+            if (activeCount == 0)
+            {
+                _thumbnailRegistrationCounts.Remove(item);
+                _thumbnailRequestedWidths.Remove(item);
+                ViewModel.ReleaseThumbnail(item);
+            }
+            else
+            {
+                _thumbnailRegistrationCounts[item] = activeCount;
+            }
+
+            if (_thumbnailRegistrations.Count != _thumbnailRegistrationWidths.Count ||
+                _thumbnailRegistrationCounts.Values.Sum() != _thumbnailRegistrations.Count)
+            {
+                throw new InvalidOperationException("Thumbnail image registration invariants were violated.");
+            }
+        }
+
         private void OnPerformanceVideosChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (!_performanceProbe.IsActive || ViewModel.Videos.Count == 0 || _performanceRenderingAttached)
@@ -241,6 +403,11 @@ namespace Airi
             if (bitmapSource is BitmapImage downloading && downloading.IsDownloading)
             {
                 return false;
+            }
+
+            if (item.ThumbnailLoadState == ThumbnailLoadState.Loaded)
+            {
+                return ReferenceEquals(image.Source, item.ThumbnailSource);
             }
 
             var expected = LibraryPathHelper.ResolveToAbsolute(item.ThumbnailPath);
@@ -419,15 +586,27 @@ namespace Airi
 
         protected override void OnClosed(System.EventArgs e)
         {
-            base.OnClosed(e);
             DetachPerformanceRendering();
             ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
+            foreach (var image in _thumbnailRegistrations.Keys.ToArray())
+            {
+                UnregisterThumbnailImage(image);
+            }
+            if (_thumbnailRegistrations.Count != 0 ||
+                _thumbnailRegistrationWidths.Count != 0 ||
+                _thumbnailRegistrationCounts.Count != 0 ||
+                _thumbnailRequestedWidths.Count != 0)
+            {
+                throw new InvalidOperationException("Thumbnail registrations remained after window close cleanup.");
+            }
+            ViewModel.Dispose();
             _httpClient.Dispose();
             if (_translationService is IDisposable disposableTranslation)
             {
                 disposableTranslation.Dispose();
             }
+            base.OnClosed(e);
         }
     }
 }
