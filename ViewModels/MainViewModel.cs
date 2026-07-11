@@ -685,9 +685,12 @@ namespace Airi.ViewModels
             LibraryMutationLease startupLease,
             CancellationToken cancellationToken,
             bool transitionToScanning,
-            bool endSkeletonsWhenEmpty)
+            bool endSkeletonsWhenEmpty,
+            string resetKind = "StoredReset",
+            string publishKind = "StoredPublish",
+            string finalizeKind = "StoredFinalize")
         {
-            if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("StoredReset", 0, () =>
+            if (!await TryInvokeLifetimeBoundDispatcherBatchAsync(resetKind, 0, () =>
             {
                 EnsureCurrentLease(startupLease);
                 _library = data;
@@ -720,7 +723,7 @@ namespace Airi.ViewModels
                 }
 
                 var published = await TryInvokeLifetimeBoundDispatcherBatchAsync(
-                    "StoredPublish",
+                    publishKind,
                     batch.Length,
                     () =>
                     {
@@ -754,7 +757,7 @@ namespace Airi.ViewModels
                 () => actorNames.OrderBy(actor => actor, StringComparer.OrdinalIgnoreCase).ToArray(),
                 cancellationToken).ConfigureAwait(false);
             var finalized = await TryInvokeLifetimeBoundDispatcherBatchAsync(
-                "StoredFinalize",
+                finalizeKind,
                 entries.Count,
                 () =>
                 {
@@ -900,30 +903,210 @@ namespace Airi.ViewModels
             CancellationToken cancellationToken)
         {
             AppLogger.Info("Initiating initial library scan.");
-            var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
+            var commitStarted = false;
+            try
+            {
+                var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
+                ScanPreparationSeed? seed = null;
+                if (!await TryInvokeLifetimeBoundDispatcherBatchAsync(
+                    "ScanSeedCapture",
+                    _library.Videos.Count,
+                    () => seed = CaptureScanPreparationSeed(startupLease)).ConfigureAwait(false))
+                {
+                    return;
+                }
 
+                var plan = await Task.Run(
+                    () => PrepareScanApplyPlan(result, seed!, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+                if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("ScanCommitStart", 0, () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    EnsureCurrentLease(startupLease);
+                    SetStartupState(StartupLibraryState.ApplyingScan);
+                    _library = plan.FinalLibrary;
+                    commitStarted = true;
+                }).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                var applied = 0;
+                foreach (var batch in plan.Operations.Chunk(InitialLoadBatchSize))
+                {
+                    var operationBatch = batch.ToArray();
+                    if (!await TryInvokeLifetimeBoundDispatcherBatchAsync(
+                        "ScanApply",
+                        operationBatch.Length,
+                        () =>
+                        {
+                            EnsureCurrentLease(startupLease);
+                            var firstNewBatch = !_startupPublishesStoredLibrary &&
+                                IsInitialLoading &&
+                                operationBatch.Any(operation => operation is AddScanItem);
+                            if (firstNewBatch)
+                            {
+                                IsInitialLoading = false;
+                            }
+                            foreach (var operation in operationBatch)
+                            {
+                                ApplyScanOperation(operation);
+                            }
+                            if (firstNewBatch)
+                            {
+                                SelectedVideo ??= Videos.FirstOrDefault();
+                                _performanceProbe.TryMark(StartupTimingMarker.FirstBatchPublished);
+                            }
+                            applied += operationBatch.Length;
+                            StatusMessage = $"Applying scan results... {applied}/{plan.Operations.Count}";
+                        }).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                }
+
+                if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("ScanFinalize", plan.Operations.Count, () =>
+                {
+                    EnsureCurrentLease(startupLease);
+                    Actors.Clear();
+                    Actors.Add(AllActorsLabel);
+                    foreach (var actor in plan.ActorSnapshot)
+                    {
+                        Actors.Add(actor);
+                    }
+                    FilteredVideos.Refresh();
+                    SelectedVideo = Videos.FirstOrDefault(video =>
+                        ReferenceEquals(video, SelectedVideo)) ?? Videos.FirstOrDefault();
+                    if (Videos.Count > 0)
+                    {
+                        IsInitialLoading = false;
+                        IsActorListLoading = false;
+                    }
+                    SetStartupState(StartupLibraryState.SavingScan);
+                    _performanceProbe.TryMark(StartupTimingMarker.AllItemsPublished);
+                }).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                await _libraryStore.SaveAsync(plan.FinalLibrary, _lifetimeCts.Token).ConfigureAwait(false);
+
+                LibraryMutationLease? autoMetadataLease = null;
+                if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("StartupTerminal", 0, () =>
+                {
+                    EnsureCurrentLease(startupLease);
+                    foreach (var path in plan.MetadataPaths)
+                    {
+                        EnqueueMetadataForProcessing(path);
+                    }
+                    IsInitialLoading = false;
+                    IsActorListLoading = false;
+                    ReleaseLibraryMutation(startupLease);
+                    if (HasPendingMetadata())
+                    {
+                        autoMetadataLease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
+                    }
+                    SetStartupState(StartupLibraryState.Ready);
+                    StatusMessage = $"Scan complete: {plan.AddedCount} added, {plan.MissingCount} missing, {plan.UpdatedCount} updated.";
+                }).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                AppLogger.Info(
+                    $"Scan apply summary: {plan.AddedCount} added, {plan.MissingCount} missing, {plan.UpdatedCount} updated.");
+                if (autoMetadataLease is not null)
+                {
+                    StartMetadataProcessing(autoMetadataLease);
+                }
+                _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
+            }
+            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (commitStarted)
+                {
+                    await RecoverStartupScanAsync(startupLease, ex).ConfigureAwait(false);
+                }
+                else
+                {
+                    await CompleteStartupWithoutScanCommitAsync(startupLease, ex).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private async Task CompleteStartupWithoutScanCommitAsync(
+            LibraryMutationLease startupLease,
+            Exception exception)
+        {
+            var status = exception is OperationCanceledException
+                ? "Scan cancelled; stored library remains unchanged."
+                : $"Scan failed; stored library remains unchanged: {exception.Message}";
             await _dispatcher.InvokeAsync(() =>
             {
                 EnsureCurrentLease(startupLease);
-                SetStartupState(StartupLibraryState.ApplyingScan);
-                ApplyScanResult(result);
-                SetStartupState(StartupLibraryState.SavingScan);
-            });
-
-            await _libraryStore.SaveAsync(_library, cancellationToken).ConfigureAwait(false);
-
-            await _dispatcher.InvokeAsync(() =>
-            {
-                EnsureCurrentLease(startupLease);
-                StatusMessage = $"Scan complete: {result.NewFiles.Count} added, {result.MissingEntries.Count} missing, {result.UpdatedEntries.Count} updated.";
-                AppLogger.Info(StatusMessage);
                 IsInitialLoading = false;
                 IsActorListLoading = false;
+                StatusMessage = status;
                 SetStartupState(StartupLibraryState.Ready);
                 ReleaseLibraryMutation(startupLease);
-                UpdateStatus(updateMessage: false);
             });
+            AppLogger.Error(status, exception);
             _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
+        }
+
+        private async Task RecoverStartupScanAsync(
+            LibraryMutationLease startupLease,
+            Exception exception)
+        {
+            var status = exception is OperationCanceledException
+                ? "Scan commit cancelled; persisted library restored."
+                : $"Scan commit failed; persisted library restored: {exception.Message}";
+            try
+            {
+                var persisted = await _libraryStore.LoadAsync(CancellationToken.None).ConfigureAwait(false);
+                _lifetimeCts.Token.ThrowIfCancellationRequested();
+                await LoadLibraryDataAsync(
+                    persisted,
+                    startupLease,
+                    _lifetimeCts.Token,
+                    transitionToScanning: false,
+                    endSkeletonsWhenEmpty: true,
+                    resetKind: "StartupRecoveryReset",
+                    publishKind: "StartupRecovery",
+                    finalizeKind: "RecoveryFinalize").ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    EnsureCurrentLease(startupLease);
+                    StatusMessage = status;
+                    SetStartupState(StartupLibraryState.Ready);
+                    ReleaseLibraryMutation(startupLease);
+                });
+                AppLogger.Error(status, exception);
+            }
+            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception recoveryException)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    IsInitialLoading = false;
+                    IsActorListLoading = false;
+                    StatusMessage = "Startup recovery failed. Restart required.";
+                    SetStartupState(StartupLibraryState.Faulted);
+                    ReleaseLibraryMutation(startupLease);
+                });
+                AppLogger.Error("Startup recovery failed. Restart required.", recoveryException);
+            }
+            finally
+            {
+                _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
+            }
         }
 
         private async Task FetchMissingMetadataWithCrawlerAsync()
@@ -1300,74 +1483,163 @@ namespace Airi.ViewModels
         }
 
 
-        private void ApplyScanResult(LibraryScanResult result)
+        internal ScanPreparationSeed CaptureScanPreparationSeed(LibraryMutationLease startupLease)
         {
-            var snapshotMap = result.Snapshots.ToDictionary(s => LibraryPathHelper.NormalizeLibraryPath(s.LibraryPath), StringComparer.OrdinalIgnoreCase);
+            _dispatcher.VerifyAccess();
+            EnsureCurrentLease(startupLease);
+            return new ScanPreparationSeed(
+                _library.Targets.ToArray(),
+                _library.Videos.ToArray(),
+                _videoIndex.ToArray());
+        }
 
-            foreach (var video in Videos)
+        internal ScanApplyPlan PrepareScanApplyPlan(
+            LibraryScanResult result,
+            ScanPreparationSeed seed,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var targets = seed.TargetReferences.Select(CloneTarget).ToArray();
+            var videos = seed.VideoReferences.Select(CloneEntry).ToArray();
+            var itemIdentities = seed.ItemIdentitiesByNormalizedPath.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+            var existing = new Dictionary<string, ExistingScanItemSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in videos)
             {
-                var key = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
-                if (snapshotMap.TryGetValue(key, out var snapshot))
+                cancellationToken.ThrowIfCancellationRequested();
+                var normalized = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
+                if (itemIdentities.TryGetValue(normalized, out var item))
                 {
-                    video.UpdateFileState(snapshot.AbsolutePath, snapshot.SizeBytes, snapshot.LastWriteUtc, VideoPresenceState.Available, snapshot.CreatedUtc);
+                    existing[normalized] = new ExistingScanItemSnapshot(normalized, entry, item);
+                }
+            }
+            var preparation = new ScanPreparationSnapshot(
+                Array.AsReadOnly(targets),
+                Array.AsReadOnly(videos),
+                new System.Collections.ObjectModel.ReadOnlyDictionary<string, ExistingScanItemSnapshot>(existing));
+
+            var snapshots = result.Snapshots.ToDictionary(
+                snapshot => LibraryPathHelper.NormalizeLibraryPath(snapshot.LibraryPath),
+                StringComparer.OrdinalIgnoreCase);
+            var finalVideos = new List<VideoEntry>(preparation.Videos.Count + result.NewFiles.Count);
+            var operations = new List<ScanApplyOperation>(preparation.Videos.Count + result.NewFiles.Count);
+            foreach (var entry in preparation.Videos)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var normalized = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
+                if (!preparation.ExistingByPath.TryGetValue(normalized, out var existingItem))
+                {
+                    continue;
+                }
+
+                if (snapshots.TryGetValue(normalized, out var snapshot))
+                {
+                    var createdUtc = snapshot.CreatedUtc != default ? snapshot.CreatedUtc : entry.CreatedUtc;
+                    var updatedEntry = entry with
+                    {
+                        SizeBytes = snapshot.SizeBytes,
+                        LastModifiedUtc = snapshot.LastWriteUtc,
+                        CreatedUtc = createdUtc
+                    };
+                    finalVideos.Add(updatedEntry);
+                    operations.Add(new UpdateScanItem(
+                        existingItem.ItemIdentity,
+                        snapshot.AbsolutePath,
+                        snapshot.SizeBytes,
+                        snapshot.LastWriteUtc,
+                        createdUtc,
+                        VideoPresenceState.Available));
                 }
                 else
                 {
-                    var absolute = LibraryPathHelper.ResolveToAbsolute(video.LibraryPath);
-                    video.UpdateFileState(absolute, video.SizeBytes, video.LastModifiedUtc, VideoPresenceState.Missing, video.CreatedUtc);
-                    AppLogger.Info($"Marked missing: {video.LibraryPath}");
+                    finalVideos.Add(entry);
+                    operations.Add(new UpdateScanItem(
+                        existingItem.ItemIdentity,
+                        LibraryPathHelper.ResolveToAbsolute(entry.Path),
+                        entry.SizeBytes,
+                        entry.LastModifiedUtc,
+                        entry.CreatedUtc,
+                        VideoPresenceState.Missing));
                 }
             }
 
-            foreach (var updated in result.UpdatedEntries)
+            var metadataPaths = new List<string>(result.NewFiles.Count);
+            foreach (var snapshot in result.NewFiles)
             {
-                UpdateLibraryEntry(updated.Entry.Path, current => current with
-                {
-                    SizeBytes = updated.Snapshot.SizeBytes,
-                    LastModifiedUtc = updated.Snapshot.LastWriteUtc,
-                    CreatedUtc = updated.Snapshot.CreatedUtc != default ? updated.Snapshot.CreatedUtc : current.CreatedUtc
-                });
-
-                if (_videoIndex.TryGetValue(LibraryPathHelper.NormalizeLibraryPath(updated.Entry.Path), out var video))
-                {
-                    video.UpdateFileState(updated.Snapshot.AbsolutePath, updated.Snapshot.SizeBytes, updated.Snapshot.LastWriteUtc, VideoPresenceState.Available, updated.Snapshot.CreatedUtc);
-                }
-            }
-
-            var firstScanItem = true;
-            foreach (var newFile in result.NewFiles)
-            {
-                var entry = CreateEntryFromSnapshot(newFile);
-                _library.Videos.Add(entry);
+                cancellationToken.ThrowIfCancellationRequested();
+                var entry = CreateEntryFromSnapshot(snapshot);
                 var item = MapVideo(entry);
-                RegisterVideo(item);
-                Videos.Add(item);
-                AppLogger.Info($"Added new library entry: {entry.Path}");
-                EnqueueMetadataForProcessing(entry.Path);
-
-                if (!_startupPublishesStoredLibrary && firstScanItem)
-                {
-                    _performanceProbe.TryMark(StartupTimingMarker.FirstBatchPublished);
-                    firstScanItem = false;
-                }
-            }
-
-            if (!_startupPublishesStoredLibrary && result.NewFiles.Count > 0)
-            {
-                _performanceProbe.TryMark(StartupTimingMarker.AllItemsPublished);
+                finalVideos.Add(CloneEntry(entry));
+                operations.Add(new AddScanItem(entry, item, entry.Path));
+                metadataPaths.Add(entry.Path);
             }
 
             var scanTimestamp = DateTime.UtcNow;
-            _library.Targets = _library.Targets
-                .Select(t => t with { LastScanUtc = scanTimestamp })
-                .ToList();
-
-            RefreshActorList();
-            UpdateStatus(updateMessage: false);
-            RequestMetadataProcessing();
+            var finalLibrary = new LibraryData
+            {
+                Version = 1,
+                Targets = preparation.Targets
+                    .Select(target => CloneTarget(target) with { LastScanUtc = scanTimestamp })
+                    .ToList(),
+                Videos = finalVideos.Select(CloneEntry).ToList()
+            };
+            var actors = finalLibrary.Videos
+                .SelectMany(entry => entry.Meta.Actors)
+                .Where(actor => !string.IsNullOrWhiteSpace(actor))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(actor => actor, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return new ScanApplyPlan(
+                finalLibrary,
+                operations,
+                metadataPaths,
+                actors,
+                scanTimestamp,
+                result.NewFiles.Count,
+                result.MissingEntries.Count,
+                result.UpdatedEntries.Count);
         }
 
-        private async Task ProcessMetadataQueueAsync()
+        private static TargetFolder CloneTarget(TargetFolder target) => target with
+        {
+            IncludePatterns = target.IncludePatterns.ToArray(),
+            ExcludePatterns = target.ExcludePatterns.ToArray()
+        };
+
+        private static VideoEntry CloneEntry(VideoEntry entry) => entry with
+        {
+            Meta = entry.Meta with
+            {
+                Actors = entry.Meta.Actors.ToArray(),
+                Tags = entry.Meta.Tags.ToArray()
+            }
+        };
+
+        private void ApplyScanOperation(ScanApplyOperation operation)
+        {
+            _dispatcher.VerifyAccess();
+            switch (operation)
+            {
+                case UpdateScanItem update:
+                    update.Item.UpdateFileState(
+                        update.AbsolutePath,
+                        update.SizeBytes,
+                        update.LastWriteUtc,
+                        update.Presence,
+                        update.CreatedUtc);
+                    break;
+                case AddScanItem add:
+                    RegisterVideo(add.Item);
+                    Videos.Add(add.Item);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown scan operation: {operation.GetType().Name}.");
+            }
+        }
+
+        private async Task ProcessMetadataQueueAsync(LibraryMutationLease? preacquiredLease = null)
         {
             bool hasItems;
             lock (_metadataQueueLock)
@@ -1380,14 +1652,21 @@ namespace Airi.ViewModels
                 return;
             }
 
-            LibraryMutationLease? lease = null;
-            await _dispatcher.InvokeAsync(() =>
+            var lease = preacquiredLease;
+            if (lease is null)
             {
-                if (CanMutateLibrary)
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    lease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
-                }
-            });
+                    if (CanMutateLibrary)
+                    {
+                        lease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
+                    }
+                });
+            }
+            else
+            {
+                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
+            }
             if (lease is null)
             {
                 return;
@@ -1553,7 +1832,27 @@ namespace Airi.ViewModels
                     return;
                 }
 
-                _metadataProcessingTask = Task.Run(ProcessMetadataQueueAsync);
+                _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync());
+            }
+        }
+
+        private bool HasPendingMetadata()
+        {
+            lock (_metadataQueueLock)
+            {
+                return _pendingMetadata.Count > 0;
+            }
+        }
+
+        private void StartMetadataProcessing(LibraryMutationLease lease)
+        {
+            lock (_metadataQueueLock)
+            {
+                if (_metadataProcessingTask is not null && !_metadataProcessingTask.IsCompleted)
+                {
+                    throw new InvalidOperationException("Metadata processing is already active.");
+                }
+                _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync(lease));
             }
         }
 

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Airi.Domain;
@@ -141,10 +142,13 @@ public sealed class MainViewModelStartupLoadingTests
             StartupLibraryState.SavingScan,
             StartupLibraryState.Ready
         }, states.ConvertAll(entry => entry.State));
-        var identities = states.Select(entry => entry.Lease?.Identity).Distinct().ToArray();
+        var startupStates = states
+            .Where(entry => entry.State != StartupLibraryState.Ready)
+            .ToArray();
+        var identities = startupStates.Select(entry => entry.Lease?.Identity).Distinct().ToArray();
         Assert.Single(identities);
         Assert.NotNull(identities[0]);
-        Assert.All(states, entry => Assert.Equal(LibraryMutationOwner.StartupScan, entry.Lease?.Owner));
+        Assert.All(startupStates, entry => Assert.Equal(LibraryMutationOwner.StartupScan, entry.Lease?.Owner));
         Assert.Null(viewModel.CurrentMutationLease);
         Assert.True(viewModel.CanMutateLibrary);
         Assert.Equal(1, fixture.Store.LoadCount);
@@ -620,12 +624,384 @@ public sealed class MainViewModelStartupLoadingTests
         Assert.DoesNotContain(dispatcherThread, mappingThreads);
     });
 
+    [Fact]
+    public Task StartupScan_FirstNewBatchEndsVideoSkeleton() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        var saveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishSave = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Store.SaveOverride = async (_, token) =>
+        {
+            saveStarted.TrySetResult();
+            await finishSave.Task.WaitAsync(token);
+        };
+        using var viewModel = fixture.CreateViewModel();
+
+        var initialization = viewModel.InitializeAsync();
+        await saveStarted.Task;
+        Assert.Equal(StartupLibraryState.SavingScan, viewModel.StartupState);
+        Assert.Single(viewModel.Videos);
+        Assert.False(viewModel.ShowVideoSkeleton);
+        finishSave.TrySetResult();
+        await initialization;
+    });
+
+    [Fact]
+    public Task StartupScan_ZeroResults_KeepsSkeletonsUntilSaveCompletion() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(0));
+        var saveStarted = new TaskCompletionSource<LibraryData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishSave = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Store.SaveOverride = async (library, token) =>
+        {
+            saveStarted.TrySetResult(library);
+            await finishSave.Task.WaitAsync(token);
+        };
+        using var viewModel = fixture.CreateViewModel();
+
+        var initialization = viewModel.InitializeAsync();
+        var savingLibrary = await saveStarted.Task;
+        Assert.Equal(StartupLibraryState.SavingScan, viewModel.StartupState);
+        Assert.True(viewModel.ShowVideoSkeleton);
+        Assert.True(viewModel.ShowActorSkeleton);
+        Assert.NotNull(savingLibrary.Targets.Single().LastScanUtc);
+        finishSave.TrySetResult();
+        await initialization;
+        Assert.False(viewModel.ShowVideoSkeleton);
+        Assert.False(viewModel.ShowActorSkeleton);
+    });
+
+    [Fact]
+    public Task StartupScan_HundredNewItemsPublishesMultipleDispatcherBatches() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        var probe = ThumbnailPerformanceProbe.CreateEnabled();
+        probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
+        using var viewModel = fixture.CreateViewModel(probe);
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(100, viewModel.Videos.Count);
+        Assert.Equal(new[] { 40, 40, 20 }, probe.GetDispatcherBatchRecords()
+            .Where(record => record.Kind == "ScanApply")
+            .Select(record => record.ItemCount));
+        Assert.Single(probe.GetDispatcherBatchRecords(), record => record.Kind == "ScanCommitStart");
+        Assert.Single(probe.GetDispatcherBatchRecords(), record => record.Kind == "ScanFinalize");
+        _ = probe.EndMeasurementPhase();
+    });
+
+    [Fact]
+    public Task StartupScan_EnumerationApplyingAndSavingBlockManualAndEditorMutation() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) =>
+        {
+            Assert.Equal(StartupLibraryState.Scanning, fixture.ViewModel!.StartupState);
+            Assert.False(fixture.ViewModel.CanMutateLibrary);
+            return Task.FromResult(CreateNewFileScanResult(1));
+        };
+        fixture.Store.SaveOverride = (_, _) =>
+        {
+            Assert.Equal(StartupLibraryState.SavingScan, fixture.ViewModel!.StartupState);
+            Assert.Equal(LibraryMutationOwner.StartupScan, fixture.ViewModel.CurrentMutationLease?.Owner);
+            Assert.Null(fixture.ViewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+            Assert.Null(fixture.ViewModel.TryBeginMetadataEditorMutation());
+            return Task.CompletedTask;
+        };
+        using var viewModel = fixture.CreateViewModel();
+        fixture.ViewModel = viewModel;
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+    });
+
+    [Fact]
+    public Task ScanPlan_CancelBeforeFirstBatchChangesNothing() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(2);
+        fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        using var cancellation = new CancellationTokenSource();
+        fixture.Scanner.ScanOverride = (_, _) =>
+        {
+            cancellation.Cancel();
+            return Task.FromResult(CreateScanResultForLibrary(persisted));
+        };
+        using var viewModel = fixture.CreateViewModel();
+
+        await viewModel.InitializeAsync(cancellation.Token);
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(2, viewModel.Videos.Count);
+        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.Contains("unchanged", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    });
+
+    [Fact]
+    public Task ScanPlan_CancelAfterFirstBatchFinishesPlanAndAtomicSave() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        using var cancellation = new CancellationTokenSource();
+        using var viewModel = fixture.CreateViewModel();
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 1)
+            {
+                cancellation.Cancel();
+            }
+        };
+
+        await viewModel.InitializeAsync(cancellation.Token);
+
+        Assert.Equal(100, viewModel.Videos.Count);
+        Assert.Equal(1, fixture.Store.SaveCount);
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+    });
+
+    [Fact]
+    public Task ScanPlan_MiddleBatchFailureSkipsMetadataAndRecoversPersistedState() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(2);
+        fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        using var viewModel = fixture.CreateViewModel();
+        var failed = false;
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (!failed && viewModel.Videos.Count == 50)
+            {
+                failed = true;
+                throw new InvalidOperationException("apply failed");
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(2, viewModel.Videos.Count);
+        Assert.Equal(2, fixture.Store.LoadCount);
+        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.False(viewModel.IsFetchingMetadata);
+    });
+
+    [Fact]
+    public Task ScanPlan_RecoveryFailureFaultsAndKeepsMutationDisabled() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(1);
+        fixture.Store.LoadOverride = _ => fixture.Store.LoadCount == 1
+            ? Task.FromResult(persisted)
+            : Task.FromException<LibraryData>(new IOException("recovery failed"));
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(2));
+        using var viewModel = fixture.CreateViewModel();
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 2)
+            {
+                throw new InvalidOperationException("apply failed");
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Faulted, viewModel.StartupState);
+        Assert.False(viewModel.CanMutateLibrary);
+        Assert.False(viewModel.FetchMetadataCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task ScanPlan_LifetimeCancelStopsSchedulingWithoutRecoveryOrReady() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        var viewModel = fixture.CreateViewModel();
+        viewModel.Videos.CollectionChanged += (_, _) =>
+        {
+            if (viewModel.Videos.Count == 1)
+            {
+                viewModel.Dispose();
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.NotEqual(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.Equal(1, fixture.Store.LoadCount);
+    });
+
+    [Fact]
+    public Task StartupScan_PendingAutoQueueWinsLeaseBeforeManualFetch() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        using var viewModel = fixture.CreateViewModel();
+        LibraryMutationOwner? ownerAtReady = null;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainViewModel.StartupState) &&
+                viewModel.StartupState == StartupLibraryState.Ready)
+            {
+                ownerAtReady = viewModel.CurrentMutationLease?.Owner;
+                Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(LibraryMutationOwner.AutoMetadata, ownerAtReady);
+    });
+
+    [Fact]
+    public Task PrepareScanApplyPlan_DeepCloneRunsOffDispatcherThread() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        using var viewModel = fixture.CreateViewModel();
+        var lease = Assert.IsType<LibraryMutationLease>(
+            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.StartupScan));
+        var seed = viewModel.CaptureScanPreparationSeed(lease);
+        var dispatcherThread = Environment.CurrentManagedThreadId;
+        var preparationThread = 0;
+
+        var plan = await Task.Run(() =>
+        {
+            preparationThread = Environment.CurrentManagedThreadId;
+            return viewModel.PrepareScanApplyPlan(EmptyScanResult(), seed, CancellationToken.None);
+        });
+
+        Assert.NotEqual(dispatcherThread, preparationThread);
+        Assert.NotSame(seed.TargetReferences, plan.FinalLibrary.Targets);
+        viewModel.ReleaseLibraryMutation(lease);
+    });
+
+    [Fact]
+    public Task ScanApplyPlan_CollectionsCannotBeMutatedAfterConstruction() => WpfTestHost.RunAsync(() =>
+    {
+        var operations = new List<ScanApplyOperation>();
+        var metadata = new List<string> { "one" };
+        var actors = new List<string> { "actor" };
+        var plan = new ScanApplyPlan(
+            new LibraryData(),
+            operations,
+            metadata,
+            actors,
+            DateTime.UtcNow,
+            0,
+            0,
+            0);
+        metadata[0] = "changed";
+        actors[0] = "changed";
+
+        Assert.Equal("one", plan.MetadataPaths[0]);
+        Assert.Equal("actor", plan.ActorSnapshot[0]);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<string>)plan.MetadataPaths).Add("two"));
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task ScanSnapshotCapture_StressFixture_CompletesWithinHardGate() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(1000));
+        var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishScan = new TaskCompletionSource<LibraryScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Scanner.ScanOverride = (_, _) =>
+        {
+            scanStarted.TrySetResult();
+            return finishScan.Task;
+        };
+        using var viewModel = fixture.CreateViewModel();
+        var initialization = viewModel.InitializeAsync();
+        await scanStarted.Task;
+        var lease = Assert.IsType<LibraryMutationLease>(viewModel.CurrentMutationLease);
+        var stopwatch = Stopwatch.StartNew();
+        _ = viewModel.CaptureScanPreparationSeed(lease);
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed <= TimeSpan.FromMilliseconds(100));
+        finishScan.TrySetResult(CreateScanResultForLibrary(CreateLibrary(1000)));
+        await initialization;
+    });
+
+    [Fact]
+    public Task StartupScan_SuccessFailureAndOperationCancelReturnReadyWithOriginalStatus() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(2);
+        fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
+        fixture.Store.SaveOverride = (_, _) => Task.FromException(new IOException("save failed"));
+        using var viewModel = fixture.CreateViewModel();
+
+        await viewModel.InitializeAsync();
+
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+        Assert.Equal(2, fixture.Store.LoadCount);
+        Assert.Equal(2, viewModel.Videos.Count);
+        Assert.Contains("save failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    });
+
+    [Fact]
+    public Task ScanFinalize_RefreshesActorsFilterSelectionBeforeTerminal() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var persisted = CreateLibrary(3);
+        fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
+        using var viewModel = fixture.CreateViewModel();
+        var finalizedBeforeReady = false;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainViewModel.StartupState) &&
+                viewModel.StartupState == StartupLibraryState.SavingScan)
+            {
+                finalizedBeforeReady =
+                    viewModel.Actors.Contains("Actor 0") &&
+                    viewModel.SelectedVideo is not null &&
+                    !viewModel.IsActorListLoading;
+            }
+        };
+
+        await viewModel.InitializeAsync();
+
+        Assert.True(finalizedBeforeReady);
+        Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
+    });
+
+    [Fact]
+    public Task CancelBeforeCommit_OriginalDomainGraphRemainsByteForByteEquivalent() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var original = CreateLibrary(3);
+        var before = JsonSerializer.SerializeToUtf8Bytes(original);
+        fixture.Store.LoadOverride = _ => Task.FromResult(original);
+        using var cancellation = new CancellationTokenSource();
+        fixture.Scanner.ScanOverride = (_, _) =>
+        {
+            cancellation.Cancel();
+            return Task.FromResult(CreateScanResultForLibrary(original));
+        };
+        using var viewModel = fixture.CreateViewModel();
+
+        await viewModel.InitializeAsync(cancellation.Token);
+
+        Assert.Equal(before, JsonSerializer.SerializeToUtf8Bytes(original));
+        Assert.Equal(0, fixture.Store.SaveCount);
+    });
+
     private sealed class Fixture : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "AiriStartupTests", Guid.NewGuid().ToString("N"));
 
         public FakeLibraryStore Store { get; }
         public FakeLibraryScanner Scanner { get; } = new();
+        public MainViewModel? ViewModel { get; set; }
 
         public Fixture()
         {
@@ -745,4 +1121,38 @@ public sealed class MainViewModelStartupLoadingTests
         Array.Empty<FileSnapshot>(),
         Array.Empty<VideoEntry>(),
         Array.Empty<UpdatedFile>());
+
+    private static LibraryScanResult CreateNewFileScanResult(int count)
+    {
+        var snapshots = Enumerable.Range(0, count)
+            .Select(index => new FileSnapshot(
+                $"./Videos/new-{index:D4}.mp4",
+                Path.Combine(Path.GetTempPath(), $"new-{index:D4}.mp4"),
+                1000 + index,
+                DateTime.SpecifyKind(new DateTime(2026, 2, 1).AddMinutes(index), DateTimeKind.Utc),
+                DateTime.SpecifyKind(new DateTime(2026, 2, 1).AddMinutes(index), DateTimeKind.Utc)))
+            .ToArray();
+        return new LibraryScanResult(
+            snapshots,
+            snapshots,
+            Array.Empty<VideoEntry>(),
+            Array.Empty<UpdatedFile>());
+    }
+
+    private static LibraryScanResult CreateScanResultForLibrary(LibraryData library)
+    {
+        var snapshots = library.Videos
+            .Select(entry => new FileSnapshot(
+                entry.Path,
+                LibraryPathHelper.ResolveToAbsolute(entry.Path),
+                entry.SizeBytes,
+                entry.LastModifiedUtc,
+                entry.CreatedUtc))
+            .ToArray();
+        return new LibraryScanResult(
+            snapshots,
+            Array.Empty<FileSnapshot>(),
+            Array.Empty<VideoEntry>(),
+            Array.Empty<UpdatedFile>());
+    }
 }
