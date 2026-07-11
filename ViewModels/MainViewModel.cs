@@ -68,7 +68,7 @@ namespace Airi.ViewModels
         private const string AllActorsLabel = "All Actors";
         private const int InitialLoadBatchSize = 40;
         private readonly Random _random = new();
-        private readonly LibraryStore _libraryStore;
+        private readonly ILibraryStore _libraryStore;
         private readonly LibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
@@ -152,7 +152,7 @@ namespace Airi.ViewModels
         public event Action<VideoItem>? PlayVideoRequested;
 
         public MainViewModel(
-            LibraryStore libraryStore,
+            ILibraryStore libraryStore,
             LibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
             CrawlerSessionProvider crawlerSessionProvider,
@@ -172,7 +172,7 @@ namespace Airi.ViewModels
         }
 
         internal MainViewModel(
-            LibraryStore libraryStore,
+            ILibraryStore libraryStore,
             LibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
             CrawlerSessionProvider crawlerSessionProvider,

@@ -5,13 +5,35 @@ using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Airi.Domain;
 using Airi.Infrastructure;
 
 namespace Airi.Services
 {
-    public class LibraryStore
+    internal enum LibraryStoreSaveStage
+    {
+        BeforeTemporaryWrite,
+        AfterTemporaryFlush,
+        BeforeCommit,
+        AfterCommit
+    }
+
+    internal enum LibraryStoreIoStage
+    {
+        StaleTemporaryEnumeration,
+        DestinationExistence,
+        DestinationOpen,
+        BeforeDeserialize,
+        PersistenceProjection,
+        TemporaryOpen,
+        Serialize,
+        Flush,
+        Commit
+    }
+
+    public class LibraryStore : ILibraryStore
     {
         private const int CurrentVersion = 1;
         private static readonly TargetFolder DefaultTarget = new(
@@ -22,46 +44,159 @@ namespace Airi.Services
 
         private readonly string _filePath;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly Action<LibraryStoreSaveStage, string, int>? _saveStage;
+        private readonly Action<LibraryStoreIoStage, int>? _ioStage;
 
         public LibraryStore(string? customFilePath = null)
+            : this(customFilePath, null, null)
+        {
+        }
+
+        internal LibraryStore(
+            string? customFilePath,
+            Action<LibraryStoreSaveStage, string, int>? saveStage,
+            Action<LibraryStoreIoStage, int>? ioStage)
         {
             _filePath = customFilePath ?? ResolveDefaultPath();
             _jsonOptions = BuildOptions();
+            _saveStage = saveStage;
+            _ioStage = ioStage;
         }
 
         public string FilePath => _filePath;
 
-        public async Task<LibraryData> LoadAsync()
+        public Task<LibraryData> LoadAsync(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.Run(() => LoadCoreAsync(cancellationToken), cancellationToken);
+        }
+
+        public Task SaveAsync(LibraryData library, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(library);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.Run(() => SaveCoreAsync(library, cancellationToken), cancellationToken);
+        }
+
+        private async Task<LibraryData> LoadCoreAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CleanupOwnedStaleTemporaryFiles();
+            ObserveIo(LibraryStoreIoStage.DestinationExistence);
             if (!File.Exists(_filePath))
             {
                 AppLogger.Info($"Library file not found. Creating new library at {_filePath}.");
-                var data = Normalize(CreateDefaultLibrary());
-                await SaveAsync(data).ConfigureAwait(false);
-                return data;
+                var defaultData = Normalize(CreateDefaultLibrary());
+                await SaveCoreAsync(defaultData, cancellationToken).ConfigureAwait(false);
+                return defaultData;
             }
 
+            LibraryData? data;
             try
             {
                 AppLogger.Info($"Loading library from {_filePath}.");
-                await using var stream = File.OpenRead(_filePath);
-                var data = await JsonSerializer.DeserializeAsync<LibraryData>(stream, _jsonOptions).ConfigureAwait(false);
-                return data is null ? await ResetWithDefaultsAsync().ConfigureAwait(false) : Normalize(data);
+                ObserveIo(LibraryStoreIoStage.DestinationOpen);
+                await using var stream = new FileStream(
+                    _filePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    64 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                ObserveIo(LibraryStoreIoStage.BeforeDeserialize);
+                data = await JsonSerializer.DeserializeAsync<LibraryData>(
+                    stream,
+                    _jsonOptions,
+                    cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                AppLogger.Error("Failed to load library; resetting to defaults.", ex);
-                return await ResetWithDefaultsAsync().ConfigureAwait(false);
+                AppLogger.Error("Library JSON is invalid; resetting to defaults.", ex);
+                return await ResetWithDefaultsCoreAsync(cancellationToken).ConfigureAwait(false);
             }
+
+            if (data is null)
+            {
+                AppLogger.Error("Library JSON contained null; resetting to defaults.");
+                return await ResetWithDefaultsCoreAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return Normalize(data);
         }
 
-        public async Task SaveAsync(LibraryData library)
+        private async Task SaveCoreAsync(LibraryData library, CancellationToken cancellationToken)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-            library.Version = CurrentVersion;
-            AppLogger.Info($"Saving library to {_filePath} (videos: {library.Videos.Count}).");
-            var json = JsonSerializer.Serialize(library, _jsonOptions);
-            await File.WriteAllTextAsync(_filePath, json).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var directory = Path.GetDirectoryName(_filePath)!;
+            Directory.CreateDirectory(directory);
+            ObserveIo(LibraryStoreIoStage.PersistenceProjection);
+            var persistenceProjection = new LibraryData
+            {
+                Version = CurrentVersion,
+                Targets = library.Targets.ToList(),
+                Videos = library.Videos.ToList()
+            };
+            var tempPath = Path.Combine(
+                directory,
+                $".{Path.GetFileName(_filePath)}.airi-tmp-{Guid.NewGuid():D}");
+
+            AppLogger.Info($"Saving library to {_filePath} (videos: {persistenceProjection.Videos.Count}).");
+            try
+            {
+                ObserveSave(LibraryStoreSaveStage.BeforeTemporaryWrite, tempPath);
+                ObserveIo(LibraryStoreIoStage.TemporaryOpen);
+                await using (var stream = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    64 * 1024,
+                    FileOptions.Asynchronous | FileOptions.WriteThrough))
+                {
+                    ObserveIo(LibraryStoreIoStage.Serialize);
+                    await JsonSerializer.SerializeAsync(
+                        stream,
+                        persistenceProjection,
+                        _jsonOptions,
+                        cancellationToken).ConfigureAwait(false);
+                    ObserveIo(LibraryStoreIoStage.Flush);
+                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                ObserveSave(LibraryStoreSaveStage.AfterTemporaryFlush, tempPath);
+                cancellationToken.ThrowIfCancellationRequested();
+                ObserveSave(LibraryStoreSaveStage.BeforeCommit, tempPath);
+                ObserveIo(LibraryStoreIoStage.Commit);
+
+                if (File.Exists(_filePath))
+                {
+                    File.Replace(tempPath, _filePath, null, ignoreMetadataErrors: true);
+                }
+                else
+                {
+                    File.Move(tempPath, _filePath);
+                }
+
+                ObserveSave(LibraryStoreSaveStage.AfterCommit, tempPath);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch (Exception cleanupException) when (
+                    cleanupException is IOException or UnauthorizedAccessException)
+                {
+                    AppLogger.Error(
+                        "Failed to clean up owned library temporary file; next load will retry.",
+                        cleanupException);
+                }
+            }
         }
 
         private static string ResolveDefaultPath()
@@ -83,13 +218,55 @@ namespace Airi.Services
             return options;
         }
 
-        private async Task<LibraryData> ResetWithDefaultsAsync()
+        private async Task<LibraryData> ResetWithDefaultsCoreAsync(CancellationToken cancellationToken)
         {
             AppLogger.Info("Resetting library to default state.");
             var data = Normalize(CreateDefaultLibrary());
-            await SaveAsync(data).ConfigureAwait(false);
+            await SaveCoreAsync(data, cancellationToken).ConfigureAwait(false);
             return data;
         }
+
+        private void CleanupOwnedStaleTemporaryFiles()
+        {
+            ObserveIo(LibraryStoreIoStage.StaleTemporaryEnumeration);
+            var directory = Path.GetDirectoryName(_filePath)!;
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            var prefix = $".{Path.GetFileName(_filePath)}.airi-tmp-";
+            var failures = 0;
+            foreach (var path in Directory.EnumerateFiles(directory, prefix + "*"))
+            {
+                var name = Path.GetFileName(path);
+                var suffix = name.Substring(prefix.Length);
+                if (!Guid.TryParse(suffix, out _))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    failures++;
+                }
+            }
+
+            if (failures > 0)
+            {
+                AppLogger.Error($"Failed to clean up {failures} owned stale library temporary file(s).");
+            }
+        }
+
+        private void ObserveSave(LibraryStoreSaveStage stage, string tempPath) =>
+            _saveStage?.Invoke(stage, tempPath, Environment.CurrentManagedThreadId);
+
+        private void ObserveIo(LibraryStoreIoStage stage) =>
+            _ioStage?.Invoke(stage, Environment.CurrentManagedThreadId);
 
         private static LibraryData CreateDefaultLibrary()
         {
