@@ -30,6 +30,7 @@ namespace Airi.Views
         private CancellationTokenSource? _thumbnailGenerationCancellation;
         private Task _thumbnailGenerationTask = Task.CompletedTask;
         private Task _closeTask = Task.CompletedTask;
+        private bool _isInteractionInProgress;
         private bool _isThumbnailGenerationInProgress;
         private bool _closeStarted;
         private bool _allowClose;
@@ -131,7 +132,7 @@ namespace Airi.Views
 
         private void OnGenerateThumbnailClick(object sender, RoutedEventArgs e)
         {
-            if (_isThumbnailGenerationInProgress || _closeStarted)
+            if (_isInteractionInProgress || _isThumbnailGenerationInProgress || _closeStarted)
             {
                 return;
             }
@@ -287,10 +288,8 @@ namespace Airi.Views
 
         private void SetInteractionInProgress(bool isInProgress)
         {
-            var isEnabled = !isInProgress;
-            TryParseOn141JavButton.IsEnabled = isEnabled && !_isThumbnailGenerationInProgress;
-            CancelButton.IsEnabled = isEnabled;
-            SaveButton.IsEnabled = isEnabled && !_isThumbnailGenerationInProgress;
+            _isInteractionInProgress = isInProgress;
+            UpdateActionAvailability();
         }
 
         private async Task<ThumbnailSelectionResult> SelectGeneratedThumbnailAsync(
@@ -449,12 +448,19 @@ namespace Airi.Views
         private void SetThumbnailGenerationInProgress(bool isInProgress)
         {
             _isThumbnailGenerationInProgress = isInProgress;
-            var isEnabled = !isInProgress;
-            SelectThumbnailButton.IsEnabled = isEnabled;
-            GenerateThumbnailButton.IsEnabled = isEnabled;
-            ResetThumbnailButton.IsEnabled = isEnabled;
-            TryParseOn141JavButton.IsEnabled = isEnabled;
-            SaveButton.IsEnabled = isEnabled;
+            UpdateActionAvailability();
+        }
+
+        private void UpdateActionAvailability()
+        {
+            var isGenerating = _isThumbnailGenerationInProgress;
+            var isIdle = !_isInteractionInProgress && !isGenerating;
+            SelectThumbnailButton.IsEnabled = !isGenerating;
+            GenerateThumbnailButton.IsEnabled = isIdle;
+            ResetThumbnailButton.IsEnabled = !isGenerating;
+            TryParseOn141JavButton.IsEnabled = isIdle;
+            CancelButton.IsEnabled = !_isInteractionInProgress;
+            SaveButton.IsEnabled = isIdle;
         }
 
         private async Task<IReadOnlyList<string>> CleanupGeneratedCachesAsync(

@@ -75,6 +75,59 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
         });
 
     [Fact]
+    public Task CrawlerInProgress_BlocksThumbnailGenerationAtButtonAndHandler() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = new MetadataEditorFixture();
+            var runner = new ThumbnailMediaProcessRunner(ThumbnailRunnerBehavior.Success);
+            var window = fixture.CreateWindow(
+                runner,
+                (_, _) => throw new InvalidOperationException("selection should not open"));
+            window.Show();
+            var originalTask = window.ThumbnailGenerationTask;
+
+            SetInteractionState(window, "SetInteractionInProgress", true);
+
+            Assert.False(window.GenerateThumbnailButton.IsEnabled);
+            Assert.False(window.CancelButton.IsEnabled);
+            window.GenerateThumbnailButton.IsEnabled = true;
+            Click(window.GenerateThumbnailButton);
+            Assert.Same(originalTask, window.ThumbnailGenerationTask);
+            Assert.Equal(0, runner.ProbeCount);
+            Assert.Equal(0, runner.FfmpegStartedCount);
+
+            SetInteractionState(window, "SetInteractionInProgress", false);
+            Assert.True(window.GenerateThumbnailButton.IsEnabled);
+            Assert.True(window.CancelButton.IsEnabled);
+            Click(window.CancelButton);
+            await window.CloseTask;
+        });
+
+    [Fact]
+    public Task GenerationStateRelease_DoesNotEnableCrawlerOwnedControls() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = new MetadataEditorFixture();
+            var window = fixture.CreateWindow(
+                new ThumbnailMediaProcessRunner(ThumbnailRunnerBehavior.Success),
+                (_, _) => throw new InvalidOperationException("selection should not open"));
+            window.Show();
+
+            SetInteractionState(window, "SetInteractionInProgress", true);
+            SetInteractionState(window, "SetThumbnailGenerationInProgress", true);
+            SetInteractionState(window, "SetThumbnailGenerationInProgress", false);
+
+            Assert.False(window.GenerateThumbnailButton.IsEnabled);
+            Assert.False(window.TryParseOn141JavButton.IsEnabled);
+            Assert.False(window.SaveButton.IsEnabled);
+            Assert.False(window.CancelButton.IsEnabled);
+
+            SetInteractionState(window, "SetInteractionInProgress", false);
+            Click(window.CancelButton);
+            await window.CloseTask;
+        });
+
+    [Fact]
     public Task RegenerateSuccess_ReplacesCandidatesOnlyAfterAllFiveSucceed() =>
         WpfTestHost.RunAsync(async () =>
         {
@@ -560,6 +613,16 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
 
     private static void Click(Button button) =>
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private static void SetInteractionState(
+        MetadataEditorWindow window,
+        string methodName,
+        bool isInProgress) =>
+        typeof(MetadataEditorWindow)
+            .GetMethod(
+                methodName,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(window, [isInProgress]);
 
     private static void TriggerClose(MetadataEditorWindow window, string action)
     {
