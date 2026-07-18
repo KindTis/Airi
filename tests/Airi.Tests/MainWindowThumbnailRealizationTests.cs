@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -202,6 +203,48 @@ public sealed class MainWindowThumbnailRealizationTests
             var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
             await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
         }, clientAreaAnimationsEnabledOverride: true);
+
+    [Fact]
+    public Task VideoListDoubleClick_OnlyPlaysClickedVideoItem() => Run(async fixture =>
+    {
+        fixture.A.Title = "selected";
+        fixture.B.Title = "clicked";
+        await fixture.RealizeAsync(fixture.A);
+        fixture.ViewModel.Videos.Add(fixture.B);
+        fixture.Window.UpdateLayout();
+        WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        var list = fixture.Window.GetVideoListForTests();
+        await WaitUntilAsync(
+            () => list.ItemContainerGenerator.ContainerFromItem(fixture.B) is ListBoxItem,
+            TimeSpan.FromSeconds(5));
+        var clickedContainer = Assert.IsType<ListBoxItem>(
+            list.ItemContainerGenerator.ContainerFromItem(fixture.B));
+        list.SelectedItem = fixture.A;
+        var messages = new List<string>();
+        AppLogger.TestObserver = (_, message, _) => messages.Add(message);
+
+        try
+        {
+            var itemArgs = RaiseDoubleClick(list, clickedContainer);
+
+            Assert.True(itemArgs.Handled);
+            Assert.Contains($"Skipping playback for {fixture.B.Title}; no source path set.", messages);
+            Assert.DoesNotContain($"Skipping playback for {fixture.A.Title}; no source path set.", messages);
+
+            messages.Clear();
+            var scrollBar = Assert.Single(
+                EnumerateVisualDescendants<ScrollBar>(list),
+                value => value.Orientation == Orientation.Vertical);
+            var scrollBarArgs = RaiseDoubleClick(list, scrollBar);
+
+            Assert.False(scrollBarArgs.Handled);
+            Assert.Empty(messages);
+        }
+        finally
+        {
+            AppLogger.TestObserver = null;
+        }
+    });
 
     [Fact]
     public Task WindowClose_AwaitsPreviewShutdownThenCloses() => RunWithPreview(async fixture =>
@@ -452,6 +495,17 @@ public sealed class MainWindowThumbnailRealizationTests
     private static int MeasureWidth(double width)
     {
         return MainWindow.CalculateThumbnailDecodeWidth(width, 1d);
+    }
+
+    private static MouseButtonEventArgs RaiseDoubleClick(ListBox list, DependencyObject source)
+    {
+        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+        {
+            RoutedEvent = Control.MouseDoubleClickEvent,
+            Source = source
+        };
+        list.RaiseEvent(args);
+        return args;
     }
 
     private static IEnumerable<T> EnumerateVisualDescendants<T>(DependencyObject parent)

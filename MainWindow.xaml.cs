@@ -682,7 +682,8 @@ namespace Airi
                 return;
             }
 
-            if (listBox.SelectedItem is not VideoItem video)
+            if (e.OriginalSource is not DependencyObject source ||
+                ItemsControl.ContainerFromElement(listBox, source) is not ListBoxItem { DataContext: VideoItem video })
             {
                 return;
             }
