@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -14,9 +15,11 @@ using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Threading.Tasks;
 using Airi.Infrastructure;
 using Airi.Services;
+using Airi.Services.VideoPreview;
 using Airi.ViewModels;
 using Airi.Web;
 using Airi.Views;
@@ -42,8 +45,12 @@ namespace Airi
         private readonly Dictionary<VideoItem, int> _thumbnailRegistrationCounts = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<VideoItem, int> _thumbnailRequestedWidths = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<ToolTip, CancellationTokenSource> _tooltipCoverRequests = new();
+        private readonly TooltipPreviewController? _tooltipPreviewController;
+        private readonly bool? _clientAreaAnimationsEnabledOverride;
         private Task _initializationTask = Task.CompletedTask;
         private bool _initializationStarted;
+        private bool _previewShutdownStarted;
+        private bool _previewShutdownComplete;
         public MainViewModel ViewModel { get; }
         internal Task InitializationTask => _initializationTask;
         internal bool InitializationStarted => _initializationStarted;
@@ -59,6 +66,10 @@ namespace Airi
             AppLogger.Info("Initializing MainWindow.");
             _performanceProbe = ThumbnailPerformanceProbe.Disabled;
             _thumbnailImageLoader = thumbnailImageLoader ?? throw new ArgumentNullException(nameof(thumbnailImageLoader));
+            var binaryFolder = Path.Combine(AppContext.BaseDirectory, "resources", "ffmpeg", "win-x64");
+            _tooltipPreviewController = new TooltipPreviewController(
+                new FfmpegVideoPreviewService(new FfmpegCorePreviewBackend(binaryFolder)),
+                TimeProvider.System);
 
             var deeplAuthKey = Environment.GetEnvironmentVariable("DEEPL_AUTH_KEY");
             if (string.IsNullOrWhiteSpace(deeplAuthKey))
@@ -102,12 +113,16 @@ namespace Airi
         internal MainWindow(
             MainViewModel viewModel,
             ThumbnailPerformanceProbe? performanceProbe = null,
-            IThumbnailImageLoader? thumbnailImageLoader = null)
+            IThumbnailImageLoader? thumbnailImageLoader = null,
+            TooltipPreviewController? tooltipPreviewController = null,
+            bool? clientAreaAnimationsEnabledOverride = null)
         {
             InitializeComponent();
             _translationService = NullTranslationService.Instance;
             _performanceProbe = performanceProbe ?? ThumbnailPerformanceProbe.Disabled;
             _thumbnailImageLoader = thumbnailImageLoader;
+            _tooltipPreviewController = tooltipPreviewController;
+            _clientAreaAnimationsEnabledOverride = clientAreaAnimationsEnabledOverride;
             ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
             WireViewModelEvents();
         }
@@ -257,9 +272,12 @@ namespace Airi
             double dpiScaleX)
         {
             CancelTooltipCoverRequest(tooltip);
+            var state = ReferenceEquals(tooltip.Content, item) && tooltip.Tag is TooltipPreviewState currentState
+                ? currentState
+                : new TooltipPreviewState(Guid.NewGuid(), item.ThumbnailSource);
             tooltip.PlacementTarget = container;
             tooltip.Content = item;
-            tooltip.Tag = item.ThumbnailSource;
+            tooltip.Tag = state;
             if (_thumbnailImageLoader is null)
             {
                 return;
@@ -279,9 +297,10 @@ namespace Airi
                     ReferenceEquals(current, request) &&
                     ReferenceEquals(container.DataContext, item) &&
                     ReferenceEquals(tooltip.PlacementTarget, container) &&
-                    ReferenceEquals(tooltip.Content, item))
+                    ReferenceEquals(tooltip.Content, item) &&
+                    ReferenceEquals(tooltip.Tag, state))
                 {
-                    tooltip.Tag = result.Source;
+                    state.UpdateCover(result.Source);
                 }
             }
             catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -297,18 +316,25 @@ namespace Airi
             }
         }
 
-        internal void CloseVideoTooltip(ListBoxItem container, ToolTip tooltip)
+        internal async Task CloseVideoTooltipAsync(ListBoxItem container, ToolTip tooltip)
         {
             if (!ReferenceEquals(tooltip.PlacementTarget, container))
             {
                 return;
             }
 
+            var state = tooltip.Tag as TooltipPreviewState;
+            var sessionId = state?.SessionId;
             CancelTooltipCoverRequest(tooltip);
+            state?.SetPhase(TooltipPreviewPhase.Closed);
             tooltip.IsOpen = false;
             tooltip.Tag = null;
             tooltip.Content = null;
             tooltip.PlacementTarget = null;
+            if (_tooltipPreviewController is not null && sessionId is { } id)
+            {
+                await _tooltipPreviewController.StopAsync(id);
+            }
         }
 
         private void CancelTooltipCoverRequest(ToolTip tooltip)
@@ -671,21 +697,65 @@ namespace Airi
                 item.DataContext is VideoItem video &&
                 ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
+                var sessionId = Guid.NewGuid();
+                var state = new TooltipPreviewState(sessionId, video.ThumbnailSource);
                 tooltip.PlacementTarget = item;
                 tooltip.Placement = PlacementMode.Relative;
                 tooltip.Content = video;
-                tooltip.Tag = video.ThumbnailSource;
+                tooltip.Tag = state;
                 UpdateTooltipPosition(item, tooltip, e);
                 tooltip.IsOpen = true;
 
+                var session = new TooltipPreviewSession(
+                    sessionId,
+                    new VideoPreviewRequest(
+                        video.SourcePath,
+                        480,
+                        350,
+                        15,
+                        TimeSpan.FromSeconds(10)),
+                    _clientAreaAnimationsEnabledOverride ?? SystemParameters.ClientAreaAnimation,
+                    video.Presence == VideoPresenceState.Available &&
+                        !string.IsNullOrWhiteSpace(video.SourcePath) &&
+                        File.Exists(video.SourcePath),
+                    new MainWindowTooltipPreviewSink(
+                        this,
+                        item,
+                        tooltip,
+                        video,
+                        state,
+                        _tooltipPreviewController?.Clock ?? TimeProvider.System));
+
                 try
                 {
-                    await LoadTooltipCoverAsync(item, tooltip, video, VisualTreeHelper.GetDpi(item).DpiScaleX);
+                    await Task.WhenAll(
+                        LoadTooltipCoverAsync(item, tooltip, video, VisualTreeHelper.GetDpi(item).DpiScaleX),
+                        _tooltipPreviewController is null
+                            ? Task.CompletedTask
+                            : RunTooltipPreviewSafelyAsync(video, session));
                 }
                 catch (Exception ex)
                 {
                     AppLogger.Error("Unexpected tooltip cover request failure.", ex);
                 }
+            }
+        }
+
+        private async Task RunTooltipPreviewSafelyAsync(
+            VideoItem video,
+            TooltipPreviewSession session)
+        {
+            ArgumentNullException.ThrowIfNull(video);
+            try
+            {
+                await _tooltipPreviewController!.RunAsync(session, CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception)
+            {
+                AppLogger.Error("Unexpected tooltip preview failure.");
             }
         }
 
@@ -697,11 +767,21 @@ namespace Airi
             }
         }
 
-        private void OnVideoItemMouseLeave(object sender, MouseEventArgs e)
+        private async void OnVideoItemMouseLeave(object sender, MouseEventArgs e)
         {
             if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
-                CloseVideoTooltip(item, tooltip);
+                try
+                {
+                    await CloseVideoTooltipAsync(item, tooltip);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception)
+                {
+                    AppLogger.Error("Unexpected tooltip preview close failure.");
+                }
             }
         }
 
@@ -756,6 +836,117 @@ namespace Airi
             {
                 AppLogger.Error($"Failed to launch video: {video.SourcePath}", ex);
             }
+        }
+
+        internal sealed class MainWindowTooltipPreviewSink : ITooltipPreviewSink
+        {
+            private readonly MainWindow _window;
+            private readonly ListBoxItem _container;
+            private readonly ToolTip _tooltip;
+            private readonly VideoItem _item;
+            private readonly TooltipPreviewState _state;
+            private readonly TimeProvider _timeProvider;
+
+            public MainWindowTooltipPreviewSink(
+                MainWindow window,
+                ListBoxItem container,
+                ToolTip tooltip,
+                VideoItem item,
+                TooltipPreviewState state,
+                TimeProvider timeProvider)
+            {
+                _window = window;
+                _container = container;
+                _tooltip = tooltip;
+                _item = item;
+                _state = state;
+                _timeProvider = timeProvider;
+            }
+
+            public bool IsCurrent(Guid sessionId) =>
+                _window.Dispatcher.CheckAccess()
+                    ? IsCurrentOnDispatcher(sessionId)
+                    : _window.Dispatcher.Invoke(() => IsCurrentOnDispatcher(sessionId));
+
+            private bool IsCurrentOnDispatcher(Guid sessionId) =>
+                _state.SessionId == sessionId &&
+                ReferenceEquals(_container.DataContext, _item) &&
+                ReferenceEquals(_tooltip.PlacementTarget, _container) &&
+                ReferenceEquals(_tooltip.Content, _item) &&
+                ReferenceEquals(_tooltip.Tag, _state);
+
+            public async ValueTask<DispatcherCallbackResult> SetPhaseAsync(
+                Guid sessionId,
+                TooltipPreviewPhase phase,
+                CancellationToken cancellationToken)
+            {
+                if (!IsCurrent(sessionId)) return default;
+                return await _window.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (!IsCurrent(sessionId)) return default;
+                        var started = _timeProvider.GetTimestamp();
+                        _state.SetPhase(phase);
+                        var completed = _timeProvider.GetTimestamp();
+                        return new DispatcherCallbackResult(
+                            true,
+                            completed,
+                            _timeProvider.GetElapsedTime(started, completed));
+                    },
+                    DispatcherPriority.Render,
+                    cancellationToken);
+            }
+
+            public async ValueTask<FramePresentationResult> ShowFrameAsync(
+                Guid sessionId,
+                int pixelWidth,
+                int pixelHeight,
+                VideoPreviewFrame frame,
+                CancellationToken cancellationToken)
+            {
+                if (!IsCurrent(sessionId)) return default;
+                return await _window.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (!IsCurrent(sessionId)) return default;
+                        var started = _timeProvider.GetTimestamp();
+                        _state.ShowFrame(pixelWidth, pixelHeight, frame);
+                        var displayed = _timeProvider.GetTimestamp();
+                        return new FramePresentationResult(
+                            true,
+                            displayed,
+                            _timeProvider.GetElapsedTime(started, displayed));
+                    },
+                    DispatcherPriority.Render,
+                    cancellationToken);
+            }
+        }
+
+        protected override async void OnClosing(CancelEventArgs e)
+        {
+            if (!_previewShutdownComplete && _tooltipPreviewController is not null)
+            {
+                e.Cancel = true;
+                if (_previewShutdownStarted) return;
+                _previewShutdownStarted = true;
+                try
+                {
+                    await _tooltipPreviewController.DisposeAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception)
+                {
+                    AppLogger.Error("Unexpected tooltip preview shutdown failure.");
+                }
+                finally
+                {
+                    _previewShutdownComplete = true;
+                    _ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(Close));
+                }
+            }
+            base.OnClosing(e);
         }
 
         protected override void OnClosed(System.EventArgs e)

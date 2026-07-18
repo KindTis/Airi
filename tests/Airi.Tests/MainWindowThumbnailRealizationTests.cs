@@ -6,10 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Airi.Infrastructure;
 using Airi.Services;
+using Airi.Services.VideoPreview;
 using Airi.ViewModels;
 using Airi.Web;
 
@@ -52,7 +54,8 @@ public sealed class MainWindowThumbnailRealizationTests
 
         Assert.Equal(new[] { 260, 720 }, fixture.Loader.Widths);
         Assert.Same(cardSource, fixture.A.ThumbnailSource);
-        Assert.Same(fixture.Loader.Sources[^1], tooltip.Tag);
+        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        Assert.Same(fixture.Loader.Sources[^1], state.CoverSource);
         Assert.Same(fixture.A, tooltip.Content);
         Assert.Same(container, tooltip.PlacementTarget);
     });
@@ -65,12 +68,17 @@ public sealed class MainWindowThumbnailRealizationTests
         var tooltip = new ToolTip();
 
         await fixture.Window.LoadTooltipCoverAsync(containerA, tooltip, fixture.A, 1d);
+        var previousState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        previousState.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
         await fixture.Window.LoadTooltipCoverAsync(containerB, tooltip, fixture.B, 1d);
 
         Assert.Equal(new[] { fixture.A.ThumbnailPath, fixture.B.ThumbnailPath }, fixture.Loader.Paths);
         Assert.Same(fixture.B, tooltip.Content);
         Assert.Same(containerB, tooltip.PlacementTarget);
-        Assert.Same(fixture.Loader.Sources[^1], tooltip.Tag);
+        var currentState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        Assert.NotSame(previousState, currentState);
+        Assert.Null(currentState.PreviewSource);
+        Assert.Same(fixture.Loader.Sources[^1], currentState.CoverSource);
     });
 
     [Fact]
@@ -88,11 +96,12 @@ public sealed class MainWindowThumbnailRealizationTests
         Assert.True(fixture.Loader.CancellationTokens[0].IsCancellationRequested);
         Assert.Same(fixture.B, tooltip.Content);
         Assert.Same(containerB, tooltip.PlacementTarget);
-        Assert.Same(fixture.Loader.Sources[^1], tooltip.Tag);
+        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        Assert.Same(fixture.Loader.Sources[^1], state.CoverSource);
     });
 
     [Fact]
-    public Task TooltipClose_CancelsInFlightLoadAndClearsSource() => Run(async fixture =>
+    public Task TooltipClose_CancelsInFlightLoadAndClearsState() => Run(async fixture =>
     {
         fixture.Loader.DelayNextRequest();
         var container = new ListBoxItem { DataContext = fixture.A };
@@ -100,9 +109,10 @@ public sealed class MainWindowThumbnailRealizationTests
 
         var load = fixture.Window.LoadTooltipCoverAsync(container, tooltip, fixture.A, 1d);
         var cancellationToken = Assert.Single(fixture.Loader.CancellationTokens);
-        Assert.Same(fixture.A.ThumbnailSource, tooltip.Tag);
+        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        Assert.Same(fixture.A.ThumbnailSource, state.CoverSource);
 
-        fixture.Window.CloseVideoTooltip(container, tooltip);
+        await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
 
         Assert.True(cancellationToken.IsCancellationRequested);
         Assert.Null(tooltip.Tag);
@@ -121,7 +131,7 @@ public sealed class MainWindowThumbnailRealizationTests
         tooltip.IsOpen = true;
         var currentSource = tooltip.Tag;
 
-        fixture.Window.CloseVideoTooltip(containerA, tooltip);
+        await fixture.Window.CloseVideoTooltipAsync(containerA, tooltip);
 
         Assert.True(tooltip.IsOpen);
         Assert.Same(fixture.B, tooltip.Content);
@@ -129,9 +139,96 @@ public sealed class MainWindowThumbnailRealizationTests
     });
 
     [Fact]
-    public Task TooltipTemplate_ImageSourceTracksToolTipTagWhileOpen() => Run(fixture =>
+    public Task TooltipClose_CancelsCoverAndPreviewBeforeCompleting() => RunWithPreview(async fixture =>
     {
-        var initialSource = CreateBitmap(17);
+        fixture.Loader.DelayNextRequest();
+        var container = new ListBoxItem { DataContext = fixture.A };
+        var tooltip = new ToolTip { Content = fixture.A };
+        var cover = fixture.Window.LoadTooltipCoverAsync(container, tooltip, fixture.A, 1d);
+        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+        var preview = fixture.PreviewController!.RunAsync(
+            new TooltipPreviewSession(
+                state.SessionId,
+                new VideoPreviewRequest(fixture.A.SourcePath, 480, 350, 15, TimeSpan.FromSeconds(10)),
+                true,
+                true,
+                new AlwaysCurrentPreviewSink()),
+            CancellationToken.None);
+        await fixture.PreviewService!.WaitUntilCalledAsync();
+
+        var close = fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+
+        Assert.False(tooltip.IsOpen);
+        Assert.Null(tooltip.Tag);
+        Assert.Null(tooltip.Content);
+        Assert.Null(tooltip.PlacementTarget);
+        await close;
+        await cover;
+        await preview;
+        Assert.True(Assert.Single(fixture.Loader.CancellationTokens).IsCancellationRequested);
+        Assert.True(fixture.PreviewService.PrepareToken.IsCancellationRequested);
+    });
+
+    [Fact]
+    public Task TooltipPreview_AnimationsDisabledDoesNotCallInjectedService() => RunWithPreview(async fixture =>
+    {
+        await fixture.PreviewController!.RunAsync(
+            new TooltipPreviewSession(
+                Guid.NewGuid(),
+                new VideoPreviewRequest(fixture.A.SourcePath, 480, 350, 15, TimeSpan.FromSeconds(10)),
+                false,
+                true,
+                new AlwaysCurrentPreviewSink()),
+            CancellationToken.None);
+
+        Assert.Equal(0, fixture.PreviewService!.PrepareCallCount);
+    });
+
+    [Fact]
+    public Task VideoItemMouseEnter_UsesActualItemSourcePath() =>
+        RunWithPreview(async fixture =>
+        {
+            fixture.MakeAvailable(fixture.A);
+            var container = await fixture.RealizeAsync(fixture.A);
+
+            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = Mouse.MouseEnterEvent,
+                Source = container
+            });
+
+            await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(fixture.A.SourcePath, fixture.PreviewService.Request!.SourcePath);
+            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+        }, clientAreaAnimationsEnabledOverride: true);
+
+    [Fact]
+    public Task WindowClose_AwaitsPreviewShutdownThenCloses() => RunWithPreview(async fixture =>
+    {
+        var preview = fixture.PreviewController!.RunAsync(
+            new TooltipPreviewSession(
+                Guid.NewGuid(),
+                new VideoPreviewRequest(fixture.A.SourcePath, 480, 350, 15, TimeSpan.FromSeconds(10)),
+                true,
+                true,
+                new AlwaysCurrentPreviewSink()),
+            CancellationToken.None);
+        await fixture.PreviewService!.WaitUntilCalledAsync();
+
+        fixture.Window.Close();
+        WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        await preview;
+        WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+
+        Assert.True(fixture.PreviewService.PrepareToken.IsCancellationRequested);
+        Assert.DoesNotContain(fixture.Window, Application.Current.Windows.Cast<Window>());
+    });
+
+    [Fact]
+    public Task TooltipTemplate_SeparatesCoverAndPreviewSourcesWhileOpen() => Run(fixture =>
+    {
+        var initialSource = fixture.A.ThumbnailSource!;
         var upgradedSource = CreateBitmap(29);
         var container = new ListBoxItem { Width = 100, Height = 100 };
         var host = new Window
@@ -142,13 +239,14 @@ public sealed class MainWindowThumbnailRealizationTests
             WindowStyle = WindowStyle.ToolWindow,
             Content = container
         };
+        var state = new TooltipPreviewState(Guid.NewGuid(), initialSource);
         var tooltip = new ToolTip
         {
             Content = fixture.A,
             ContentTemplate = Assert.IsType<DataTemplate>(fixture.Window.FindResource("VideoTooltipTemplate")),
             PlacementTarget = container,
             Style = Assert.IsType<Style>(fixture.Window.FindResource(typeof(ToolTip))),
-            Tag = initialSource
+            Tag = state
         };
 
         try
@@ -156,13 +254,27 @@ public sealed class MainWindowThumbnailRealizationTests
             host.Show();
             tooltip.IsOpen = true;
             WpfTestHost.DrainDispatcher(host.Dispatcher);
-            var image = Assert.Single(EnumerateVisualDescendants<Image>(tooltip));
-            Assert.Same(initialSource, image.Source);
+            var images = EnumerateVisualDescendants<Image>(tooltip).ToArray();
+            Assert.Equal(2, images.Length);
+            Assert.Contains(images, image =>
+                ReferenceEquals(image.Source, initialSource) && image.Visibility == Visibility.Visible);
 
-            tooltip.Tag = upgradedSource;
+            state.UpdateCover(upgradedSource);
+            state.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
             WpfTestHost.DrainDispatcher(host.Dispatcher);
 
-            Assert.Same(upgradedSource, image.Source);
+            Assert.Contains(images, image =>
+                ReferenceEquals(image.Source, state.PreviewSource) && image.Visibility == Visibility.Visible);
+            Assert.Contains(images, image =>
+                ReferenceEquals(image.Source, upgradedSource) && image.Visibility == Visibility.Collapsed);
+            Assert.Same(initialSource, fixture.A.ThumbnailSource);
+
+            state.SetPhase(TooltipPreviewPhase.Cover);
+            WpfTestHost.DrainDispatcher(host.Dispatcher);
+
+            Assert.Contains(images, image =>
+                ReferenceEquals(image.Source, upgradedSource) && image.Visibility == Visibility.Visible);
+            Assert.Contains(images, image => image.Source is null && image.Visibility == Visibility.Collapsed);
         }
         finally
         {
@@ -171,6 +283,31 @@ public sealed class MainWindowThumbnailRealizationTests
         }
 
         return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task TooltipSink_BackgroundCallbackMarshalsStaleCheckToDispatcher() => Run(async fixture =>
+    {
+        var container = new ListBoxItem { DataContext = fixture.A };
+        var tooltip = new ToolTip { Content = fixture.A, PlacementTarget = container };
+        var state = new TooltipPreviewState(Guid.NewGuid(), fixture.A.ThumbnailSource);
+        tooltip.Tag = state;
+        var sink = new MainWindow.MainWindowTooltipPreviewSink(
+            fixture.Window,
+            container,
+            tooltip,
+            fixture.A,
+            state,
+            TimeProvider.System);
+
+        var callback = await Task.Run(async () =>
+            await sink.SetPhaseAsync(
+                state.SessionId,
+                TooltipPreviewPhase.Preparing,
+                CancellationToken.None));
+
+        Assert.True(callback.Applied);
+        Assert.Equal(TooltipPreviewPhase.Preparing, state.Phase);
     });
 
     [Fact]
@@ -349,11 +486,34 @@ public sealed class MainWindowThumbnailRealizationTests
         await test(fixture);
     });
 
+    private static Task RunWithPreview(
+        Func<Fixture, Task> test,
+        bool? clientAreaAnimationsEnabledOverride = null) => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture(
+            enablePreview: true,
+            clientAreaAnimationsEnabledOverride: clientAreaAnimationsEnabledOverride);
+        await test(fixture);
+    });
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            WpfTestHost.DrainDispatcher(Application.Current.Dispatcher);
+            await Task.Delay(20);
+        }
+        Assert.True(condition(), "WPF item was not realized before timeout.");
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly string _root;
 
-        public Fixture()
+        public Fixture(
+            bool enablePreview = false,
+            bool? clientAreaAnimationsEnabledOverride = null)
         {
             _root = Path.Combine(Path.GetTempPath(), "AiriMainWindowThumbnailTests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_root);
@@ -376,7 +536,17 @@ public sealed class MainWindowThumbnailRealizationTests
                 new NoopCrawlerFactory(),
                 Probe,
                 Loader);
-            Window = new MainWindow(ViewModel, Probe, Loader);
+            if (enablePreview)
+            {
+                PreviewService = new BlockingPreviewService();
+                PreviewController = new TooltipPreviewController(PreviewService, TimeProvider.System);
+            }
+            Window = new MainWindow(
+                ViewModel,
+                Probe,
+                Loader,
+                PreviewController,
+                clientAreaAnimationsEnabledOverride);
             A = CreateItem("a.jpg");
             B = CreateItem("b.jpg");
         }
@@ -385,6 +555,8 @@ public sealed class MainWindowThumbnailRealizationTests
         public ThumbnailPerformanceProbe Probe { get; }
         public MainViewModel ViewModel { get; }
         public MainWindow Window { get; }
+        public BlockingPreviewService? PreviewService { get; }
+        public TooltipPreviewController? PreviewController { get; }
         public VideoItem A { get; }
         public VideoItem B { get; }
 
@@ -396,11 +568,41 @@ public sealed class MainWindowThumbnailRealizationTests
             return image;
         }
 
+        public void MakeAvailable(VideoItem item)
+        {
+            var sourcePath = Path.Combine(_root, "actual-item.mp4");
+            File.WriteAllBytes(sourcePath, new byte[] { 0 });
+            item.UpdateFileState(
+                sourcePath,
+                1,
+                File.GetLastWriteTimeUtc(sourcePath),
+                VideoPresenceState.Available,
+                File.GetCreationTimeUtc(sourcePath));
+        }
+
+        public async Task<ListBoxItem> RealizeAsync(VideoItem item)
+        {
+            Window.Show();
+            await WaitUntilAsync(() => Window.InitializationStarted, TimeSpan.FromSeconds(5));
+            await Window.InitializationTask.WaitAsync(TimeSpan.FromSeconds(10));
+            ViewModel.Videos.Clear();
+            ViewModel.Videos.Add(item);
+            Window.UpdateLayout();
+            WpfTestHost.DrainDispatcher(Window.Dispatcher);
+            var list = Window.GetVideoListForTests();
+            await WaitUntilAsync(
+                () => list.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem,
+                TimeSpan.FromSeconds(5));
+            return Assert.IsType<ListBoxItem>(
+                list.ItemContainerGenerator.ContainerFromItem(item));
+        }
+
         public void Dispose()
         {
             if (Application.Current.Windows.Cast<Window>().Contains(Window))
             {
                 Window.Close();
+                WpfTestHost.DrainDispatcher(Window.Dispatcher);
             }
             else
             {
@@ -428,6 +630,51 @@ public sealed class MainWindowThumbnailRealizationTests
             item.ReleaseThumbnail(Loader.FallbackSource);
             return item;
         }
+    }
+
+    private sealed class BlockingPreviewService : IVideoPreviewService
+    {
+        private readonly TaskCompletionSource _called =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<IPreparedVideoPreview> _prepare =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int PrepareCallCount { get; private set; }
+        public CancellationToken PrepareToken { get; private set; }
+        public VideoPreviewRequest? Request { get; private set; }
+
+        public Task<IPreparedVideoPreview> PrepareAsync(
+            VideoPreviewRequest request,
+            CancellationToken cancellationToken)
+        {
+            PrepareCallCount++;
+            PrepareToken = cancellationToken;
+            Request = request;
+            cancellationToken.Register(() => _prepare.TrySetCanceled(cancellationToken));
+            _called.TrySetResult();
+            return _prepare.Task;
+        }
+
+        public Task WaitUntilCalledAsync() => _called.Task;
+    }
+
+    private sealed class AlwaysCurrentPreviewSink : ITooltipPreviewSink
+    {
+        public bool IsCurrent(Guid sessionId) => true;
+
+        public ValueTask<DispatcherCallbackResult> SetPhaseAsync(
+            Guid sessionId,
+            TooltipPreviewPhase phase,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new DispatcherCallbackResult(true, TimeProvider.System.GetTimestamp(), TimeSpan.Zero));
+
+        public ValueTask<FramePresentationResult> ShowFrameAsync(
+            Guid sessionId,
+            int pixelWidth,
+            int pixelHeight,
+            VideoPreviewFrame frame,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new FramePresentationResult(true, TimeProvider.System.GetTimestamp(), TimeSpan.Zero));
     }
 
     private sealed class RecordingLoader : IThumbnailImageLoader

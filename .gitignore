@@ -45,6 +45,13 @@ TestResult.xml
 nunit-*.xml
 *.coverage
 *.coveragexml
+artifacts/
+
+# 다운로드 또는 생성되는 영상 프리뷰 파일
+resources/ffmpeg/
+tests/Airi.Tests/TestData/VideoPreview/*.mp4
+tests/Airi.Tests/TestData/VideoPreview/*.mkv
+tests/*.mp4
 
 # 스타일 및 분석 도구
 StyleCopReport.xml
@@ -81,6 +88,7 @@ desktop.ini
 
 # graphify 출력물
 graphify-out/
+.worktrees/
 
 # 로컬 문서
 docs/

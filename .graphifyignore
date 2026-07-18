@@ -1,0 +1,17 @@
+!docs/
+docs/*
+!docs/implementation/
+docs/implementation/*
+!docs/implementation/2026-07-12-tooltip-video-preview-implementation-map.md
+!docs/performance/
+docs/performance/*
+!docs/performance/video-preview-verification.md
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/2026-07-13-single-video-preview-performance-test-design.md
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-07-13-single-video-preview-performance-test.md
+artifacts/

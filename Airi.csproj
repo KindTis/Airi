@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <PackageIcon>icon.png</PackageIcon>
     <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
@@ -28,6 +30,7 @@
     <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="140.0.7339.20700" />
     <PackageReference Include="System.Net.Http" Version="4.3.4" />
     <PackageReference Include="DeepL.net" Version="1.15.0" />
+    <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <PackageReference Include="VirtualizingWrapPanel" Version="2.5.2" />
   </ItemGroup>
   <ItemGroup>
