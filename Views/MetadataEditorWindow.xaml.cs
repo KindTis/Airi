@@ -1,10 +1,15 @@
 using Airi;
 using System;
+using System.ComponentModel;
+using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Airi.ViewModels;
 using Airi.Infrastructure;
+using Airi.Services;
 using Airi.Web;
 using Microsoft.Win32;
 
@@ -12,17 +17,77 @@ namespace Airi.Views
 {
     public partial class MetadataEditorWindow : Window
     {
+        private readonly VideoThumbnailExtractor _thumbnailExtractor;
+        private readonly string? _sourcePath;
+        private readonly Func<IReadOnlyList<VideoThumbnailCandidate>, CancellationToken,
+            Task<ThumbnailSelectionResult>> _selectGeneratedThumbnailAsync;
+        private readonly Func<string, Task<Exception?>> _deleteTemporaryDirectoryAsync;
+        private readonly Func<string, Task<Exception?>> _deleteGeneratedCacheAsync;
+        private readonly Action<string, string, MessageBoxImage> _showThumbnailMessage;
+        private readonly HashSet<string> _generatedThumbnailCachePaths =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private CancellationTokenSource? _thumbnailGenerationCancellation;
+        private Task _thumbnailGenerationTask = Task.CompletedTask;
+        private Task _closeTask = Task.CompletedTask;
+        private bool _isThumbnailGenerationInProgress;
+        private bool _closeStarted;
+        private bool _allowClose;
+        private bool _isClosed;
+
         public MetadataEditorWindow(VideoItem item)
+            : this(
+                item,
+                new VideoThumbnailExtractor(Path.Combine(
+                    AppContext.BaseDirectory,
+                    "resources",
+                    "ffmpeg",
+                    "win-x64")),
+                null,
+                null,
+                null,
+                null)
         {
+        }
+
+        internal MetadataEditorWindow(
+            VideoItem item,
+            VideoThumbnailExtractor thumbnailExtractor,
+            Func<IReadOnlyList<VideoThumbnailCandidate>, CancellationToken,
+                Task<ThumbnailSelectionResult>>? selectGeneratedThumbnailAsync,
+            Func<string, Task<Exception?>>? deleteTemporaryDirectoryAsync,
+            Func<string, Task<Exception?>>? deleteGeneratedCacheAsync,
+            Action<string, string, MessageBoxImage>? showThumbnailMessage)
+        {
+            ArgumentNullException.ThrowIfNull(item);
             InitializeComponent();
+            _thumbnailExtractor = thumbnailExtractor ??
+                throw new ArgumentNullException(nameof(thumbnailExtractor));
+            _sourcePath = item.SourcePath;
+            _selectGeneratedThumbnailAsync = selectGeneratedThumbnailAsync ??
+                SelectGeneratedThumbnailAsync;
+            _deleteTemporaryDirectoryAsync = deleteTemporaryDirectoryAsync ??
+                PathCleanup.DeleteDirectoryAsync;
+            _deleteGeneratedCacheAsync = deleteGeneratedCacheAsync ??
+                PathCleanup.DeleteFileAsync;
+            _showThumbnailMessage = showThumbnailMessage ??
+                ((message, title, image) =>
+                    MessageBox.Show(this, message, title, MessageBoxButton.OK, image));
             DataContext = new MetadataEditorViewModel(item);
             KeyDown += OnWindowKeyDown;
         }
 
         public MetadataEditResult? Result { get; private set; }
+        internal Task ThumbnailGenerationTask => _thumbnailGenerationTask;
+        internal Task CloseTask => _closeTask;
 
         private async void OnSelectThumbnailClick(object sender, RoutedEventArgs e)
         {
+            if (_isThumbnailGenerationInProgress || _closeStarted)
+            {
+                return;
+            }
+
             if (DataContext is not MetadataEditorViewModel vm)
             {
                 return;
@@ -53,17 +118,37 @@ namespace Airi.Views
 
         private void OnResetThumbnailClick(object sender, RoutedEventArgs e)
         {
+            if (_isThumbnailGenerationInProgress || _closeStarted)
+            {
+                return;
+            }
+
             if (DataContext is MetadataEditorViewModel vm)
             {
                 vm.ResetThumbnail();
             }
         }
 
+        private void OnGenerateThumbnailClick(object sender, RoutedEventArgs e)
+        {
+            if (_isThumbnailGenerationInProgress || _closeStarted)
+            {
+                return;
+            }
+
+            _thumbnailGenerationTask = GenerateThumbnailAsync();
+        }
+
         private void OnSaveClick(object sender, RoutedEventArgs e)
         {
+            if (_isThumbnailGenerationInProgress || _closeStarted)
+            {
+                return;
+            }
+
             if (DataContext is not MetadataEditorViewModel vm)
             {
-                DialogResult = false;
+                BeginClose(save: false, result: null);
                 return;
             }
 
@@ -73,13 +158,12 @@ namespace Airi.Views
                 return;
             }
 
-            Result = result;
-            DialogResult = true;
+            BeginClose(save: true, result);
         }
 
         private void OnCancelClick(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            BeginClose(save: false, result: null);
         }
 
         private void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -87,12 +171,17 @@ namespace Airi.Views
             if (e.Key == Key.Escape)
             {
                 e.Handled = true;
-                DialogResult = false;
+                BeginClose(save: false, result: null);
             }
         }
 
         private async void OnTryParseOn141JavClick(object sender, RoutedEventArgs e)
         {
+            if (_isThumbnailGenerationInProgress || _closeStarted)
+            {
+                return;
+            }
+
             if (DataContext is not MetadataEditorViewModel vm)
             {
                 return;
@@ -199,9 +288,267 @@ namespace Airi.Views
         private void SetInteractionInProgress(bool isInProgress)
         {
             var isEnabled = !isInProgress;
-            TryParseOn141JavButton.IsEnabled = isEnabled;
+            TryParseOn141JavButton.IsEnabled = isEnabled && !_isThumbnailGenerationInProgress;
             CancelButton.IsEnabled = isEnabled;
+            SaveButton.IsEnabled = isEnabled && !_isThumbnailGenerationInProgress;
+        }
+
+        private async Task<ThumbnailSelectionResult> SelectGeneratedThumbnailAsync(
+            IReadOnlyList<VideoThumbnailCandidate> candidates,
+            CancellationToken cancellationToken)
+        {
+            var window = new ThumbnailSelectionWindow(candidates)
+            {
+                Owner = this
+            };
+            return await window.SelectAsync(cancellationToken);
+        }
+
+        private async Task GenerateThumbnailAsync()
+        {
+            if (DataContext is not MetadataEditorViewModel vm)
+            {
+                return;
+            }
+
+            var sourcePath = _sourcePath;
+            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            {
+                _showThumbnailMessage(
+                    "썸네일을 생성할 영상 파일을 찾을 수 없습니다.",
+                    "안내",
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            using var cancellation = new CancellationTokenSource();
+            _thumbnailGenerationCancellation = cancellation;
+            SetThumbnailGenerationInProgress(true);
+            // ponytail: 배치별 즉시 삭제 대신 세션 루트에서 한 번에 정리한다.
+            // 다시 생성 디스크 사용이 실제 문제가 될 때만 배치별 수명주기를 복잡하게 만든다.
+            var sessionRoot = Path.Combine(
+                Path.GetTempPath(),
+                "Airi",
+                "VideoThumbnails",
+                Guid.NewGuid().ToString("N"));
+            var batchNumber = 0;
+            Exception? operationFailure = null;
+            Exception? temporaryCleanupFailure = null;
+            var failureStage = "생성";
+
+            try
+            {
+                var currentCandidates = await ExtractBatchAsync();
+
+                while (true)
+                {
+                    var selection = await _selectGeneratedThumbnailAsync(
+                        currentCandidates,
+                        cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+
+                    if (selection.Action == ThumbnailSelectionAction.Cancel)
+                    {
+                        break;
+                    }
+                    if (selection.Action == ThumbnailSelectionAction.Regenerate)
+                    {
+                        try
+                        {
+                            var replacement = await ExtractBatchAsync();
+                            currentCandidates = replacement;
+                        }
+                        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Error("[MetadataEditor] Thumbnail regeneration failed.", ex);
+                            _showThumbnailMessage(
+                                $"썸네일을 다시 생성하지 못했습니다.\n{ex.Message}",
+                                "오류",
+                                MessageBoxImage.Error);
+                        }
+                        continue;
+                    }
+                    if (selection.Action == ThumbnailSelectionAction.Select &&
+                        !string.IsNullOrWhiteSpace(selection.FilePath))
+                    {
+                        failureStage = "적용";
+                        var updated = await vm.UpdateThumbnailFromFileAsync(
+                            selection.FilePath,
+                            CancellationToken.None);
+                        if (!updated)
+                        {
+                            throw new InvalidDataException(
+                                "선택한 썸네일 이미지를 캐시에 저장하지 못했습니다.");
+                        }
+                        _generatedThumbnailCachePaths.Add(Path.GetFullPath(
+                            LibraryPathHelper.ResolveToAbsolute(vm.ThumbnailPath)));
+                        break;
+                    }
+
+                    throw new InvalidDataException("잘못된 썸네일 선택 결과입니다.");
+                }
+
+                async Task<IReadOnlyList<VideoThumbnailCandidate>> ExtractBatchAsync()
+                {
+                    var batchDirectory = Path.Combine(
+                        sessionRoot,
+                        $"batch-{++batchNumber:D4}");
+                    return await _thumbnailExtractor.ExtractAsync(
+                        sourcePath,
+                        batchDirectory,
+                        Random.Shared,
+                        cancellation.Token);
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                operationFailure = ex;
+                AppLogger.Error($"[MetadataEditor] Thumbnail {failureStage} failed.", ex);
+            }
+            finally
+            {
+                temporaryCleanupFailure = await _deleteTemporaryDirectoryAsync(sessionRoot);
+                if (ReferenceEquals(_thumbnailGenerationCancellation, cancellation))
+                {
+                    _thumbnailGenerationCancellation = null;
+                }
+                if (!_isClosed)
+                {
+                    SetThumbnailGenerationInProgress(false);
+                }
+            }
+
+            if (operationFailure is not null)
+            {
+                var message = $"썸네일을 {failureStage}하지 못했습니다.\n{operationFailure.Message}";
+                if (temporaryCleanupFailure is not null)
+                {
+                    message +=
+                        $"\n임시 썸네일 파일을 정리하지 못했습니다.\n" +
+                        $"{temporaryCleanupFailure.Message}\n잔존 위치:\n{sessionRoot}";
+                }
+                _showThumbnailMessage(message, "오류", MessageBoxImage.Error);
+            }
+            else if (temporaryCleanupFailure is not null)
+            {
+                _showThumbnailMessage(
+                    $"임시 썸네일 파일을 정리하지 못했습니다.\n" +
+                    $"{temporaryCleanupFailure.Message}\n잔존 위치:\n{sessionRoot}",
+                    "정리 경고",
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private void SetThumbnailGenerationInProgress(bool isInProgress)
+        {
+            _isThumbnailGenerationInProgress = isInProgress;
+            var isEnabled = !isInProgress;
+            SelectThumbnailButton.IsEnabled = isEnabled;
+            GenerateThumbnailButton.IsEnabled = isEnabled;
+            ResetThumbnailButton.IsEnabled = isEnabled;
+            TryParseOn141JavButton.IsEnabled = isEnabled;
             SaveButton.IsEnabled = isEnabled;
+        }
+
+        private async Task<IReadOnlyList<string>> CleanupGeneratedCachesAsync(
+            string? keepRelativePath)
+        {
+            var keepAbsolutePath = string.IsNullOrWhiteSpace(keepRelativePath)
+                ? null
+                : Path.GetFullPath(LibraryPathHelper.ResolveToAbsolute(keepRelativePath));
+            var targets = _generatedThumbnailCachePaths
+                .Where(path => !string.Equals(
+                    path,
+                    keepAbsolutePath,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var results = await Task.WhenAll(targets.Select(async path =>
+                (Path: path, Failure: await _deleteGeneratedCacheAsync(path))));
+
+            foreach (var result in results.Where(result => result.Failure is null))
+            {
+                _generatedThumbnailCachePaths.Remove(result.Path);
+            }
+
+            return results
+                .Where(result => result.Failure is not null)
+                .Select(result => result.Path)
+                .ToArray();
+        }
+
+        private void BeginClose(bool save, MetadataEditResult? result)
+        {
+            if (_closeStarted)
+            {
+                return;
+            }
+
+            _closeStarted = true;
+            _closeTask = CompleteCloseAsync(save, result);
+        }
+
+        private async Task CompleteCloseAsync(bool save, MetadataEditResult? result)
+        {
+            await Task.Yield();
+            _thumbnailGenerationCancellation?.Cancel();
+            try
+            {
+                await _thumbnailGenerationTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            var residualPaths = await CleanupGeneratedCachesAsync(
+                save ? result?.ThumbnailPath : null);
+            if (residualPaths.Count > 0)
+            {
+                _showThumbnailMessage(
+                    $"생성한 썸네일 캐시를 정리하지 못했습니다.\n잔존 위치:\n" +
+                    string.Join(Environment.NewLine, residualPaths),
+                    "정리 경고",
+                    MessageBoxImage.Warning);
+            }
+
+            if (save && result is MetadataEditResult savedResult)
+            {
+                Result = savedResult;
+            }
+            _allowClose = true;
+            if (save)
+            {
+                DialogResult = true;
+            }
+            else
+            {
+                Close();
+            }
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (_allowClose)
+            {
+                base.OnClosing(e);
+                return;
+            }
+
+            e.Cancel = true;
+            BeginClose(save: false, result: null);
+            base.OnClosing(e);
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _isClosed = true;
+            base.OnClosed(e);
         }
     }
 }
