@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Airi.Infrastructure;
 using Airi.Services;
 using Airi.Services.VideoPreview;
@@ -429,6 +431,44 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
         });
 
     [Fact]
+    public Task CancelAfterPreviewRealization_DeletesGeneratedCacheWithoutResidualWarning() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = new MetadataEditorFixture();
+            var runner = new ThumbnailMediaProcessRunner(ThumbnailRunnerBehavior.Success);
+            var messages = new List<ThumbnailMessage>();
+            var window = fixture.CreateWindow(
+                runner,
+                (candidates, _) =>
+                {
+                    File.Copy(fixture.OtherImagePath, candidates[0].FilePath, overwrite: true);
+                    return Task.FromResult(new ThumbnailSelectionResult(
+                        ThumbnailSelectionAction.Select,
+                        candidates[0].FilePath));
+                },
+                messages: messages);
+            window.Show();
+            Click(window.GenerateThumbnailButton);
+            await window.ThumbnailGenerationTask;
+            var generatedCache = CurrentCachePath(window);
+
+            var preview = FindVisualChild<Image>(window);
+            Assert.NotNull(preview);
+            window.UpdateLayout();
+            _ = preview.Source?.Width;
+            await window.Dispatcher.InvokeAsync(
+                () => { },
+                DispatcherPriority.ApplicationIdle);
+
+            Click(window.CancelButton);
+            await window.CloseTask;
+
+            Assert.False(File.Exists(generatedCache));
+            Assert.DoesNotContain(messages, message =>
+                message.Title.Equals("정리 경고", StringComparison.Ordinal));
+        });
+
+    [Fact]
     public Task GeneratedCacheCleanupFailure_WarnsWithResidualPathButStillSaves() =>
         WpfTestHost.RunAsync(async () =>
         {
@@ -553,6 +593,27 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
 
     private static string SessionRoot(string candidatePath) =>
         Directory.GetParent(Path.GetDirectoryName(candidatePath)!)!.FullName;
+
+    private static T? FindVisualChild<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
 
     private sealed record ThumbnailMessage(
         string Message,
