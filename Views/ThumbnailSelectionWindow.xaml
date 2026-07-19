@@ -4,7 +4,7 @@
         Title="썸네일 선택" Width="1120" Height="480"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="#0F111C" Foreground="#E8ECF9"
-        WindowStyle="SingleBorderWindow" ShowInTaskbar="False"
+        WindowStyle="None" ShowInTaskbar="False"
         PreviewKeyDown="OnWindowPreviewKeyDown">
     <Grid Margin="24">
         <Grid.RowDefinitions>

@@ -5,7 +5,7 @@
         Title="메타데이터 편집" Width="720" MinHeight="860"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" Background="#0F111C" Foreground="#E8ECF9"
-        WindowStyle="SingleBorderWindow" ShowInTaskbar="False">
+        WindowStyle="None" ShowInTaskbar="False">
     <Window.Resources>
         <infrastructure:OnLoadImageSourceConverter x:Key="OnLoadImageSourceConverter"/>
         <Style x:Key="HeadingTextStyle" TargetType="TextBlock">

@@ -9,7 +9,9 @@
         xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
         mc:Ignorable="d"
         Title="Airi" Height="1000" Width="1500"
-        Background="{DynamicResource ShellBackgroundBrush}">
+        Style="{DynamicResource CustomWindowStyle}"
+        Background="{DynamicResource ShellBackgroundBrush}"
+        BorderBrush="#151828">
     <Window.Resources>
         <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#0F111C"/>
         <SolidColorBrush x:Key="PanelBrush" Color="#151828"/>
