@@ -114,56 +114,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#3B82F6"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="10 8"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="12">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#4D8FFF"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#2F6BD8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="GhostButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="#39405C"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#C7CEE4"/>
-            <Setter Property="Padding" Value="10 8"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="BorderBrush" Value="#4D5675"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <Grid Background="#0F111C">
@@ -196,11 +146,11 @@
                                 <StackPanel>
                                     <TextBlock Text="썸네일 이미지" Style="{StaticResource FieldLabelStyle}"/>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,0,0">
-                                        <Button x:Name="SelectThumbnailButton" Content="파일 선택" Style="{StaticResource PrimaryButtonStyle}"
+                                        <Button x:Name="SelectThumbnailButton" Content="파일 선택" Style="{StaticResource PrimaryActionButtonStyle}"
                                                 Width="100" Click="OnSelectThumbnailClick"/>
-                                        <Button x:Name="GenerateThumbnailButton" Content="썸네일 생성" Style="{StaticResource GhostButtonStyle}"
+                                        <Button x:Name="GenerateThumbnailButton" Content="썸네일 생성" Style="{StaticResource PrimaryActionButtonStyle}"
                                                 Width="110" Margin="8,0,0,0" Click="OnGenerateThumbnailClick"/>
-                                        <Button x:Name="ResetThumbnailButton" Content="초기화" Style="{StaticResource GhostButtonStyle}"
+                                        <Button x:Name="ResetThumbnailButton" Content="초기화" Style="{StaticResource SecondaryActionButtonStyle}"
                                                 Width="88" Margin="8,0,0,0" Click="OnResetThumbnailClick"/>
                                         <TextBlock Text="{Binding ThumbnailDisplayName}" Foreground="#96A1C2"
                                                    VerticalAlignment="Center" Margin="12,0,0,0"/>
@@ -269,14 +219,14 @@
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
                         <Button x:Name="TryParseOn141JavButton" Content="Try Parse On 141Jav" Width="140" Height="24"
-                                Style="{StaticResource GhostButtonStyle}" Click="OnTryParseOn141JavClick"/>
+                                Style="{StaticResource SecondaryActionButtonStyle}" Click="OnTryParseOn141JavClick"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="CancelButton" Content="취소" Width="116" Height="24"
-                                Style="{StaticResource GhostButtonStyle}" Click="OnCancelClick"/>
+                                Style="{StaticResource SecondaryActionButtonStyle}" Click="OnCancelClick"/>
                         <Button x:Name="SaveButton" Content="저장" Width="116" Height="24"
-                                Style="{StaticResource PrimaryButtonStyle}" Margin="12,0,0,0" IsDefault="True"
+                                Style="{StaticResource PrimaryActionButtonStyle}" Margin="12,0,0,0" IsDefault="True"
                                 Click="OnSaveClick"/>
                     </StackPanel>
                 </Grid>

@@ -13,6 +13,78 @@
                 <!-- Contains all of the control styles (Button, ListBox, etc) -->
                 <ResourceDictionary Source="Themes/Controls.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="ActionButtonBaseStyle"
+                   TargetType="{x:Type Button}"
+                   BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border x:Name="ActionButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="14"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PrimaryActionButtonStyle"
+                   TargetType="{x:Type Button}"
+                   BasedOn="{StaticResource ActionButtonBaseStyle}">
+                <Setter Property="Background" Value="#3B82F6"/>
+                <Setter Property="BorderBrush" Value="#3B82F6"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#4D8FFF"/>
+                        <Setter Property="BorderBrush" Value="#4D8FFF"/>
+                    </Trigger>
+                    <Trigger Property="IsPressed" Value="True">
+                        <Setter Property="Background" Value="#2F6BD8"/>
+                        <Setter Property="BorderBrush" Value="#2F6BD8"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Background" Value="#1E2234"/>
+                        <Setter Property="BorderBrush" Value="#2E3350"/>
+                        <Setter Property="Foreground" Value="#5E6585"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SecondaryActionButtonStyle"
+                   TargetType="{x:Type Button}"
+                   BasedOn="{StaticResource ActionButtonBaseStyle}">
+                <Setter Property="Background" Value="#1E2234"/>
+                <Setter Property="BorderBrush" Value="#2E3350"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#242A3D"/>
+                    </Trigger>
+                    <Trigger Property="IsPressed" Value="True">
+                        <Setter Property="Background" Value="#2E3350"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Background" Value="#1E2234"/>
+                        <Setter Property="BorderBrush" Value="#2E3350"/>
+                        <Setter Property="Foreground" Value="#5E6585"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
