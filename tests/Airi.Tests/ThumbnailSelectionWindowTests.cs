@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Airi.Services;
 using Airi.Views;
 
@@ -139,7 +140,7 @@ public sealed class ThumbnailSelectionWindowTests
         });
 
     [Fact]
-    public Task SelectedAndFocusedCandidate_UsesDistinctBordersAndAccessibleState() =>
+    public Task SelectedAndFocusedCandidate_UsesOnlySelectionBorderAndAccessibleState() =>
         WpfTestHost.RunAsync(async () =>
         {
             using var fixture = new CandidateFixture();
@@ -155,7 +156,13 @@ public sealed class ThumbnailSelectionWindowTests
             var focusBorder = Assert.IsType<Border>(candidate.Template.FindName("FocusBorder", candidate));
             var selectionBorder = Assert.IsType<Border>(candidate.Template.FindName("SelectionBorder", candidate));
 
-            Assert.NotEqual(focusBorder.BorderBrush.ToString(), selectionBorder.BorderBrush.ToString());
+            Assert.True(candidate.IsKeyboardFocusWithin);
+            Assert.Equal(
+                Colors.Transparent,
+                Assert.IsType<SolidColorBrush>(focusBorder.BorderBrush).Color);
+            Assert.Equal(
+                Color.FromRgb(0x3B, 0x82, 0xF6),
+                Assert.IsType<SolidColorBrush>(selectionBorder.BorderBrush).Color);
             Assert.Equal("썸네일 후보 2/5, 선택됨", AutomationProperties.GetName(candidate));
             window.Close();
             await selection;

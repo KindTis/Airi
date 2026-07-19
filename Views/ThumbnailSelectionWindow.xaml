@@ -55,9 +55,6 @@
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="#3B82F6"/>
                                     </Trigger>
-                                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                        <Setter TargetName="FocusBorder" Property="BorderBrush" Value="#F59E0B"/>
-                                    </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Setter.Value>

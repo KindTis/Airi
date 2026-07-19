@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Airi.Services;
 using Airi.Views;
@@ -93,6 +94,102 @@ public sealed class WindowVisualStyleTests
             thumbnailWindow.Close();
             metadataWindow.Close();
             mainWindow.Close();
+        }
+
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task MetadataFooterButtons_UseSharedStyleNaturalHeight() => WpfTestHost.RunAsync(() =>
+    {
+        var window = new MetadataEditorWindow(CreateVideoItem());
+
+        try
+        {
+            Assert.True(double.IsNaN(window.TryParseOn141JavButton.Height));
+            Assert.True(double.IsNaN(window.CancelButton.Height));
+            Assert.True(double.IsNaN(window.SaveButton.Height));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task SearchAndSortControls_UseRoundedInputChrome() => WpfTestHost.RunAsync(() =>
+    {
+        var window = new MainWindow();
+
+        try
+        {
+            var expectedStyle = Assert.IsType<Style>(
+                window.TryFindResource("RoundedInputBorderStyle"));
+            var searchBorder = Assert.IsType<Border>(window.FindName("SearchInputBorder"));
+            var sortBorder = Assert.IsType<Border>(window.FindName("SortInputBorder"));
+            var sortComboBox = Assert.IsType<ComboBox>(window.FindName("SortComboBox"));
+
+            Assert.Same(expectedStyle, searchBorder.Style);
+            Assert.Same(expectedStyle, sortBorder.Style);
+            Assert.Equal(new CornerRadius(14), searchBorder.CornerRadius);
+            Assert.Equal(new CornerRadius(14), sortBorder.CornerRadius);
+            Assert.Equal(new Thickness(0), window.SearchTextBox.BorderThickness);
+            Assert.Equal(new Thickness(0), sortComboBox.BorderThickness);
+
+            sortComboBox.ApplyTemplate();
+            var toggleButton = Assert.IsType<ToggleButton>(
+                sortComboBox.Template.FindName("toggleButton", sortComboBox));
+            toggleButton.ApplyTemplate();
+            var comboBoxBorder = Assert.IsType<Border>(
+                toggleButton.Template.FindName("templateRoot", toggleButton));
+            var comboBoxArrowBorder = Assert.IsType<Border>(
+                toggleButton.Template.FindName("splitBorder", toggleButton));
+            Assert.Equal(new CornerRadius(14), comboBoxBorder.CornerRadius);
+            Assert.Equal(new CornerRadius(0, 14, 14, 0), comboBoxArrowBorder.CornerRadius);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public Task MetadataFields_UseRoundedInputChrome() => WpfTestHost.RunAsync(() =>
+    {
+        var window = new MetadataEditorWindow(CreateVideoItem());
+
+        try
+        {
+            var inputBoxStyle = Assert.IsType<Style>(window.TryFindResource("InputBoxStyle"));
+            var textBoxes = FindDescendants<TextBox>(window)
+                .Where(textBox => ReferenceEquals(textBox.Style, inputBoxStyle))
+                .ToArray();
+
+            Assert.Equal(4, textBoxes.Length);
+            foreach (var textBox in textBoxes)
+            {
+                textBox.ApplyTemplate();
+                var border = Assert.IsType<Border>(
+                    textBox.Template.FindName("border", textBox));
+                Assert.Equal(new CornerRadius(14), border.CornerRadius);
+            }
+
+            var datePickerStyle = Assert.IsType<Style>(window.TryFindResource("DatePickerStyle"));
+            var datePicker = Assert.Single(
+                FindDescendants<DatePicker>(window),
+                picker => ReferenceEquals(picker.Style, datePickerStyle));
+            datePicker.ApplyTemplate();
+            var datePickerBorder = Assert.IsType<Border>(
+                VisualTreeHelper.GetChild(datePicker, 0));
+            Assert.Equal(new CornerRadius(14), datePickerBorder.CornerRadius);
+        }
+        finally
+        {
+            window.Close();
         }
 
         return Task.CompletedTask;
