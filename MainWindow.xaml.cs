@@ -699,7 +699,21 @@ namespace Airi
                 ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
                 var sessionId = Guid.NewGuid();
-                var state = new TooltipPreviewState(sessionId, video.ThumbnailSource);
+                var animationsEnabled =
+                    _clientAreaAnimationsEnabledOverride ??
+                    SystemParameters.ClientAreaAnimation;
+                var previewEligible =
+                    video.Presence == VideoPresenceState.Available &&
+                    !string.IsNullOrWhiteSpace(video.SourcePath) &&
+                    File.Exists(video.SourcePath);
+                var showDelayIndicator =
+                    _tooltipPreviewController is not null &&
+                    animationsEnabled &&
+                    previewEligible;
+                var state = new TooltipPreviewState(
+                    sessionId,
+                    video.ThumbnailSource,
+                    showDelayIndicator);
                 tooltip.PlacementTarget = item;
                 tooltip.Placement = PlacementMode.Relative;
                 tooltip.Content = video;
@@ -715,10 +729,8 @@ namespace Airi
                         350,
                         15,
                         TimeSpan.FromSeconds(10)),
-                    _clientAreaAnimationsEnabledOverride ?? SystemParameters.ClientAreaAnimation,
-                    video.Presence == VideoPresenceState.Available &&
-                        !string.IsNullOrWhiteSpace(video.SourcePath) &&
-                        File.Exists(video.SourcePath),
+                    animationsEnabled,
+                    previewEligible,
                     new MainWindowTooltipPreviewSink(
                         this,
                         item,

@@ -183,6 +183,77 @@
                                    Source="{Binding RelativeSource={RelativeSource AncestorType={x:Type ToolTip}}, Path=Tag.PreviewSource}"
                                    Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Visibility="Collapsed"/>
+                            <ProgressBar x:Name="TooltipPreviewDelayIndicator"
+                                         Height="4"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Bottom"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="0"
+                                         IsIndeterminate="False"
+                                         Visibility="Collapsed"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         Background="#99151828"
+                                         BorderThickness="0">
+                                <ProgressBar.Template>
+                                    <ControlTemplate TargetType="{x:Type ProgressBar}">
+                                        <Grid x:Name="TemplateRoot" ClipToBounds="True">
+                                            <VisualStateManager.VisualStateGroups>
+                                                <VisualStateGroup x:Name="CommonStates">
+                                                    <VisualState x:Name="Determinate"/>
+                                                    <VisualState x:Name="Indeterminate">
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <DoubleAnimationUsingKeyFrames
+                                                                Storyboard.TargetName="Animation"
+                                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)">
+                                                                <EasingDoubleKeyFrame KeyTime="0" Value="0.25"/>
+                                                                <EasingDoubleKeyFrame KeyTime="0:0:1" Value="0.25"/>
+                                                                <EasingDoubleKeyFrame KeyTime="0:0:2" Value="0.25"/>
+                                                            </DoubleAnimationUsingKeyFrames>
+                                                            <PointAnimationUsingKeyFrames
+                                                                Storyboard.TargetName="Animation"
+                                                                Storyboard.TargetProperty="(UIElement.RenderTransformOrigin)">
+                                                                <EasingPointKeyFrame KeyTime="0" Value="-0.5,0.5"/>
+                                                                <EasingPointKeyFrame KeyTime="0:0:1" Value="0.5,0.5"/>
+                                                                <EasingPointKeyFrame KeyTime="0:0:2" Value="1.5,0.5"/>
+                                                            </PointAnimationUsingKeyFrames>
+                                                        </Storyboard>
+                                                    </VisualState>
+                                                </VisualStateGroup>
+                                            </VisualStateManager.VisualStateGroups>
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"/>
+                                            <Rectangle x:Name="PART_Track"/>
+                                            <Grid x:Name="PART_Indicator"
+                                                  ClipToBounds="True"
+                                                  HorizontalAlignment="Left">
+                                                <Rectangle x:Name="Indicator"
+                                                           Fill="{TemplateBinding Foreground}"/>
+                                                <Rectangle x:Name="Animation"
+                                                           Fill="{TemplateBinding Foreground}"
+                                                           RenderTransformOrigin="0.5,0.5">
+                                                    <Rectangle.RenderTransform>
+                                                        <TransformGroup>
+                                                            <ScaleTransform/>
+                                                            <SkewTransform/>
+                                                            <RotateTransform/>
+                                                            <TranslateTransform/>
+                                                        </TransformGroup>
+                                                    </Rectangle.RenderTransform>
+                                                </Rectangle>
+                                            </Grid>
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsIndeterminate" Value="True">
+                                                <Setter TargetName="Indicator"
+                                                        Property="Visibility"
+                                                        Value="Collapsed"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ProgressBar.Template>
+                            </ProgressBar>
                         </Grid>
                     </Border>
                     <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
@@ -302,6 +373,39 @@
                 <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type ToolTip}}, Path=Tag.IsPreviewVisible}" Value="True">
                     <Setter TargetName="TooltipCoverImage" Property="Visibility" Value="Collapsed"/>
                     <Setter TargetName="TooltipPreviewImage" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type ToolTip}},
+                                               Path=Tag.IsDelayIndicatorVisible}"
+                             Value="True">
+                    <Setter TargetName="TooltipPreviewDelayIndicator"
+                            Property="Visibility"
+                            Value="Visible"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="TooltipPreviewDelayIndicatorStoryboard">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="TooltipPreviewDelayIndicator"
+                                                 Storyboard.TargetProperty="Value"
+                                                 From="0"
+                                                 To="100"
+                                                 Duration="0:0:2"
+                                                 FillBehavior="HoldEnd"/>
+                                <ObjectAnimationUsingKeyFrames
+                                    Storyboard.TargetName="TooltipPreviewDelayIndicator"
+                                    Storyboard.TargetProperty="IsIndeterminate"
+                                    FillBehavior="HoldEnd">
+                                    <DiscreteObjectKeyFrame KeyTime="0:0:2">
+                                        <DiscreteObjectKeyFrame.Value>
+                                            <sys:Boolean>True</sys:Boolean>
+                                        </DiscreteObjectKeyFrame.Value>
+                                    </DiscreteObjectKeyFrame>
+                                </ObjectAnimationUsingKeyFrames>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <RemoveStoryboard
+                            BeginStoryboardName="TooltipPreviewDelayIndicatorStoryboard"/>
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

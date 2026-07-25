@@ -7,8 +7,10 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Airi.Infrastructure;
 using Airi.Services;
@@ -271,8 +273,68 @@ public sealed class MainWindowThumbnailRealizationTests
             await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(fixture.A.SourcePath, fixture.PreviewService.Request!.SourcePath);
             var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            Assert.True(state.IsDelayIndicatorVisible);
             await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
         }, clientAreaAnimationsEnabledOverride: true);
+
+    [Fact]
+    public Task VideoItemMouseEnter_AnimationsDisabledStartsWithIndicatorHidden() =>
+        RunWithPreview(async fixture =>
+        {
+            fixture.MakeAvailable(fixture.A);
+            var container = await fixture.RealizeAsync(fixture.A);
+
+            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = Mouse.MouseEnterEvent,
+                Source = container
+            });
+
+            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            Assert.False(state.IsDelayIndicatorVisible);
+            Assert.Equal(0, fixture.PreviewService!.PrepareCallCount);
+            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+        }, clientAreaAnimationsEnabledOverride: false);
+
+    [Fact]
+    public Task VideoItemMouseEnter_IneligibleVideoStartsWithIndicatorHidden() =>
+        RunWithPreview(async fixture =>
+        {
+            var container = await fixture.RealizeAsync(fixture.A);
+
+            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = Mouse.MouseEnterEvent,
+                Source = container
+            });
+
+            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            Assert.False(state.IsDelayIndicatorVisible);
+            Assert.Equal(0, fixture.PreviewService!.PrepareCallCount);
+            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+        }, clientAreaAnimationsEnabledOverride: true);
+
+    [Fact]
+    public Task VideoItemMouseEnter_WithoutControllerStartsWithIndicatorHidden() =>
+        Run(async fixture =>
+        {
+            fixture.MakeAvailable(fixture.A);
+            var container = await fixture.RealizeAsync(fixture.A);
+
+            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = Mouse.MouseEnterEvent,
+                Source = container
+            });
+
+            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            Assert.False(state.IsDelayIndicatorVisible);
+            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+        });
 
     [Fact]
     public Task VideoListDoubleClick_OnlyPlaysClickedVideoItem() => Run(async fixture =>
@@ -352,11 +414,13 @@ public sealed class MainWindowThumbnailRealizationTests
             WindowStyle = WindowStyle.ToolWindow,
             Content = container
         };
-        var state = new TooltipPreviewState(Guid.NewGuid(), initialSource);
+        var template = Assert.IsType<DataTemplate>(
+            fixture.Window.FindResource("VideoTooltipTemplate"));
+        var state = new TooltipPreviewState(Guid.NewGuid(), initialSource, true);
         var tooltip = new ToolTip
         {
             Content = fixture.A,
-            ContentTemplate = Assert.IsType<DataTemplate>(fixture.Window.FindResource("VideoTooltipTemplate")),
+            ContentTemplate = template,
             PlacementTarget = container,
             Style = Assert.IsType<Style>(fixture.Window.FindResource(typeof(ToolTip))),
             Tag = state
@@ -367,6 +431,78 @@ public sealed class MainWindowThumbnailRealizationTests
             host.Show();
             tooltip.IsOpen = true;
             WpfTestHost.DrainDispatcher(host.Dispatcher);
+            var indicator = Assert.Single(
+                EnumerateVisualDescendants<ProgressBar>(tooltip));
+            Assert.Equal(4d, indicator.Height);
+            Assert.Equal(HorizontalAlignment.Stretch, indicator.HorizontalAlignment);
+            Assert.Equal(VerticalAlignment.Bottom, indicator.VerticalAlignment);
+            Assert.Equal(Visibility.Visible, indicator.Visibility);
+            Assert.Equal(0d, indicator.Minimum);
+            Assert.Equal(100d, indicator.Maximum);
+            Assert.Equal(
+                Color.FromRgb(0x3B, 0x82, 0xF6),
+                Assert.IsType<SolidColorBrush>(indicator.Foreground).Color);
+            Assert.Equal(
+                Color.FromArgb(0x99, 0x15, 0x18, 0x28),
+                Assert.IsType<SolidColorBrush>(indicator.Background).Color);
+
+            var indicatorHost = Assert.IsType<Grid>(
+                VisualTreeHelper.GetParent(indicator));
+            Assert.Same(
+                indicator,
+                indicatorHost.Children[indicatorHost.Children.Count - 1]);
+            var coverBorder = Assert.IsType<Border>(
+                VisualTreeHelper.GetParent(indicatorHost));
+            Assert.Equal(350d, coverBorder.Height);
+            Assert.True(coverBorder.ClipToBounds);
+
+            indicator.ApplyTemplate();
+            var indicatorPart = Assert.IsType<Grid>(
+                indicator.Template.FindName("PART_Indicator", indicator));
+            Assert.Equal(new Thickness(0), indicatorPart.Margin);
+            Assert.Equal(4d, indicatorPart.ActualHeight);
+
+            var delayTrigger = Assert.Single(
+                template.Triggers.OfType<DataTrigger>(),
+                trigger => trigger.Binding is Binding binding &&
+                    binding.Path?.Path == "Tag.IsDelayIndicatorVisible");
+            var begin = Assert.Single(
+                delayTrigger.EnterActions.OfType<BeginStoryboard>());
+            Assert.Equal("TooltipPreviewDelayIndicatorStoryboard", begin.Name);
+
+            var progressAnimation = Assert.Single(
+                begin.Storyboard.Children.OfType<DoubleAnimation>());
+            Assert.Equal(
+                "TooltipPreviewDelayIndicator",
+                Storyboard.GetTargetName(progressAnimation));
+            Assert.Equal("Value", Storyboard.GetTargetProperty(progressAnimation).Path);
+            Assert.Equal(0d, progressAnimation.From.GetValueOrDefault());
+            Assert.Equal(100d, progressAnimation.To.GetValueOrDefault());
+            Assert.Equal(
+                new Duration(TimeSpan.FromSeconds(2)),
+                progressAnimation.Duration);
+
+            var indeterminateAnimation = Assert.Single(
+                begin.Storyboard.Children.OfType<ObjectAnimationUsingKeyFrames>());
+            Assert.Equal(
+                "TooltipPreviewDelayIndicator",
+                Storyboard.GetTargetName(indeterminateAnimation));
+            Assert.Equal(
+                "IsIndeterminate",
+                Storyboard.GetTargetProperty(indeterminateAnimation).Path);
+            var keyFrame = Assert.IsType<DiscreteObjectKeyFrame>(
+                Assert.Single(indeterminateAnimation.KeyFrames));
+            Assert.Equal(
+                KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2)),
+                keyFrame.KeyTime);
+            Assert.Equal(true, keyFrame.Value);
+
+            var remove = Assert.Single(
+                delayTrigger.ExitActions.OfType<RemoveStoryboard>());
+            Assert.Equal(
+                "TooltipPreviewDelayIndicatorStoryboard",
+                remove.BeginStoryboardName);
+
             var images = EnumerateVisualDescendants<Image>(tooltip).ToArray();
             Assert.Equal(2, images.Length);
             Assert.Contains(images, image =>
@@ -375,6 +511,10 @@ public sealed class MainWindowThumbnailRealizationTests
             state.UpdateCover(upgradedSource);
             state.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
             WpfTestHost.DrainDispatcher(host.Dispatcher);
+
+            Assert.Equal(Visibility.Collapsed, indicator.Visibility);
+            Assert.Equal(0d, indicator.Value);
+            Assert.False(indicator.IsIndeterminate);
 
             Assert.Contains(images, image =>
                 ReferenceEquals(image.Source, state.PreviewSource) && image.Visibility == Visibility.Visible);
@@ -388,6 +528,14 @@ public sealed class MainWindowThumbnailRealizationTests
             Assert.Contains(images, image =>
                 ReferenceEquals(image.Source, upgradedSource) && image.Visibility == Visibility.Visible);
             Assert.Contains(images, image => image.Source is null && image.Visibility == Visibility.Collapsed);
+
+            indicator.Visibility = Visibility.Visible;
+            indicator.Value = indicator.Maximum;
+            WpfTestHost.DrainDispatcher(host.Dispatcher);
+            indicator.UpdateLayout();
+
+            Assert.Equal(indicator.ActualWidth, indicatorPart.ActualWidth, 3);
+            Assert.Equal(4d, indicatorPart.ActualHeight);
         }
         finally
         {
