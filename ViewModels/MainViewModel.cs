@@ -91,6 +91,7 @@ namespace Airi.ViewModels
         private const int InitialLoadBatchSize = 40;
         private readonly Random _random = new();
         private readonly ILibraryStore _libraryStore;
+        private readonly SettingsStore _settingsStore;
         private readonly ILibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
@@ -112,7 +113,9 @@ namespace Airi.ViewModels
         private long _nextThumbnailRuntimeIdentity;
         private bool _disposed;
         private Task _metadataProcessingTask = Task.CompletedTask;
+        private Task _settingsSaveTask = Task.CompletedTask;
         private readonly string _fallbackThumbnailUri;
+        private AppSettings? _settings;
         private bool _isInitialized;
         private readonly SemaphoreSlim _initializationGate = new(1, 1);
         private readonly CancellationTokenSource _lifetimeCts = new();
@@ -164,9 +167,20 @@ namespace Airi.ViewModels
                 if (SetProperty(ref _selectedSortOption, value))
                 {
                     ApplySort(value.Field, value.Direction);
+                    if (_settings is not null)
+                    {
+                        _settings.Sort = new SortSettings
+                        {
+                            Field = value.Field.ToString(),
+                            Direction = value.Direction.ToString()
+                        };
+                        _settingsSaveTask = SaveSortSettingsAsync(_settings);
+                    }
                 }
             }
         }
+
+        internal Task SettingsSaveTask => _settingsSaveTask;
 
         public RelayCommand RandomPlayCommand { get; }
         public RelayCommand FetchMetadataCommand { get; }
@@ -206,9 +220,11 @@ namespace Airi.ViewModels
             IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
             ThumbnailPerformanceProbe performanceProbe,
             IThumbnailImageLoader thumbnailImageLoader,
-            Func<VideoEntry, CancellationToken, VideoItem>? storedVideoMapper = null)
+            Func<VideoEntry, CancellationToken, VideoItem>? storedVideoMapper = null,
+            SettingsStore? settingsStore = null)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
+            _settingsStore = settingsStore ?? new SettingsStore(_libraryStore.FilePath);
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
             _crawlerSessionProvider = crawlerSessionProvider ?? throw new ArgumentNullException(nameof(crawlerSessionProvider));
@@ -634,6 +650,7 @@ namespace Airi.ViewModels
                 cancellationToken,
                 _lifetimeCts.Token);
             var startupToken = linkedCts.Token;
+            var settingsReady = false;
             try
             {
                 if (_isInitialized)
@@ -645,8 +662,20 @@ namespace Airi.ViewModels
                 {
                     startupLease = TryBeginLibraryMutation(LibraryMutationOwner.StartupScan)
                         ?? throw new InvalidOperationException("A library mutation is already active.");
+                    StatusMessage = "Loading settings...";
+                });
+
+                var loadedSettings = await _settingsStore
+                    .LoadAsync(startupToken)
+                    .ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    _settings = loadedSettings;
+                    ApplyLoadedSort(loadedSettings.Sort);
                     StatusMessage = "Loading library...";
                 });
+                settingsReady = true;
+
                 var loadedLibrary = await _libraryStore.LoadAsync(startupToken).ConfigureAwait(false);
                 _performanceProbe.TryMark(StartupTimingMarker.LibraryLoaded);
                 _startupPublishesStoredLibrary = loadedLibrary.Videos.Count > 0;
@@ -696,6 +725,9 @@ namespace Airi.ViewModels
             {
                 if (!_lifetimeCts.IsCancellationRequested)
                 {
+                    var status = settingsReady
+                        ? $"Library initialization failed: {ex.Message}"
+                        : $"Settings initialization failed; library load and scan stopped: {ex.Message}";
                     await _dispatcher.InvokeAsync(() =>
                     {
                         if (StartupState == StartupLibraryState.Scanning)
@@ -712,9 +744,13 @@ namespace Airi.ViewModels
                         }
                         IsInitialLoading = false;
                         IsActorListLoading = false;
-                        StatusMessage = $"Library initialization failed: {ex.Message}";
+                        StatusMessage = status;
                     });
-                    AppLogger.Error("Library initialization failed.", ex);
+                    AppLogger.Error(
+                        settingsReady
+                            ? "Library initialization failed."
+                            : "Settings initialization failed.",
+                        ex);
                     _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
                 }
                 throw;
@@ -1878,6 +1914,37 @@ namespace Airi.ViewModels
                     throw new InvalidOperationException("Metadata processing is already active.");
                 }
                 _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync(lease));
+            }
+        }
+
+        private void ApplyLoadedSort(SortSettings sort)
+        {
+            var selected = SortOptions.First(option =>
+                option.Field.ToString() == sort.Field &&
+                option.Direction.ToString() == sort.Direction);
+            _selectedSortOption = selected;
+            ApplySort(selected.Field, selected.Direction, updateStatus: false);
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(nameof(SelectedSortOption)));
+        }
+
+        private async Task SaveSortSettingsAsync(AppSettings settings)
+        {
+            try
+            {
+                await _settingsStore
+                    .SaveAsync(settings, _lifetimeCts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                await _dispatcher.InvokeAsync(() =>
+                    StatusMessage = $"Sort settings save failed: {ex.Message}");
+                AppLogger.Error("Sort settings save failed.", ex);
             }
         }
 
