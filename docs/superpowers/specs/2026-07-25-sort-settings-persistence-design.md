@@ -6,12 +6,14 @@
 - 앱을 비정상 종료한 뒤 다시 실행해도 선택한 정렬과 실제 아이템 순서를 복원한다.
 - 스캔 대상 폴더 설정을 `videos.json`에서 분리한다.
 - `settings.json`과 `videos.json`을 실행 파일과 같은 폴더에 저장한다.
+- 앱에는 이전 형식의 `videos.json`을 읽는 마이그레이션이나 폴백 코드를 넣지 않는다.
 
 ## 제외 범위
 
 - 대상 폴더를 편집하는 새 UI는 추가하지 않는다.
 - 설정 파일 위치를 선택하는 옵션은 추가하지 않는다.
 - 사용되지 않는 `LastScanUtc`를 대체하는 새 스캔 이력 모델은 만들지 않는다.
+- 이전 형식의 `videos.json.Targets`를 런타임에 자동 이전하지 않는다.
 
 ## 현재 문제
 
@@ -62,7 +64,7 @@
 별도 인터페이스 없이 하나의 작은 설정 저장소를 추가한다.
 
 - 기본 경로는 `ILibraryStore.FilePath`와 같은 디렉터리의 `settings.json`이다.
-- `settings.json`이 없을 때만 같은 디렉터리의 기존 `videos.json`에서 `Targets`를 읽어 이전한다.
+- `settings.json`이 없으면 다른 파일을 참조하지 않고 기본 설정을 생성한다.
 - 설정을 정규화하고 누락된 값에는 기존 기본값을 사용한다.
 - 임시 파일에 쓴 뒤 같은 볼륨에서 교체하여 손상된 중간 파일이 남지 않게 한다.
 - 정렬 변경 저장은 작은 설정 파일의 원자적 교체가 끝난 뒤 반환한다.
@@ -78,46 +80,58 @@
 
 ### LibraryStore
 
-- 기존 `videos.json`을 읽을 때 남아 있는 `Targets`는 알 수 없는 이전 필드로 무시한다.
-- 저장 투영에서는 `Targets`를 제외해 새 형식의 `videos.json`만 쓴다.
+- `Targets`를 읽거나 설정 저장소로 전달하지 않는다.
+- `Version`과 `Videos`만 읽고 저장한다.
 - `Videos`의 기존 원자적 저장과 복구 동작은 변경하지 않는다.
 
-## 시작 및 마이그레이션 흐름
+## 시작 흐름
 
 1. `settings.json`이 있으면 설정을 읽고 정규화한다.
-2. `settings.json`이 없으면 `SettingsStore`가 기존 `videos.json`의 `Targets`만 읽는다.
-3. 이전 `Targets`가 유효하면 그대로 사용하고, 없으면 기존 기본 대상 폴더를 사용한다.
-4. 기본 정렬은 기존 동작과 동일한 `ReleaseDate/Descending`을 사용한다.
-5. 완성된 설정을 `settings.json`에 원자적으로 저장한다.
-6. 선택한 정렬을 `FilteredVideos`에 적용한다.
-7. `videos.json`을 읽고 아이템을 게시한다.
-8. 다음 `videos.json` 저장부터 `Targets`가 제외된다.
+2. `settings.json`이 없으면 기본 `Targets`와 `ReleaseDate/Descending`으로 새 파일을 생성한다.
+3. 선택한 정렬을 `FilteredVideos`에 적용한다.
+4. `videos.json`이 있으면 라이브러리를 읽는다.
+5. `videos.json`이 없으면 기본 라이브러리 파일을 생성한다.
+6. 아이템을 게시하고 `settings.json`의 `Targets`로 스캔한다.
 
-`settings.json` 저장이 성공한 뒤에만 `videos.json`에서 `Targets`를 제외하므로 마이그레이션 중 대상 폴더 설정을 잃지 않는다.
+두 저장소는 서로의 파일을 읽지 않는다. 두 파일이 모두 없으면 각각 기본값으로 생성되어 초기 실행 상태가 된다.
+
+## 현재 실행 데이터 직접 분리
+
+런타임 마이그레이션 대신 이번 구현 작업에서 현재 실행 폴더의 JSON을 직접 변경한다.
+
+- `bin/Debug/net9.0-windows10.0.26100.0/videos.json`의 `Targets`를 같은 폴더의 새 `settings.json`으로 옮긴다.
+- `bin/Release/net9.0-windows10.0.26100.0/videos.json`의 `Targets`를 같은 폴더의 새 `settings.json`으로 옮긴다.
+- 각 `settings.json`은 해당 실행 폴더에 있던 `Root`, `IncludePatterns`, `ExcludePatterns`를 그대로 보존한다.
+- 기존에는 정렬 값이 없으므로 두 설정 파일 모두 `ReleaseDate/Descending`으로 시작한다.
+- 각 `videos.json`에서는 `Targets`를 제거한다.
+- 테스트 출력 폴더의 JSON은 빌드 생성물이므로 직접 분리 대상에 포함하지 않는다.
 
 ## 오류 처리
 
-- 설정 파일이 없으면 이전 `videos.json` 또는 기본값으로 생성한다.
+- 설정 파일이 없으면 기본값으로 생성하며 `videos.json`은 참조하지 않는다.
 - 알 수 없는 정렬 필드나 방향은 `ReleaseDate/Descending`으로 정규화한다.
 - 유효하지 않은 대상 항목은 제외하고, 남은 대상이 없으면 기본 대상 폴더를 사용한다.
-- 설정을 읽거나 이전하는 데 실패하면 기존 `videos.json`을 덮어쓰지 않고 시작을 실패시켜 잘못된 대상 폴더로 스캔하는 것을 막는다.
+- 설정을 읽는 데 실패하면 `videos.json`을 참조하거나 덮어쓰지 않고 시작을 실패시켜 잘못된 대상 폴더로 스캔하는 것을 막는다.
 - 정렬 변경 후 설정 저장에 실패하면 현재 세션의 정렬은 유지하고 실패를 사용자와 로그에 알린다.
 
 ## 검증
 
-1. 기존 형식의 `videos.json`만 있을 때 `Targets`가 같은 폴더의 `settings.json`으로 이전된다.
-2. 이전 성공 후 저장된 `videos.json`에는 `Targets`와 `LastScanUtc`가 없다.
-3. 정렬을 변경한 직후 `settings.json`에 안정적인 필드와 방향이 기록된다.
-4. 재실행 시 콤보 박스 선택과 `FilteredVideos`의 실제 열거 순서가 모두 저장된 정렬과 일치한다.
-5. 잘못된 정렬 값은 기존 기본 정렬로 복구된다.
-6. 설정 이전 또는 저장 실패 시 기존 `videos.json`이 보존된다.
-7. 전체 테스트와 Debug 빌드가 통과한다.
+1. Debug와 Release 실행 폴더의 `settings.json`에 기존 대상 폴더 값이 보존된다.
+2. Debug와 Release 실행 폴더의 `videos.json`에는 `Targets`와 `LastScanUtc`가 없다.
+3. 앱 코드에는 `videos.json.Targets`를 읽는 마이그레이션이나 폴백 경로가 없다.
+4. 두 JSON이 모두 없을 때 각각 기본값으로 생성된다.
+5. 정렬을 변경한 직후 `settings.json`에 안정적인 필드와 방향이 기록된다.
+6. 재실행 시 콤보 박스 선택과 `FilteredVideos`의 실제 열거 순서가 모두 저장된 정렬과 일치한다.
+7. 잘못된 정렬 값은 기존 기본 정렬로 복구된다.
+8. 설정 저장 실패 시 기존 `videos.json`이 보존된다.
+9. 전체 테스트와 Debug 빌드가 통과한다.
 
 ## 예상 변경 범위
 
 - 설정 모델 및 `SettingsStore`
 - `TargetFolder`와 `LibraryData`
-- `LibraryStore`의 읽기 호환 및 저장 투영
+- `LibraryStore`의 저장 모델 분리
 - `LibraryScanner`가 설정의 `Targets`를 입력받도록 하는 호출 경계
 - `MainViewModel`의 설정 로드·정렬 적용·즉시 저장
+- Debug와 Release 실행 폴더의 현재 JSON 데이터
 - 관련 단위 테스트
