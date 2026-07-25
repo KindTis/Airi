@@ -1626,13 +1626,10 @@ namespace Airi.ViewModels
                 metadataPaths.Add(entry.Path);
             }
 
-            var scanTimestamp = DateTime.UtcNow;
             var finalLibrary = new LibraryData
             {
                 Version = 1,
-                Targets = preparation.Targets
-                    .Select(target => CloneTarget(target) with { LastScanUtc = scanTimestamp })
-                    .ToList(),
+                Targets = preparation.Targets.Select(CloneTarget).ToList(),
                 Videos = finalVideos.Select(CloneEntry).ToList()
             };
             var actors = finalLibrary.Videos
@@ -1646,7 +1643,6 @@ namespace Airi.ViewModels
                 operations,
                 metadataPaths,
                 actors,
-                scanTimestamp,
                 result.NewFiles.Count,
                 result.MissingEntries.Count,
                 result.UpdatedEntries.Count);

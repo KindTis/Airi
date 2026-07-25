@@ -37,8 +37,7 @@ namespace Airi.Tests
             var target = new TargetFolder(
                 _tempRoot,
                 new[] { "*.mp4", "*.mkv" },
-                new[] { "skip*" },
-                null);
+                new[] { "skip*" });
 
             var snapshots = await _scanner.ScanAsync(new[] { target }, CancellationToken.None);
 
@@ -61,8 +60,7 @@ namespace Airi.Tests
             var target = new TargetFolder(
                 relativeRoot,
                 new[] { "*.mp4" },
-                Array.Empty<string>(),
-                null);
+                Array.Empty<string>());
 
             var snapshots = await _scanner.ScanAsync(new[] { target }, CancellationToken.None);
 
@@ -82,8 +80,7 @@ namespace Airi.Tests
             var target = new TargetFolder(
                 missingPath,
                 new[] { "*.mp4" },
-                Array.Empty<string>(),
-                null);
+                Array.Empty<string>());
 
             var snapshots = await _scanner.ScanAsync(new[] { target }, CancellationToken.None);
 
@@ -96,8 +93,7 @@ namespace Airi.Tests
             var target = new TargetFolder(
                 _tempRoot,
                 new[] { "*" },
-                Array.Empty<string>(),
-                null);
+                Array.Empty<string>());
 
             using var cts = new CancellationTokenSource();
             cts.Cancel();

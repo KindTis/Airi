@@ -39,8 +39,7 @@ namespace Airi.Services
         private static readonly TargetFolder DefaultTarget = new(
             "./Videos",
             new[] { "*.mp4", "*.mkv", "*.avi", "*.wmv" },
-            Array.Empty<string>(),
-            null);
+            Array.Empty<string>());
 
         private readonly string _filePath;
         private readonly JsonSerializerOptions _jsonOptions;

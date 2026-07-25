@@ -3,12 +3,6 @@ using System.Collections.Generic;
 
 namespace Airi.Domain
 {
-    public record TargetFolder(
-        string Root,
-        IReadOnlyList<string> IncludePatterns,
-        IReadOnlyList<string> ExcludePatterns,
-        DateTime? LastScanUtc);
-
     public record VideoMeta(
         string Title,
         DateOnly? Date,

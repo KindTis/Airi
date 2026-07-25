@@ -309,7 +309,7 @@ public sealed class LibraryStoreTests : IAsyncLifetime
         Version = 42,
         Targets = new List<TargetFolder>
         {
-            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>(), null)
+            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>())
         },
         Videos = new List<VideoEntry>
         {

@@ -43,7 +43,6 @@ internal sealed class ScanApplyPlan
         IEnumerable<ScanApplyOperation> operations,
         IEnumerable<string> metadataPaths,
         IEnumerable<string> actorSnapshot,
-        DateTime scanTimestamp,
         int addedCount,
         int missingCount,
         int updatedCount)
@@ -52,7 +51,6 @@ internal sealed class ScanApplyPlan
         Operations = Array.AsReadOnly((operations ?? throw new ArgumentNullException(nameof(operations))).ToArray());
         MetadataPaths = Array.AsReadOnly((metadataPaths ?? throw new ArgumentNullException(nameof(metadataPaths))).ToArray());
         ActorSnapshot = Array.AsReadOnly((actorSnapshot ?? throw new ArgumentNullException(nameof(actorSnapshot))).ToArray());
-        ScanTimestamp = scanTimestamp;
         AddedCount = addedCount;
         MissingCount = missingCount;
         UpdatedCount = updatedCount;
@@ -62,7 +60,6 @@ internal sealed class ScanApplyPlan
     public ReadOnlyCollection<ScanApplyOperation> Operations { get; }
     public ReadOnlyCollection<string> MetadataPaths { get; }
     public ReadOnlyCollection<string> ActorSnapshot { get; }
-    public DateTime ScanTimestamp { get; }
     public int AddedCount { get; }
     public int MissingCount { get; }
     public int UpdatedCount { get; }

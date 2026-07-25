@@ -666,7 +666,6 @@ public sealed class MainViewModelStartupLoadingTests
         Assert.Equal(StartupLibraryState.SavingScan, viewModel.StartupState);
         Assert.True(viewModel.ShowVideoSkeleton);
         Assert.True(viewModel.ShowActorSkeleton);
-        Assert.NotNull(savingLibrary.Targets.Single().LastScanUtc);
         finishSave.TrySetResult();
         await initialization;
         Assert.False(viewModel.ShowVideoSkeleton);
@@ -891,7 +890,6 @@ public sealed class MainViewModelStartupLoadingTests
             operations,
             metadata,
             actors,
-            DateTime.UtcNow,
             0,
             0,
             0);
@@ -1190,7 +1188,7 @@ public sealed class MainViewModelStartupLoadingTests
     {
         Targets = new List<TargetFolder>
         {
-            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>(), null)
+            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>())
         },
         Videos = Enumerable.Range(0, count)
             .Select(index => new VideoEntry(

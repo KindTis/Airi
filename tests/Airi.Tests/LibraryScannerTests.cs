@@ -88,8 +88,7 @@ namespace Airi.Tests
                     new(
                         _root,
                         new[] { "*.mp4" },
-                        Array.Empty<string>(),
-                        null)
+                        Array.Empty<string>())
                 },
                 Videos = new List<VideoEntry>()
             };

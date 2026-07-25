@@ -373,7 +373,7 @@ public sealed class ThumbnailPerformanceHarnessTests
                 {
                     Targets = new List<TargetFolder>
                     {
-                        new(mediaRoot, new[] { "*.mp4" }, Array.Empty<string>(), null)
+                        new(mediaRoot, new[] { "*.mp4" }, Array.Empty<string>())
                     },
                     Videos = new List<VideoEntry>
                     {
