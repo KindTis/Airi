@@ -26,7 +26,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                 runner,
                 (_, _) => Task.FromResult(new ThumbnailSelectionResult(ThumbnailSelectionAction.Cancel, null)),
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
             var viewModel = Assert.IsType<MetadataEditorViewModel>(window.DataContext);
             var originalThumbnail = viewModel.ThumbnailPath;
 
@@ -50,7 +50,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
             var window = fixture.CreateWindow(
                 runner,
                 (_, _) => throw new InvalidOperationException("selection should not open"));
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             var firstTask = window.ThumbnailGenerationTask;
@@ -83,7 +83,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
             var window = fixture.CreateWindow(
                 runner,
                 (_, _) => throw new InvalidOperationException("selection should not open"));
-            window.Show();
+            WpfTestHost.Show(window);
             var originalTask = window.ThumbnailGenerationTask;
 
             SetInteractionState(window, "SetInteractionInProgress", true);
@@ -111,7 +111,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
             var window = fixture.CreateWindow(
                 new ThumbnailMediaProcessRunner(ThumbnailRunnerBehavior.Success),
                 (_, _) => throw new InvalidOperationException("selection should not open"));
-            window.Show();
+            WpfTestHost.Show(window);
 
             SetInteractionState(window, "SetInteractionInProgress", true);
             SetInteractionState(window, "SetThumbnailGenerationInProgress", true);
@@ -161,7 +161,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                         ThumbnailSelectionAction.Select,
                         paths[0]));
                 });
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
@@ -204,7 +204,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                         paths[0]));
                 },
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
@@ -232,7 +232,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                         ThumbnailSelectionAction.Cancel,
                         null));
                 });
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
@@ -269,7 +269,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                     }
                     return null;
                 });
-            window.Show();
+            WpfTestHost.Show(window);
             Click(window.GenerateThumbnailButton);
             await runner.TwoFfmpegStarted.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -310,7 +310,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                     }
                     return Task.FromResult<Exception?>(null);
                 });
-            window.Show();
+            WpfTestHost.Show(window);
             Click(window.GenerateThumbnailButton);
             var selectionToken = await selectionStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -341,7 +341,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                     return Task.FromResult<Exception?>(new IOException("temporary cleanup failed"));
                 },
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
@@ -373,7 +373,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                     return Task.FromResult<Exception?>(new IOException("temporary cleanup failed"));
                 },
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
 
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
@@ -470,7 +470,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                 (candidates, _) => Task.FromResult(new ThumbnailSelectionResult(
                     ThumbnailSelectionAction.Select,
                     candidates[0].FilePath)));
-            window.Show();
+            WpfTestHost.Show(window);
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
             var generatedCache = CurrentCachePath(window);
@@ -500,7 +500,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                         candidates[0].FilePath));
                 },
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
             var generatedCache = CurrentCachePath(window);
@@ -571,7 +571,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                 deleteGeneratedCacheAsync: _ =>
                     Task.FromResult<Exception?>(new IOException("cache cleanup failed")),
                 messages: messages);
-            window.Show();
+            WpfTestHost.Show(window);
             Click(window.GenerateThumbnailButton);
             await window.ThumbnailGenerationTask;
             var residualCache = CurrentCachePath(window);
@@ -606,7 +606,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
             }
         }));
 
-        var result = window.ShowDialog();
+        var result = WpfTestHost.ShowDialog(window);
         await completion.Task;
         return result;
     }

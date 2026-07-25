@@ -63,7 +63,7 @@ public sealed class VideoListVirtualizationTests
                 Content = list,
                 SizeToContent = SizeToContent.Manual
             };
-            window.Show();
+            WpfTestHost.Show(window);
             window.UpdateLayout();
             WpfTestHost.DrainDispatcher(window.Dispatcher);
 
@@ -164,7 +164,7 @@ public sealed class VideoListVirtualizationTests
             Content = list,
             SizeToContent = SizeToContent.Manual
         };
-        window.Show();
+        WpfTestHost.Show(window);
         window.UpdateLayout();
         WpfTestHost.DrainDispatcher(window.Dispatcher);
         return window;

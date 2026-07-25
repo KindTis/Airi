@@ -195,7 +195,7 @@ public sealed class ThumbnailPerformanceHarnessTests
         {
             var dispatcher = Application.Current.Dispatcher;
             var window = new Window();
-            window.Show();
+            WpfTestHost.Show(window);
             window.Close();
             WpfTestHost.DrainDispatcher(dispatcher);
             Assert.False(dispatcher.HasShutdownStarted);
@@ -210,7 +210,7 @@ public sealed class ThumbnailPerformanceHarnessTests
         {
             threadIds[0] = Environment.CurrentManagedThreadId;
             var cold = new Window();
-            cold.Show();
+            WpfTestHost.Show(cold);
             cold.Close();
             return Task.CompletedTask;
         });
@@ -219,7 +219,7 @@ public sealed class ThumbnailPerformanceHarnessTests
         {
             threadIds[1] = Environment.CurrentManagedThreadId;
             var warm = new Window();
-            warm.Show();
+            WpfTestHost.Show(warm);
             warm.Close();
             return Task.CompletedTask;
         });
@@ -394,7 +394,7 @@ public sealed class ThumbnailPerformanceHarnessTests
                     SizeToContent = SizeToContent.Manual
                 };
 
-                window.Show();
+                WpfTestHost.Show(window);
                 await WaitUntilAsync(() =>
                     probe.HasMarker(StartupTimingMarker.VisualFirstMeaningfulCard) &&
                     probe.HasMarker(StartupTimingMarker.VisualFirstThumbnail) &&
@@ -539,7 +539,7 @@ public sealed class ThumbnailPerformanceHarnessTests
             Height = 1000
         };
 
-        window.Show();
+        WpfTestHost.Show(window);
         await WaitUntilAsync(() =>
             probe.HasMarker(StartupTimingMarker.MainWindowLoaded) &&
             probe.HasMarker(StartupTimingMarker.LibraryLoaded) &&
@@ -871,7 +871,7 @@ public sealed class ThumbnailPerformanceHarnessTests
             Width = 1200,
             Height = 820
         };
-        window.Show();
+        WpfTestHost.Show(window);
         await WaitUntilAsync(
             () => viewModel.StartupState == StartupLibraryState.Ready &&
                   viewModel.Videos.Count == itemCount,

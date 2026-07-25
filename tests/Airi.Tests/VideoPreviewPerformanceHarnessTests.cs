@@ -223,7 +223,7 @@ public sealed class VideoPreviewPerformanceHarnessTests
 
         try
         {
-            window.Show();
+            WpfTestHost.Show(window);
             await WaitUntilAsync(() => window.InitializationStarted, TimeSpan.FromSeconds(5));
             await window.InitializationTask.WaitAsync(TimeSpan.FromSeconds(10));
             viewModel.Videos.Clear();
@@ -352,7 +352,7 @@ public sealed class VideoPreviewPerformanceHarnessTests
 
         try
         {
-            window.Show();
+            WpfTestHost.Show(window);
             await WaitUntilAsync(() => window.InitializationStarted, TimeSpan.FromSeconds(5));
             await window.InitializationTask.WaitAsync(TimeSpan.FromSeconds(10));
             var video = new VideoItem

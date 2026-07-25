@@ -10,6 +10,7 @@ namespace Airi.Tests;
 
 internal static class WpfTestHost
 {
+    private const double OffscreenOffset = 10_000;
     private static readonly ManualResetEventSlim Ready = new(false);
     private static readonly Thread Thread;
     private static Dispatcher? _dispatcher;
@@ -81,6 +82,18 @@ internal static class WpfTestHost
         return completion.Task;
     }
 
+    public static void Show(Window window)
+    {
+        ConfigureOffscreen(window);
+        window.Show();
+    }
+
+    public static bool? ShowDialog(Window window)
+    {
+        ConfigureOffscreen(window);
+        return window.ShowDialog();
+    }
+
     public static void DrainDispatcher(Dispatcher dispatcher)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -99,6 +112,16 @@ internal static class WpfTestHost
         }
 
         return _dispatcher ?? throw new InvalidOperationException("The WPF test dispatcher is unavailable.");
+    }
+
+    private static void ConfigureOffscreen(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.ShowActivated = false;
+        window.ShowInTaskbar = false;
+        window.Left = SystemParameters.VirtualScreenLeft - OffscreenOffset;
+        window.Top = SystemParameters.VirtualScreenTop - OffscreenOffset;
     }
 
     private static void PushUntil(Dispatcher dispatcher, DispatcherPriority priority)

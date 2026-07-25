@@ -428,7 +428,7 @@ public sealed class MainWindowThumbnailRealizationTests
 
         try
         {
-            host.Show();
+            WpfTestHost.Show(host);
             tooltip.IsOpen = true;
             WpfTestHost.DrainDispatcher(host.Dispatcher);
             var indicator = Assert.Single(
@@ -854,7 +854,7 @@ public sealed class MainWindowThumbnailRealizationTests
 
         public async Task<ListBoxItem> RealizeAsync(VideoItem item)
         {
-            Window.Show();
+            WpfTestHost.Show(Window);
             await WaitUntilAsync(() => Window.InitializationStarted, TimeSpan.FromSeconds(5));
             await Window.InitializationTask.WaitAsync(TimeSpan.FromSeconds(10));
             ViewModel.Videos.Clear();
