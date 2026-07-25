@@ -11,18 +11,24 @@ public sealed class TooltipPreviewState : INotifyPropertyChanged
     private ImageSource? _coverSource;
     private WriteableBitmap? _previewSource;
     private bool _isPreviewVisible;
+    private bool _isDelayIndicatorVisible;
     private TooltipPreviewPhase _phase = TooltipPreviewPhase.Cover;
 
-    public TooltipPreviewState(Guid sessionId, ImageSource? initialCover)
+    public TooltipPreviewState(
+        Guid sessionId,
+        ImageSource? initialCover,
+        bool isDelayIndicatorVisible = false)
     {
         SessionId = sessionId;
         _coverSource = initialCover;
+        _isDelayIndicatorVisible = isDelayIndicatorVisible;
     }
 
     public Guid SessionId { get; }
     public ImageSource? CoverSource => _coverSource;
     public ImageSource? PreviewSource => _previewSource;
     public bool IsPreviewVisible => _isPreviewVisible;
+    public bool IsDelayIndicatorVisible => _isDelayIndicatorVisible;
     public TooltipPreviewPhase Phase => _phase;
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -52,6 +58,7 @@ public sealed class TooltipPreviewState : INotifyPropertyChanged
             width * 4,
             0);
         SetPhase(TooltipPreviewPhase.Playing);
+        HideDelayIndicator();
     }
 
     public void SetPhase(TooltipPreviewPhase phase)
@@ -59,6 +66,7 @@ public sealed class TooltipPreviewState : INotifyPropertyChanged
         _phase = phase;
         if (phase is TooltipPreviewPhase.Cover or TooltipPreviewPhase.Closed)
         {
+            HideDelayIndicator();
             _previewSource = null;
             _isPreviewVisible = false;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewSource)));
@@ -70,5 +78,18 @@ public sealed class TooltipPreviewState : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPreviewVisible)));
         }
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Phase)));
+    }
+
+    private void HideDelayIndicator()
+    {
+        if (!_isDelayIndicatorVisible)
+        {
+            return;
+        }
+
+        _isDelayIndicatorVisible = false;
+        PropertyChanged?.Invoke(
+            this,
+            new PropertyChangedEventArgs(nameof(IsDelayIndicatorVisible)));
     }
 }

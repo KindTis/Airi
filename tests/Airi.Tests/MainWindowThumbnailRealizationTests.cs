@@ -44,6 +44,76 @@ public sealed class MainWindowThumbnailRealizationTests
     }
 
     [Fact]
+    public void TooltipPreviewState_DelayIndicatorStaysVisibleUntilFirstFrameAndNeverRestarts()
+    {
+        WpfTestHost.Run(() =>
+        {
+            var state = new TooltipPreviewState(Guid.NewGuid(), null, true);
+            var changedProperties = new List<string>();
+            state.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName is { } propertyName)
+                {
+                    changedProperties.Add(propertyName);
+                }
+            };
+
+            Assert.True(state.IsDelayIndicatorVisible);
+
+            state.SetPhase(TooltipPreviewPhase.Preparing);
+            Assert.True(state.IsDelayIndicatorVisible);
+
+            state.SetPhase(TooltipPreviewPhase.Playing);
+            Assert.True(state.IsDelayIndicatorVisible);
+
+            state.ShowFrame(
+                1,
+                1,
+                new VideoPreviewFrame(new byte[4], TimeSpan.Zero));
+
+            Assert.False(state.IsDelayIndicatorVisible);
+            Assert.Contains(
+                nameof(TooltipPreviewState.IsDelayIndicatorVisible),
+                changedProperties);
+
+            state.SetPhase(TooltipPreviewPhase.Cover);
+            state.SetPhase(TooltipPreviewPhase.Preparing);
+
+            Assert.False(state.IsDelayIndicatorVisible);
+        });
+    }
+
+    [Theory]
+    [InlineData(TooltipPreviewPhase.Cover)]
+    [InlineData(TooltipPreviewPhase.Closed)]
+    public void TooltipPreviewState_TerminalPhaseHidesDelayIndicator(
+        TooltipPreviewPhase phase)
+    {
+        WpfTestHost.Run(() =>
+        {
+            var state = new TooltipPreviewState(Guid.NewGuid(), null, true);
+
+            state.SetPhase(phase);
+
+            Assert.False(state.IsDelayIndicatorVisible);
+        });
+    }
+
+    [Fact]
+    public void TooltipPreviewState_InitiallyHiddenIndicatorDoesNotBecomeVisible()
+    {
+        WpfTestHost.Run(() =>
+        {
+            var state = new TooltipPreviewState(Guid.NewGuid(), null, false);
+
+            state.SetPhase(TooltipPreviewPhase.Preparing);
+            state.SetPhase(TooltipPreviewPhase.Playing);
+
+            Assert.False(state.IsDelayIndicatorVisible);
+        });
+    }
+
+    [Fact]
     public Task TooltipOpen_LoadsDpiSizedSourceWithoutReplacingCardSource() => Run(async fixture =>
     {
         await fixture.Window.RegisterThumbnailImageForTestsAsync(fixture.CreateImage(fixture.A));
