@@ -36,11 +36,6 @@ namespace Airi.Services
     public class LibraryStore : ILibraryStore
     {
         private const int CurrentVersion = 1;
-        private static readonly TargetFolder DefaultTarget = new(
-            "./Videos",
-            new[] { "*.mp4", "*.mkv", "*.avi", "*.wmv" },
-            Array.Empty<string>());
-
         private readonly string _filePath;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly Action<LibraryStoreSaveStage, string, int>? _saveStage;
@@ -132,7 +127,6 @@ namespace Airi.Services
             var persistenceProjection = new LibraryData
             {
                 Version = CurrentVersion,
-                Targets = library.Targets.ToList(),
                 Videos = library.Videos.ToList()
             };
             var tempPath = Path.Combine(
@@ -274,9 +268,6 @@ namespace Airi.Services
                 Version = CurrentVersion
             };
 
-            library.Targets.Add(DefaultTarget);
-            AppLogger.Info("Default target folder registered (./Videos).");
-
 #if DEBUG
             AppLogger.Info("Creating debug sample entries.");
             library.Videos.AddRange(new[]
@@ -331,16 +322,6 @@ namespace Airi.Services
         {
             data.Version = data.Version <= 0 ? CurrentVersion : data.Version;
 
-            var targets = (data.Targets ?? new List<TargetFolder>())
-                .Where(t => t is not null)
-                .Select(NormalizeTarget)
-                .ToList();
-            if (targets.Count == 0)
-            {
-                targets.Add(DefaultTarget);
-            }
-            data.Targets = targets;
-
             var originalVideoCount = data.Videos?.Count ?? 0;
             var videos = (data.Videos ?? new List<VideoEntry>())
                 .Where(v => v is not null && v.Meta is not null)
@@ -358,23 +339,10 @@ namespace Airi.Services
             }
 #endif
 
-            AppLogger.Info($"Library normalization complete. Targets: {targets.Count}, Videos: {videos.Count}.");
+            AppLogger.Info($"Library normalization complete. Videos: {videos.Count}.");
             data.Videos = videos;
 
             return data;
-        }
-
-        private static TargetFolder NormalizeTarget(TargetFolder target)
-        {
-            var root = LibraryPathHelper.NormalizeLibraryPath(target.Root ?? "./");
-            var include = target.IncludePatterns ?? Array.Empty<string>();
-            var exclude = target.ExcludePatterns ?? Array.Empty<string>();
-            return target with
-            {
-                Root = root,
-                IncludePatterns = include,
-                ExcludePatterns = exclude
-            };
         }
 
         private static VideoEntry NormalizeVideoEntry(VideoEntry entry)

@@ -371,10 +371,6 @@ public sealed class ThumbnailPerformanceHarnessTests
                 var store = new LibraryStore(Path.Combine(root, "videos.json"));
                 var library = new LibraryData
                 {
-                    Targets = new List<TargetFolder>
-                    {
-                        new(mediaRoot, new[] { "*.mp4" }, Array.Empty<string>())
-                    },
                     Videos = new List<VideoEntry>
                     {
                         new(videoPath,
@@ -1035,7 +1031,10 @@ public sealed class ThumbnailPerformanceHarnessTests
 
     private sealed class NoopLibraryScanner : ILibraryScanner
     {
-        public Task<LibraryScanResult> ScanAsync(LibraryData library, CancellationToken cancellationToken) =>
+        public Task<LibraryScanResult> ScanAsync(
+            LibraryData library,
+            IReadOnlyList<TargetFolder> targets,
+            CancellationToken cancellationToken) =>
             Task.FromResult(new LibraryScanResult(
                 Array.Empty<FileSnapshot>(),
                 Array.Empty<FileSnapshot>(),

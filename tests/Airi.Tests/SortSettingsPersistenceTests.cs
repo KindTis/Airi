@@ -156,6 +156,32 @@ public sealed class SortSettingsPersistenceTests
         });
 
     [Fact]
+    public Task InitializeAsync_ScanReceivesTargetsFromSettings() =>
+        WpfTestHost.RunAsync(async () =>
+        {
+            using var fixture = new Fixture();
+            await fixture.Settings.SaveAsync(new AppSettings
+            {
+                Targets = new List<TargetFolder>
+                {
+                    new(
+                        "x:/configured-media",
+                        new[] { "*.mkv" },
+                        new[] { "skip-*" })
+                },
+                Sort = new SortSettings()
+            });
+            using var viewModel = fixture.CreateViewModel();
+
+            await viewModel.InitializeAsync();
+
+            var target = Assert.Single(fixture.Scanner.Targets);
+            Assert.Equal("x:/configured-media", target.Root);
+            Assert.Equal(new[] { "*.mkv" }, target.IncludePatterns);
+            Assert.Equal(new[] { "skip-*" }, target.ExcludePatterns);
+        });
+
+    [Fact]
     public Task RapidChanges_LatestFailureKeepsScreenLatestButRestoresLastSuccess() =>
         WpfTestHost.RunAsync(async () =>
         {
@@ -310,9 +336,11 @@ public sealed class SortSettingsPersistenceTests
 
         public Task<LibraryScanResult> ScanAsync(
             LibraryData library,
+            IReadOnlyList<TargetFolder> targets,
             CancellationToken cancellationToken)
         {
             ScanCount++;
+            Targets = targets.ToArray();
             return Task.FromResult(new LibraryScanResult(
                 Array.Empty<FileSnapshot>(),
                 Array.Empty<FileSnapshot>(),

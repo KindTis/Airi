@@ -987,7 +987,9 @@ namespace Airi.ViewModels
             var commitStarted = false;
             try
             {
-                var result = await _libraryScanner.ScanAsync(_library, cancellationToken).ConfigureAwait(false);
+                var result = await _libraryScanner
+                    .ScanAsync(_library, _settings!.Targets, cancellationToken)
+                    .ConfigureAwait(false);
                 ScanPreparationSeed? seed = null;
                 if (!await TryInvokeLifetimeBoundDispatcherBatchAsync(
                     "ScanSeedCapture",
@@ -1574,7 +1576,6 @@ namespace Airi.ViewModels
             _dispatcher.VerifyAccess();
             EnsureCurrentLease(startupLease);
             return new ScanPreparationSeed(
-                _library.Targets.ToArray(),
                 _library.Videos.ToArray(),
                 _videoIndex.ToArray());
         }
@@ -1585,7 +1586,6 @@ namespace Airi.ViewModels
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var targets = seed.TargetReferences.Select(CloneTarget).ToArray();
             var videos = seed.VideoReferences.Select(CloneEntry).ToArray();
             var itemIdentities = seed.ItemIdentitiesByNormalizedPath.ToDictionary(
                 pair => pair.Key,
@@ -1602,7 +1602,6 @@ namespace Airi.ViewModels
                 }
             }
             var preparation = new ScanPreparationSnapshot(
-                Array.AsReadOnly(targets),
                 Array.AsReadOnly(videos),
                 new System.Collections.ObjectModel.ReadOnlyDictionary<string, ExistingScanItemSnapshot>(existing));
 
@@ -1665,7 +1664,6 @@ namespace Airi.ViewModels
             var finalLibrary = new LibraryData
             {
                 Version = 1,
-                Targets = preparation.Targets.Select(CloneTarget).ToList(),
                 Videos = finalVideos.Select(CloneEntry).ToList()
             };
             var actors = finalLibrary.Videos
@@ -1683,12 +1681,6 @@ namespace Airi.ViewModels
                 result.MissingEntries.Count,
                 result.UpdatedEntries.Count);
         }
-
-        private static TargetFolder CloneTarget(TargetFolder target) => target with
-        {
-            IncludePatterns = target.IncludePatterns.ToArray(),
-            ExcludePatterns = target.ExcludePatterns.ToArray()
-        };
 
         private static VideoEntry CloneEntry(VideoEntry entry) => entry with
         {

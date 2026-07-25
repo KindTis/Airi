@@ -30,7 +30,10 @@ namespace Airi.Tests
 
             var library = CreateLibrary();
 
-            var result = await _scanner.ScanAsync(library, CancellationToken.None);
+            var result = await _scanner.ScanAsync(
+                library,
+                CreateTargets(),
+                CancellationToken.None);
 
             Assert.Single(result.NewFiles);
             Assert.Equal(Path.GetFullPath(filePath), result.NewFiles[0].AbsolutePath);
@@ -46,7 +49,10 @@ namespace Airi.Tests
             var library = CreateLibrary();
             library.Videos.Add(entry);
 
-            var result = await _scanner.ScanAsync(library, CancellationToken.None);
+            var result = await _scanner.ScanAsync(
+                library,
+                CreateTargets(),
+                CancellationToken.None);
 
             Assert.Single(result.MissingEntries);
             Assert.Equal(
@@ -70,7 +76,10 @@ namespace Airi.Tests
             var library = CreateLibrary();
             library.Videos.Add(entry);
 
-            var result = await _scanner.ScanAsync(library, CancellationToken.None);
+            var result = await _scanner.ScanAsync(
+                library,
+                CreateTargets(),
+                CancellationToken.None);
 
             Assert.Single(result.UpdatedEntries);
             Assert.Equal(
@@ -83,16 +92,18 @@ namespace Airi.Tests
         {
             return new LibraryData
             {
-                Targets = new List<TargetFolder>
-                {
-                    new(
-                        _root,
-                        new[] { "*.mp4" },
-                        Array.Empty<string>())
-                },
                 Videos = new List<VideoEntry>()
             };
         }
+
+        private IReadOnlyList<TargetFolder> CreateTargets() =>
+            new[]
+            {
+                new TargetFolder(
+                    _root,
+                    new[] { "*.mp4" },
+                    Array.Empty<string>())
+            };
 
         public Task InitializeAsync() => Task.CompletedTask;
 

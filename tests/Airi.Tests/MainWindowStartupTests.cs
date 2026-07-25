@@ -173,7 +173,10 @@ public sealed class MainWindowStartupTests
 
     private sealed class EmptyScanner : ILibraryScanner
     {
-        public Task<LibraryScanResult> ScanAsync(LibraryData library, CancellationToken cancellationToken) =>
+        public Task<LibraryScanResult> ScanAsync(
+            LibraryData library,
+            IReadOnlyList<TargetFolder> targets,
+            CancellationToken cancellationToken) =>
             Task.FromResult(new LibraryScanResult(
                 Array.Empty<FileSnapshot>(),
                 Array.Empty<FileSnapshot>(),

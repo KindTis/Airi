@@ -64,8 +64,11 @@ function Copy-TreeWithHardLinks([string]$Source, [string]$Destination) {
 function New-CurrentFixture {
     $datasetRoot = Join-Path $script:fixtureRootPath 'current'
     $templatePath = Join-Path $datasetRoot 'library-template/videos.json'
+    $settingsPath = Join-Path $datasetRoot 'library-template/settings.json'
     $manifestPath = Join-Path $datasetRoot 'manifest.json'
-    if ((Test-Path -LiteralPath $templatePath) -and (Test-Path -LiteralPath $manifestPath)) {
+    if ((Test-Path -LiteralPath $templatePath) -and
+        (Test-Path -LiteralPath $settingsPath) -and
+        (Test-Path -LiteralPath $manifestPath)) {
         return
     }
 
@@ -113,14 +116,22 @@ function New-CurrentFixture {
         })
     }
 
-    $library.Targets = @([ordered]@{
-        Root = './media'
-        IncludePatterns = @('*.mp4')
-        ExcludePatterns = @()
-        LastScanUtc = $stamp.ToString('O')
-    })
+    [void]$library.PSObject.Properties.Remove('Targets')
+    $settings = [ordered]@{
+        Version = 1
+        Targets = @([ordered]@{
+            Root = './media'
+            IncludePatterns = @('*.mp4')
+            ExcludePatterns = @()
+        })
+        Sort = [ordered]@{
+            Field = 'ReleaseDate'
+            Direction = 'Descending'
+        }
+    }
 
     Write-Utf8NoBom $templatePath ($library | ConvertTo-Json -Depth 20)
+    Write-Utf8NoBom $settingsPath ($settings | ConvertTo-Json -Depth 10)
     $manifest = [ordered]@{
         schemaVersion = 1
         dataset = 'current'
@@ -133,8 +144,11 @@ function New-CurrentFixture {
 function New-SyntheticFixture([string]$Dataset, [int]$Count) {
     $datasetRoot = Join-Path $script:fixtureRootPath $Dataset
     $templatePath = Join-Path $datasetRoot 'library-template/videos.json'
+    $settingsPath = Join-Path $datasetRoot 'library-template/settings.json'
     $manifestPath = Join-Path $datasetRoot 'manifest.json'
-    if ((Test-Path -LiteralPath $templatePath) -and (Test-Path -LiteralPath $manifestPath)) {
+    if ((Test-Path -LiteralPath $templatePath) -and
+        (Test-Path -LiteralPath $settingsPath) -and
+        (Test-Path -LiteralPath $manifestPath)) {
         return
     }
 
@@ -185,13 +199,19 @@ function New-SyntheticFixture([string]$Dataset, [int]$Count) {
 
     $library = [ordered]@{
         Version = 1
+        Videos = $videos
+    }
+    $settings = [ordered]@{
+        Version = 1
         Targets = @([ordered]@{
             Root = './media'
             IncludePatterns = @('*.mp4')
             ExcludePatterns = @()
-            LastScanUtc = $stamp.ToString('O')
         })
-        Videos = $videos
+        Sort = [ordered]@{
+            Field = 'ReleaseDate'
+            Direction = 'Descending'
+        }
     }
     $manifest = [ordered]@{
         schemaVersion = 1
@@ -200,12 +220,28 @@ function New-SyntheticFixture([string]$Dataset, [int]$Count) {
         entries = $manifestEntries
     }
     Write-Utf8NoBom $templatePath ($library | ConvertTo-Json -Depth 20)
+    Write-Utf8NoBom $settingsPath ($settings | ConvertTo-Json -Depth 10)
     Write-Utf8NoBom $manifestPath ($manifest | ConvertTo-Json -Depth 10)
 }
 
-function Assert-Fixture([string]$DatasetRoot, [string]$TemplatePath, [string]$ManifestPath) {
+function Assert-Fixture(
+    [string]$DatasetRoot,
+    [string]$TemplatePath,
+    [string]$SettingsPath,
+    [string]$ManifestPath) {
     $library = Get-Content -Raw -LiteralPath $TemplatePath | ConvertFrom-Json
+    $settings = Get-Content -Raw -LiteralPath $SettingsPath | ConvertFrom-Json
     $manifest = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+    $libraryProperties = @($library.PSObject.Properties.Name)
+    $settingsProperties = @($settings.PSObject.Properties.Name)
+    if (($libraryProperties -join ',') -cne 'Version,Videos' -or
+        ($settingsProperties -join ',') -cne 'Version,Targets,Sort' -or
+        [string]$settings.Targets[0].Root -cne './media' -or
+        ($settings.Targets[0].IncludePatterns -join ',') -cne '*.mp4' -or
+        [string]$settings.Sort.Field -cne 'ReleaseDate' -or
+        [string]$settings.Sort.Direction -cne 'Descending') {
+        throw "Fixture settings/library contract mismatch under $DatasetRoot."
+    }
     if ([int]$manifest.itemCount -ne $library.Videos.Count -or $manifest.entries.Count -ne $library.Videos.Count) {
         throw "Fixture count mismatch under $DatasetRoot."
     }
@@ -297,12 +333,15 @@ $rawFiles = [System.Collections.Generic.List[string]]::new()
 foreach ($dataset in $Datasets) {
     $datasetRoot = Join-Path $fixtureRootPath $dataset
     $templatePath = Join-Path $datasetRoot 'library-template/videos.json'
+    $settingsTemplatePath = Join-Path $datasetRoot 'library-template/settings.json'
     $manifestPath = Join-Path $datasetRoot 'manifest.json'
     $payloadRoot = Join-Path $datasetRoot 'payload'
-    if (-not (Test-Path -LiteralPath $templatePath) -or -not (Test-Path -LiteralPath $manifestPath)) {
+    if (-not (Test-Path -LiteralPath $templatePath) -or
+        -not (Test-Path -LiteralPath $settingsTemplatePath) -or
+        -not (Test-Path -LiteralPath $manifestPath)) {
         throw "Fixture '$dataset' is incomplete under $datasetRoot."
     }
-    Assert-Fixture $datasetRoot $templatePath $manifestPath
+    Assert-Fixture $datasetRoot $templatePath $settingsTemplatePath $manifestPath
 
     for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
         $iterationRoot = Join-Path $iterationBase (Join-Path $dataset $iteration)
@@ -325,6 +364,14 @@ foreach ($dataset in $Datasets) {
         $warmStore = Join-Path $warmRoot 'videos.json'
         Copy-Item -LiteralPath $templatePath -Destination $coldStore -Force
         Copy-Item -LiteralPath $templatePath -Destination $warmStore -Force
+        Copy-Item `
+            -LiteralPath $settingsTemplatePath `
+            -Destination (Join-Path $coldRoot 'settings.json') `
+            -Force
+        Copy-Item `
+            -LiteralPath $settingsTemplatePath `
+            -Destination (Join-Path $warmRoot 'settings.json') `
+            -Force
         $stagingOutput = Join-Path $stagingRoot 'performance.json'
 
         $env:AIRI_PERF_OUTPUT = $stagingOutput

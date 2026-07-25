@@ -109,14 +109,55 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SaveAsync_WritesOnlyVersionAndVideos()
+    {
+        await CreateStore().SaveAsync(CreateLibrary("projection"));
+
+        using var json = JsonDocument.Parse(await File.ReadAllTextAsync(_libraryPath));
+        Assert.Equal(
+            new[] { "Version", "Videos" },
+            json.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.False(json.RootElement.TryGetProperty("Targets", out _));
+        Assert.DoesNotContain(
+            "LastScanUtc",
+            await File.ReadAllTextAsync(_libraryPath),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyTargetsAreIgnoredWithoutCreatingSettingsFile()
+    {
+        await File.WriteAllTextAsync(_libraryPath, """
+        {
+          "Version": 1,
+          "Targets": [
+            {
+              "Root": "x:/legacy",
+              "IncludePatterns": ["*.mp4"],
+              "ExcludePatterns": [],
+              "LastScanUtc": "2026-07-25T00:00:00Z"
+            }
+          ],
+          "Videos": []
+        }
+        """);
+
+        var library = await CreateStore().LoadAsync();
+        await CreateStore().SaveAsync(library);
+
+        Assert.False(File.Exists(Path.Combine(_tempDirectory, "settings.json")));
+        var persisted = await File.ReadAllTextAsync(_libraryPath);
+        Assert.DoesNotContain("Targets", persisted, StringComparison.Ordinal);
+        Assert.DoesNotContain("LastScanUtc", persisted, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SaveAsync_DoesNotReplaceOrMutateCallerCollections()
     {
         var library = CreateLibrary("caller");
-        var targets = library.Targets;
         var videos = library.Videos;
         var entry = videos[0];
         await CreateStore().SaveAsync(library);
-        Assert.Same(targets, library.Targets);
         Assert.Same(videos, library.Videos);
         Assert.Same(entry, library.Videos[0]);
         Assert.Equal("caller", entry.Meta.Title);
@@ -233,7 +274,11 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     {
         await File.WriteAllTextAsync(_libraryPath, "{ invalid json");
         var library = await CreateStore().LoadAsync();
-        Assert.NotEmpty(library.Targets);
+#if DEBUG
+        Assert.NotEmpty(library.Videos);
+#else
+        Assert.Empty(library.Videos);
+#endif
         using var json = JsonDocument.Parse(await File.ReadAllTextAsync(_libraryPath));
         Assert.Equal(JsonValueKind.Object, json.RootElement.ValueKind);
     }
@@ -243,7 +288,11 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     {
         await File.WriteAllTextAsync(_libraryPath, "null");
         var library = await CreateStore().LoadAsync();
-        Assert.NotEmpty(library.Targets);
+#if DEBUG
+        Assert.NotEmpty(library.Videos);
+#else
+        Assert.Empty(library.Videos);
+#endif
         Assert.DoesNotContain("null", await File.ReadAllTextAsync(_libraryPath), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -307,10 +356,6 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     private static LibraryData CreateLibrary(string title) => new()
     {
         Version = 42,
-        Targets = new List<TargetFolder>
-        {
-            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>())
-        },
         Videos = new List<VideoEntry>
         {
             new("./Videos/test.mp4",

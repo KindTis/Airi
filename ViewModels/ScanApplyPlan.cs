@@ -12,12 +12,10 @@ internal sealed record ExistingScanItemSnapshot(
     VideoItem ItemIdentity);
 
 internal sealed record ScanPreparationSeed(
-    TargetFolder[] TargetReferences,
     VideoEntry[] VideoReferences,
     KeyValuePair<string, VideoItem>[] ItemIdentitiesByNormalizedPath);
 
 internal sealed record ScanPreparationSnapshot(
-    IReadOnlyList<TargetFolder> Targets,
     IReadOnlyList<VideoEntry> Videos,
     IReadOnlyDictionary<string, ExistingScanItemSnapshot> ExistingByPath);
 

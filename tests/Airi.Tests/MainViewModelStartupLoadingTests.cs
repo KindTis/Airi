@@ -437,7 +437,7 @@ public sealed class MainViewModelStartupLoadingTests
         using var fixture = new Fixture();
         var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finishScan = new TaskCompletionSource<LibraryScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Scanner.ScanOverride = (_, _) =>
+        fixture.Scanner.ScanOverride = (_, _, _) =>
         {
             scanStarted.TrySetResult();
             return finishScan.Task;
@@ -628,7 +628,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task StartupScan_FirstNewBatchEndsVideoSkeleton() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
         var saveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finishSave = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Store.SaveOverride = async (_, token) =>
@@ -676,7 +676,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task StartupScan_HundredNewItemsPublishesMultipleDispatcherBatches() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(100));
         var probe = ThumbnailPerformanceProbe.CreateEnabled();
         probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
         using var viewModel = fixture.CreateViewModel(probe);
@@ -696,7 +696,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task StartupScan_EnumerationApplyingAndSavingBlockManualAndEditorMutation() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) =>
+        fixture.Scanner.ScanOverride = (_, _, _) =>
         {
             Assert.Equal(StartupLibraryState.Scanning, fixture.ViewModel!.StartupState);
             Assert.False(fixture.ViewModel.CanMutateLibrary);
@@ -725,7 +725,7 @@ public sealed class MainViewModelStartupLoadingTests
         var persisted = CreateLibrary(2);
         fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
         using var cancellation = new CancellationTokenSource();
-        fixture.Scanner.ScanOverride = (_, _) =>
+        fixture.Scanner.ScanOverride = (_, _, _) =>
         {
             cancellation.Cancel();
             return Task.FromResult(CreateScanResultForLibrary(persisted));
@@ -744,7 +744,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task ScanPlan_CancelAfterFirstBatchFinishesPlanAndAtomicSave() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(100));
         using var cancellation = new CancellationTokenSource();
         using var viewModel = fixture.CreateViewModel();
         viewModel.Videos.CollectionChanged += (_, _) =>
@@ -768,7 +768,7 @@ public sealed class MainViewModelStartupLoadingTests
         using var fixture = new Fixture();
         var persisted = CreateLibrary(2);
         fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(100));
         using var viewModel = fixture.CreateViewModel();
         var failed = false;
         viewModel.Videos.CollectionChanged += (_, _) =>
@@ -797,7 +797,7 @@ public sealed class MainViewModelStartupLoadingTests
         fixture.Store.LoadOverride = _ => fixture.Store.LoadCount == 1
             ? Task.FromResult(persisted)
             : Task.FromException<LibraryData>(new IOException("recovery failed"));
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(2));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(2));
         using var viewModel = fixture.CreateViewModel();
         viewModel.Videos.CollectionChanged += (_, _) =>
         {
@@ -818,7 +818,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task ScanPlan_LifetimeCancelStopsSchedulingWithoutRecoveryOrReady() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(100));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(100));
         var viewModel = fixture.CreateViewModel();
         viewModel.Videos.CollectionChanged += (_, _) =>
         {
@@ -839,7 +839,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task StartupScan_PendingAutoQueueWinsLeaseBeforeManualFetch() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
         using var viewModel = fixture.CreateViewModel();
         LibraryMutationOwner? ownerAtReady = null;
         viewModel.PropertyChanged += (_, args) =>
@@ -875,7 +875,7 @@ public sealed class MainViewModelStartupLoadingTests
         });
 
         Assert.NotEqual(dispatcherThread, preparationThread);
-        Assert.NotSame(seed.TargetReferences, plan.FinalLibrary.Targets);
+        Assert.NotSame(seed.VideoReferences, plan.FinalLibrary.Videos);
         viewModel.ReleaseLibraryMutation(lease);
     });
 
@@ -910,7 +910,7 @@ public sealed class MainViewModelStartupLoadingTests
         fixture.Store.LoadOverride = _ => Task.FromResult(CreateLibrary(1000));
         var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finishScan = new TaskCompletionSource<LibraryScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Scanner.ScanOverride = (_, _) =>
+        fixture.Scanner.ScanOverride = (_, _, _) =>
         {
             scanStarted.TrySetResult();
             return finishScan.Task;
@@ -933,7 +933,7 @@ public sealed class MainViewModelStartupLoadingTests
         using var fixture = new Fixture();
         var persisted = CreateLibrary(2);
         fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
         fixture.Store.SaveOverride = (_, _) => Task.FromException(new IOException("save failed"));
         using var viewModel = fixture.CreateViewModel();
 
@@ -951,7 +951,7 @@ public sealed class MainViewModelStartupLoadingTests
         using var fixture = new Fixture();
         var persisted = CreateLibrary(3);
         fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateScanResultForLibrary(persisted));
         using var viewModel = fixture.CreateViewModel();
         var finalizedBeforeReady = false;
         viewModel.PropertyChanged += (_, args) =>
@@ -980,7 +980,7 @@ public sealed class MainViewModelStartupLoadingTests
         var before = JsonSerializer.SerializeToUtf8Bytes(original);
         fixture.Store.LoadOverride = _ => Task.FromResult(original);
         using var cancellation = new CancellationTokenSource();
-        fixture.Scanner.ScanOverride = (_, _) =>
+        fixture.Scanner.ScanOverride = (_, _, _) =>
         {
             cancellation.Cancel();
             return Task.FromResult(CreateScanResultForLibrary(original));
@@ -1062,7 +1062,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task AutoQueue_AfterScanSave_PreemptsManualFetch() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromResult(CreateNewFileScanResult(1));
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
         using var viewModel = fixture.CreateViewModel();
         LibraryMutationOwner? readyOwner = null;
         viewModel.PropertyChanged += (_, args) =>
@@ -1083,7 +1083,7 @@ public sealed class MainViewModelStartupLoadingTests
     public Task ScanFailureStatus_IsNotOverwrittenDuringReadyCleanup() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
-        fixture.Scanner.ScanOverride = (_, _) => Task.FromException<LibraryScanResult>(
+        fixture.Scanner.ScanOverride = (_, _, _) => Task.FromException<LibraryScanResult>(
             new IOException("scan unavailable"));
         using var viewModel = fixture.CreateViewModel();
 
@@ -1165,12 +1165,19 @@ public sealed class MainViewModelStartupLoadingTests
     internal sealed class FakeLibraryScanner : ILibraryScanner
     {
         public int ScanCount { get; private set; }
-        public Func<LibraryData, CancellationToken, Task<LibraryScanResult>>? ScanOverride { get; set; }
+        public Func<
+            LibraryData,
+            IReadOnlyList<TargetFolder>,
+            CancellationToken,
+            Task<LibraryScanResult>>? ScanOverride { get; set; }
 
-        public Task<LibraryScanResult> ScanAsync(LibraryData library, CancellationToken cancellationToken)
+        public Task<LibraryScanResult> ScanAsync(
+            LibraryData library,
+            IReadOnlyList<TargetFolder> targets,
+            CancellationToken cancellationToken)
         {
             ScanCount++;
-            return ScanOverride?.Invoke(library, cancellationToken) ?? Task.FromResult(new LibraryScanResult(
+            return ScanOverride?.Invoke(library, targets, cancellationToken) ?? Task.FromResult(new LibraryScanResult(
                 Array.Empty<FileSnapshot>(),
                 Array.Empty<FileSnapshot>(),
                 Array.Empty<VideoEntry>(),
@@ -1186,10 +1193,6 @@ public sealed class MainViewModelStartupLoadingTests
 
     private static LibraryData CreateLibrary(int count) => new()
     {
-        Targets = new List<TargetFolder>
-        {
-            new("./Videos", new[] { "*.mp4" }, Array.Empty<string>())
-        },
         Videos = Enumerable.Range(0, count)
             .Select(index => new VideoEntry(
                 $"./Videos/video-{index:D4}.mp4",

@@ -25,15 +25,22 @@ namespace Airi.Services
             _fileSystemScanner = fileSystemScanner ?? throw new ArgumentNullException(nameof(fileSystemScanner));
         }
 
-        public async Task<LibraryScanResult> ScanAsync(LibraryData library, CancellationToken cancellationToken)
+        public async Task<LibraryScanResult> ScanAsync(
+            LibraryData library,
+            IReadOnlyList<TargetFolder> targets,
+            CancellationToken cancellationToken)
         {
             if (library is null)
             {
                 throw new ArgumentNullException(nameof(library));
             }
+            if (targets is null)
+            {
+                throw new ArgumentNullException(nameof(targets));
+            }
 
             AppLogger.Info("Starting library scan.");
-            var snapshots = await _fileSystemScanner.ScanAsync(library.Targets, cancellationToken).ConfigureAwait(false);
+            var snapshots = await _fileSystemScanner.ScanAsync(targets, cancellationToken).ConfigureAwait(false);
             var snapshotMap = snapshots.ToDictionary(s => LibraryPathHelper.NormalizeLibraryPath(s.LibraryPath), StringComparer.OrdinalIgnoreCase);
             var existingMap = library.Videos
                 .Where(v => v is not null)

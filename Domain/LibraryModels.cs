@@ -21,7 +21,6 @@ namespace Airi.Domain
     public class LibraryData
     {
         public int Version { get; set; } = 1;
-        public List<TargetFolder> Targets { get; set; } = new();
         public List<VideoEntry> Videos { get; set; } = new();
     }
 }
