@@ -36,7 +36,8 @@ namespace Airi.ViewModels
         StartupScan,
         AutoMetadata,
         ManualFetch,
-        EditorSave
+        EditorSave,
+        VideoDeletion
     }
 
     internal sealed record LibraryMutationLease(LibraryMutationOwner Owner, Guid Identity);
@@ -57,7 +58,7 @@ namespace Airi.ViewModels
     /// <summary>
     /// Loads persisted library data, exposes UI-facing collections, and coordinates scanning/diff and web metadata enrichment.
     /// </summary>
-    public class MainViewModel : INotifyPropertyChanged, IDisposable
+    public partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         private enum ThumbnailRequestOutcome
         {
@@ -221,9 +222,13 @@ namespace Airi.ViewModels
             ThumbnailPerformanceProbe performanceProbe,
             IThumbnailImageLoader thumbnailImageLoader,
             Func<VideoEntry, CancellationToken, VideoItem>? storedVideoMapper = null,
-            SettingsStore? settingsStore = null)
+            SettingsStore? settingsStore = null,
+            IVideoRecycleService? recycleService = null,
+            Func<string, bool>? deletionFileProbe = null)
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
+            _videoRecycleService = recycleService ?? new WindowsVideoRecycleService();
+            _deletionFileProbe = deletionFileProbe ?? (path => File.Exists(path) && !Directory.Exists(path));
             _settingsStore = settingsStore ?? new SettingsStore(_libraryStore.FilePath);
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
@@ -259,7 +264,7 @@ namespace Airi.ViewModels
 
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
-                _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available));
+                _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available && !IsVideoDeletionTarget(v)));
             FetchMetadataCommand = new RelayCommand(
                 async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false),
                 _ => CanMutateLibrary);
@@ -1963,7 +1968,7 @@ namespace Airi.ViewModels
         private void PlayRandomVideo()
         {
             var candidates = FilteredVideos.Cast<VideoItem>()
-                .Where(v => v.Presence == VideoPresenceState.Available)
+                .Where(v => v.Presence == VideoPresenceState.Available && !IsVideoDeletionTarget(v))
                 .ToList();
 
             if (candidates.Count == 0)

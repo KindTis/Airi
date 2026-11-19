@@ -114,7 +114,7 @@ internal static class WpfTestHost
         return _dispatcher ?? throw new InvalidOperationException("The WPF test dispatcher is unavailable.");
     }
 
-    private static void ConfigureOffscreen(Window window)
+    public static void ConfigureOffscreen(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
         window.WindowStartupLocation = WindowStartupLocation.Manual;

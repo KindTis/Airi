@@ -212,6 +212,41 @@ public sealed class MainWindowThumbnailRealizationTests
     });
 
     [Fact]
+    public Task DeletionStop_ReusedContainerPreservesNewTooltipAndStopsCapturedPreview() =>
+        RunWithPreview(async fixture =>
+        {
+            fixture.MakeAvailable(fixture.A);
+            var container = await fixture.RealizeAsync(fixture.A);
+            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = Mouse.MouseEnterEvent,
+                Source = container
+            });
+            await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            var oldToken = fixture.PreviewService.PrepareToken;
+            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
+            var oldState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+
+            // Virtualization reuses both objects, while the captured A session still owns media work.
+            container.DataContext = fixture.B;
+            tooltip.Content = fixture.B;
+            var newState = new TooltipPreviewState(Guid.NewGuid(), fixture.B.ThumbnailSource);
+            tooltip.Tag = newState;
+            tooltip.IsOpen = true;
+            var method = typeof(MainWindow).GetMethod("StopDeletedVideoPreviewAsync",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            await ((Task)method.Invoke(fixture.Window, new object[] { fixture.A })!).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(tooltip.IsOpen);
+            Assert.Same(fixture.B, tooltip.Content);
+            Assert.Same(newState, tooltip.Tag);
+            Assert.Same(container, tooltip.PlacementTarget);
+            Assert.True(oldToken.IsCancellationRequested);
+            Assert.NotEqual(oldState.SessionId, newState.SessionId);
+            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+        }, clientAreaAnimationsEnabledOverride: true);
+
+    [Fact]
     public Task TooltipClose_CancelsCoverAndPreviewBeforeCompleting() => RunWithPreview(async fixture =>
     {
         fixture.Loader.DelayNextRequest();

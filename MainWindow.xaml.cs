@@ -137,11 +137,24 @@ namespace Airi
 
         private async void OnPreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.F1 && !e.IsRepeat)
+            try
             {
-                e.Handled = true;
-                await OpenMetadataEditorAsync();
+                if (e.Key == Key.Delete)
+                {
+                    var focused = Keyboard.FocusedElement as DependencyObject;
+                    if (Keyboard.Modifiers == ModifierKeys.None && IsVideoListFocus(focused))
+                    {
+                        e.Handled = true;
+                        await HandleVideoDeleteKeyAsync(e.Key, Keyboard.Modifiers, e.IsRepeat, focused);
+                    }
+                }
+                else if (e.Key == Key.F1 && !e.IsRepeat)
+                {
+                    e.Handled = true;
+                    await OpenMetadataEditorAsync();
+                }
             }
+            catch (Exception ex) { AppLogger.Error("Unexpected keyboard command failure.", ex); }
         }
 
         private async Task OpenMetadataEditorAsync()
@@ -271,6 +284,7 @@ namespace Airi
             VideoItem item,
             double dpiScaleX)
         {
+            if (_previewShutdownStarted || ViewModel.IsVideoDeletionTarget(item)) return;
             CancelTooltipCoverRequest(tooltip);
             var state = ReferenceEquals(tooltip.Content, item) && tooltip.Tag is TooltipPreviewState currentState
                 ? currentState
@@ -324,6 +338,7 @@ namespace Airi
             }
 
             var state = tooltip.Tag as TooltipPreviewState;
+            var video = tooltip.Content as VideoItem;
             var sessionId = state?.SessionId;
             CancelTooltipCoverRequest(tooltip);
             state?.SetPhase(TooltipPreviewPhase.Closed);
@@ -331,9 +346,19 @@ namespace Airi
             tooltip.Tag = null;
             tooltip.Content = null;
             tooltip.PlacementTarget = null;
-            if (_tooltipPreviewController is not null && sessionId is { } id)
+            if (video is not null && _videoTooltips.TryGetValue(video, out var currentTooltip) &&
+                ReferenceEquals(currentTooltip.Tooltip, tooltip) && currentTooltip.SessionId == sessionId)
             {
-                await _tooltipPreviewController.StopAsync(id);
+                _videoTooltips.Remove(video);
+            }
+            var stop = _tooltipPreviewController is not null && sessionId is { } id
+                ? _tooltipPreviewController.StopAsync(id) : Task.CompletedTask;
+            if (video is not null) _videoTooltipStops[video] = stop;
+            try { await stop; }
+            finally
+            {
+                if (video is not null && _videoTooltipStops.TryGetValue(video, out var currentStop) && ReferenceEquals(currentStop, stop))
+                    _videoTooltipStops.Remove(video);
             }
         }
 
@@ -696,6 +721,7 @@ namespace Airi
         {
             if (sender is ListBoxItem item &&
                 item.DataContext is VideoItem video &&
+                !_previewShutdownStarted && !ViewModel.IsVideoDeletionTarget(video) &&
                 ToolTipService.GetToolTip(item) is ToolTip tooltip)
             {
                 var sessionId = Guid.NewGuid();
@@ -718,6 +744,7 @@ namespace Airi
                 tooltip.Placement = PlacementMode.Relative;
                 tooltip.Content = video;
                 tooltip.Tag = state;
+                _videoTooltips[video] = (item, tooltip, sessionId);
                 UpdateTooltipPosition(item, tooltip, e);
                 tooltip.IsOpen = true;
 
@@ -759,9 +786,13 @@ namespace Airi
             TooltipPreviewSession session)
         {
             ArgumentNullException.ThrowIfNull(video);
+            Task? run = null;
             try
             {
-                await _tooltipPreviewController!.RunAsync(session, CancellationToken.None);
+                if (_previewShutdownStarted || ViewModel.IsVideoDeletionTarget(video)) return;
+                run = _tooltipPreviewController!.RunAsync(session, CancellationToken.None);
+                _videoPreviewRuns[video] = run;
+                await run;
             }
             catch (OperationCanceledException)
             {
@@ -769,6 +800,11 @@ namespace Airi
             catch (Exception)
             {
                 AppLogger.Error("Unexpected tooltip preview failure.");
+            }
+            finally
+            {
+                if (run is not null && _videoPreviewRuns.TryGetValue(video, out var current) && ReferenceEquals(current, run))
+                    _videoPreviewRuns.Remove(video);
             }
         }
 
@@ -818,6 +854,7 @@ namespace Airi
 
         private void TryPlayVideo(VideoItem video)
         {
+            if (_previewShutdownStarted || ViewModel.IsVideoDeletionTarget(video)) return;
             if (video.Presence != VideoPresenceState.Available)
             {
                 AppLogger.Info($"Skipping playback for unavailable video: {video.Title}");
@@ -937,21 +974,23 @@ namespace Airi
 
         protected override async void OnClosing(CancelEventArgs e)
         {
-            if (!_previewShutdownComplete && _tooltipPreviewController is not null)
+            if (!_previewShutdownComplete && (_tooltipPreviewController is not null || !ViewModel.VideoDeletionTask.IsCompleted))
             {
                 e.Cancel = true;
                 if (_previewShutdownStarted) return;
                 _previewShutdownStarted = true;
                 try
                 {
-                    await _tooltipPreviewController.DisposeAsync();
+                    _videoDeleteConfirmation?.Close();
+                    await ViewModel.VideoDeletionTask;
+                    if (_tooltipPreviewController is not null) await _tooltipPreviewController.DisposeAsync();
                 }
                 catch (OperationCanceledException)
                 {
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    AppLogger.Error("Unexpected tooltip preview shutdown failure.");
+                    AppLogger.Error("Unexpected video operation shutdown failure.", ex);
                 }
                 finally
                 {

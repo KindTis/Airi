@@ -17,12 +17,15 @@ public sealed class LibraryStoreTests : IAsyncLifetime
 {
     private readonly string _tempDirectory;
     private readonly string _libraryPath;
+    private readonly string _videoPath;
 
     public LibraryStoreTests()
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), "AiriTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDirectory);
         _libraryPath = Path.Combine(_tempDirectory, "videos.json");
+        _videoPath = Path.Combine(_tempDirectory, "test.mp4");
+        File.WriteAllBytes(_videoPath, new byte[] { 0 });
     }
 
     [Fact]
@@ -353,12 +356,12 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     private string[] GetOwnedTemps() =>
         Directory.GetFiles(_tempDirectory, ".videos.json.airi-tmp-*");
 
-    private static LibraryData CreateLibrary(string title) => new()
+    private LibraryData CreateLibrary(string title) => new()
     {
         Version = 42,
         Videos = new List<VideoEntry>
         {
-            new("./Videos/test.mp4",
+            new(LibraryPathHelper.NormalizeLibraryPath(_videoPath),
                 new VideoMeta(title, null, Array.Empty<string>(), "resources/noimage.jpg", Array.Empty<string>(), string.Empty),
                 1,
                 DateTime.SpecifyKind(new DateTime(2026, 1, 1), DateTimeKind.Utc),
