@@ -298,7 +298,8 @@ internal sealed class ThumbnailMediaProcessRunner : IMediaProcessRunner
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
 
-            await File.WriteAllBytesAsync(request.ArgumentList[^1], [1], cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "resources", "noimage.jpg"), request.ArgumentList[^1]);
             return new MediaProcessResult(0, 0, false);
         }
         catch (OperationCanceledException)

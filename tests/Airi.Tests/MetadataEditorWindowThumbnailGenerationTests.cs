@@ -543,6 +543,7 @@ public sealed class MetadataEditorWindowThumbnailGenerationTests
                 Click(window.GenerateThumbnailButton);
                 await window.ThumbnailGenerationTask;
                 residualCache = CurrentCachePath(window);
+                using var blockedDeletion = new FileStream(residualCache, FileMode.Open, FileAccess.Read, FileShare.None);
                 Assert.IsType<MetadataEditorViewModel>(window.DataContext).ResetThumbnail();
                 Click(window.SaveButton);
                 await window.CloseTask;

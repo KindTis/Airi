@@ -212,40 +212,20 @@ public sealed class MainWindowThumbnailRealizationTests
     });
 
     [Fact]
-    public Task DeletionStop_ReusedContainerPreservesNewTooltipAndStopsCapturedPreview() =>
-        RunWithPreview(async fixture =>
-        {
-            fixture.MakeAvailable(fixture.A);
-            var container = await fixture.RealizeAsync(fixture.A);
-            container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
-            {
-                RoutedEvent = Mouse.MouseEnterEvent,
-                Source = container
-            });
-            await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
-            var oldToken = fixture.PreviewService.PrepareToken;
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
-            var oldState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-
-            // Virtualization reuses both objects, while the captured A session still owns media work.
-            container.DataContext = fixture.B;
-            tooltip.Content = fixture.B;
-            var newState = new TooltipPreviewState(Guid.NewGuid(), fixture.B.ThumbnailSource);
-            tooltip.Tag = newState;
-            tooltip.IsOpen = true;
-            var method = typeof(MainWindow).GetMethod("StopDeletedVideoPreviewAsync",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            await ((Task)method.Invoke(fixture.Window, new object[] { fixture.A })!).WaitAsync(TimeSpan.FromSeconds(5));
-
-            Assert.True(tooltip.IsOpen);
-            Assert.Same(fixture.B, tooltip.Content);
-            Assert.Same(newState, tooltip.Tag);
-            Assert.Same(container, tooltip.PlacementTarget);
-            Assert.True(oldToken.IsCancellationRequested);
-            Assert.NotEqual(oldState.SessionId, newState.SessionId);
-            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
-        }, clientAreaAnimationsEnabledOverride: true);
-
+    public Task DeletionStop_ReusedContainerPreservesNewGalleryAndStopsCapturedPreview() => RunWithPreview(async fixture =>
+    {
+        fixture.MakeAvailable(fixture.A); var container = await fixture.RealizeAsync(fixture.A);
+        fixture.Window.OpenGalleryForTests(fixture.A, container);
+        await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var oldToken = fixture.PreviewService.PrepareToken; var oldState = fixture.Window.GalleryPreviewStateForTests!;
+        container.DataContext = fixture.B; fixture.Window.OpenGalleryForTests(fixture.B, container);
+        await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests?.SessionId != oldState.SessionId, TimeSpan.FromSeconds(2));
+        var newState = fixture.Window.GalleryPreviewStateForTests;
+        var method = typeof(MainWindow).GetMethod("StopGalleryOperationPreviewAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        await ((Task)method.Invoke(fixture.Window, new object[] { fixture.A })!).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(fixture.Window.GalleryPopupIsOpenForTests); Assert.Same(fixture.B, fixture.ViewModel.InspectedVideo); Assert.Same(newState, fixture.Window.GalleryPreviewStateForTests); Assert.True(oldToken.IsCancellationRequested);
+        await fixture.Window.CloseGalleryForTestsAsync();
+    }, clientAreaAnimationsEnabledOverride: true);
     [Fact]
     public Task TooltipClose_CancelsCoverAndPreviewBeforeCompleting() => RunWithPreview(async fixture =>
     {
@@ -307,10 +287,10 @@ public sealed class MainWindowThumbnailRealizationTests
 
             await fixture.PreviewService!.WaitUntilCalledAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(fixture.A.SourcePath, fixture.PreviewService.Request!.SourcePath);
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
-            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(2));
+            var state = Assert.IsType<TooltipPreviewState>(fixture.Window.GalleryPreviewStateForTests);
             Assert.True(state.IsDelayIndicatorVisible);
-            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+            await fixture.Window.CloseGalleryForTestsAsync();
         }, clientAreaAnimationsEnabledOverride: true);
 
     [Fact]
@@ -326,11 +306,11 @@ public sealed class MainWindowThumbnailRealizationTests
                 Source = container
             });
 
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
-            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(2));
+            var state = Assert.IsType<TooltipPreviewState>(fixture.Window.GalleryPreviewStateForTests);
             Assert.False(state.IsDelayIndicatorVisible);
             Assert.Equal(0, fixture.PreviewService!.PrepareCallCount);
-            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+            await fixture.Window.CloseGalleryForTestsAsync();
         }, clientAreaAnimationsEnabledOverride: false);
 
     [Fact]
@@ -345,11 +325,11 @@ public sealed class MainWindowThumbnailRealizationTests
                 Source = container
             });
 
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
-            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(2));
+            var state = Assert.IsType<TooltipPreviewState>(fixture.Window.GalleryPreviewStateForTests);
             Assert.False(state.IsDelayIndicatorVisible);
             Assert.Equal(0, fixture.PreviewService!.PrepareCallCount);
-            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+            await fixture.Window.CloseGalleryForTestsAsync();
         }, clientAreaAnimationsEnabledOverride: true);
 
     [Fact]
@@ -365,10 +345,10 @@ public sealed class MainWindowThumbnailRealizationTests
                 Source = container
             });
 
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
-            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(2));
+            var state = Assert.IsType<TooltipPreviewState>(fixture.Window.GalleryPreviewStateForTests);
             Assert.False(state.IsDelayIndicatorVisible);
-            await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
+            await fixture.Window.CloseGalleryForTestsAsync();
         });
 
     [Fact]
@@ -436,151 +416,30 @@ public sealed class MainWindowThumbnailRealizationTests
     });
 
     [Fact]
-    public Task TooltipTemplate_SeparatesCoverAndPreviewSourcesWhileOpen() => Run(fixture =>
+    public Task GalleryPopup_SeparatesCoverAndPreviewSourcesWhileOpen() => Run(async fixture =>
     {
-        var initialSource = fixture.A.ThumbnailSource!;
+        var container = await fixture.RealizeAsync(fixture.A);
+        fixture.Window.OpenGalleryForTests(fixture.A, container);
+        await WaitUntilAsync(() => fixture.Window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(2));
+        var state = fixture.Window.GalleryPreviewStateForTests!;
+        var initialSource = fixture.A.ThumbnailSource;
         var upgradedSource = CreateBitmap(29);
-        var container = new ListBoxItem { Width = 100, Height = 100 };
-        var host = new Window
-        {
-            Width = 120,
-            Height = 120,
-            ShowInTaskbar = false,
-            WindowStyle = WindowStyle.ToolWindow,
-            Content = container
-        };
-        var template = Assert.IsType<DataTemplate>(
-            fixture.Window.FindResource("VideoTooltipTemplate"));
-        var state = new TooltipPreviewState(Guid.NewGuid(), initialSource, true);
-        var tooltip = new ToolTip
-        {
-            Content = fixture.A,
-            ContentTemplate = template,
-            PlacementTarget = container,
-            Style = Assert.IsType<Style>(fixture.Window.FindResource(typeof(ToolTip))),
-            Tag = state
-        };
-
-        try
-        {
-            WpfTestHost.Show(host);
-            tooltip.IsOpen = true;
-            WpfTestHost.DrainDispatcher(host.Dispatcher);
-            var indicator = Assert.Single(
-                EnumerateVisualDescendants<ProgressBar>(tooltip));
-            Assert.Equal(4d, indicator.Height);
-            Assert.Equal(HorizontalAlignment.Stretch, indicator.HorizontalAlignment);
-            Assert.Equal(VerticalAlignment.Bottom, indicator.VerticalAlignment);
-            Assert.Equal(Visibility.Visible, indicator.Visibility);
-            Assert.Equal(0d, indicator.Minimum);
-            Assert.Equal(100d, indicator.Maximum);
-            Assert.Equal(
-                Color.FromRgb(0x3B, 0x82, 0xF6),
-                Assert.IsType<SolidColorBrush>(indicator.Foreground).Color);
-            Assert.Equal(
-                Color.FromArgb(0x99, 0x15, 0x18, 0x28),
-                Assert.IsType<SolidColorBrush>(indicator.Background).Color);
-
-            var indicatorHost = Assert.IsType<Grid>(
-                VisualTreeHelper.GetParent(indicator));
-            Assert.Same(
-                indicator,
-                indicatorHost.Children[indicatorHost.Children.Count - 1]);
-            var coverBorder = Assert.IsType<Border>(
-                VisualTreeHelper.GetParent(indicatorHost));
-            Assert.Equal(350d, coverBorder.Height);
-            Assert.True(coverBorder.ClipToBounds);
-
-            indicator.ApplyTemplate();
-            var indicatorPart = Assert.IsType<Grid>(
-                indicator.Template.FindName("PART_Indicator", indicator));
-            Assert.Equal(new Thickness(0), indicatorPart.Margin);
-            Assert.Equal(4d, indicatorPart.ActualHeight);
-
-            var delayTrigger = Assert.Single(
-                template.Triggers.OfType<DataTrigger>(),
-                trigger => trigger.Binding is Binding binding &&
-                    binding.Path?.Path == "Tag.IsDelayIndicatorVisible");
-            var begin = Assert.Single(
-                delayTrigger.EnterActions.OfType<BeginStoryboard>());
-            Assert.Equal("TooltipPreviewDelayIndicatorStoryboard", begin.Name);
-
-            var progressAnimation = Assert.Single(
-                begin.Storyboard.Children.OfType<DoubleAnimation>());
-            Assert.Equal(
-                "TooltipPreviewDelayIndicator",
-                Storyboard.GetTargetName(progressAnimation));
-            Assert.Equal("Value", Storyboard.GetTargetProperty(progressAnimation).Path);
-            Assert.Equal(0d, progressAnimation.From.GetValueOrDefault());
-            Assert.Equal(100d, progressAnimation.To.GetValueOrDefault());
-            Assert.Equal(
-                new Duration(TimeSpan.FromSeconds(2)),
-                progressAnimation.Duration);
-
-            var indeterminateAnimation = Assert.Single(
-                begin.Storyboard.Children.OfType<ObjectAnimationUsingKeyFrames>());
-            Assert.Equal(
-                "TooltipPreviewDelayIndicator",
-                Storyboard.GetTargetName(indeterminateAnimation));
-            Assert.Equal(
-                "IsIndeterminate",
-                Storyboard.GetTargetProperty(indeterminateAnimation).Path);
-            var keyFrame = Assert.IsType<DiscreteObjectKeyFrame>(
-                Assert.Single(indeterminateAnimation.KeyFrames));
-            Assert.Equal(
-                KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2)),
-                keyFrame.KeyTime);
-            Assert.Equal(true, keyFrame.Value);
-
-            var remove = Assert.Single(
-                delayTrigger.ExitActions.OfType<RemoveStoryboard>());
-            Assert.Equal(
-                "TooltipPreviewDelayIndicatorStoryboard",
-                remove.BeginStoryboardName);
-
-            var images = EnumerateVisualDescendants<Image>(tooltip).ToArray();
-            Assert.Equal(2, images.Length);
-            Assert.Contains(images, image =>
-                ReferenceEquals(image.Source, initialSource) && image.Visibility == Visibility.Visible);
-
-            state.UpdateCover(upgradedSource);
-            state.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
-            WpfTestHost.DrainDispatcher(host.Dispatcher);
-
-            Assert.Equal(Visibility.Collapsed, indicator.Visibility);
-            Assert.Equal(0d, indicator.Value);
-            Assert.False(indicator.IsIndeterminate);
-
-            Assert.Contains(images, image =>
-                ReferenceEquals(image.Source, state.PreviewSource) && image.Visibility == Visibility.Visible);
-            Assert.Contains(images, image =>
-                ReferenceEquals(image.Source, upgradedSource) && image.Visibility == Visibility.Collapsed);
-            Assert.Same(initialSource, fixture.A.ThumbnailSource);
-
-            state.SetPhase(TooltipPreviewPhase.Cover);
-            WpfTestHost.DrainDispatcher(host.Dispatcher);
-
-            Assert.Contains(images, image =>
-                ReferenceEquals(image.Source, upgradedSource) && image.Visibility == Visibility.Visible);
-            Assert.Contains(images, image => image.Source is null && image.Visibility == Visibility.Collapsed);
-
-            indicator.Visibility = Visibility.Visible;
-            indicator.Value = indicator.Maximum;
-            WpfTestHost.DrainDispatcher(host.Dispatcher);
-            indicator.UpdateLayout();
-
-            Assert.Equal(indicator.ActualWidth, indicatorPart.ActualWidth, 3);
-            Assert.Equal(4d, indicatorPart.ActualHeight);
-        }
-        finally
-        {
-            tooltip.IsOpen = false;
-            host.Close();
-        }
-
-        return Task.CompletedTask;
+        var root = fixture.Window.GalleryPopupRootForTests;
+        var indicator = Assert.Single(EnumerateVisualDescendants<ProgressBar>(root));
+        Assert.Equal(4d, indicator.Height);
+        Assert.Equal(Color.FromRgb(0xD5, 0xB6, 0x7C), Assert.IsType<SolidColorBrush>(indicator.Foreground).Color);
+        state.UpdateCover(upgradedSource);
+        state.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
+        WpfTestHost.DrainDispatcher(root.Dispatcher);
+        var images = EnumerateVisualDescendants<Image>(root).ToArray();
+        var previewImage = Assert.Single(images.Where(image => ReferenceEquals(image.Source, state.PreviewSource) && image.Visibility == Visibility.Visible));
+        Assert.Equal(Stretch.Uniform, previewImage.Stretch);
+        Assert.Contains(images, image => ReferenceEquals(image.Source, upgradedSource));
+        Assert.Same(initialSource, fixture.A.ThumbnailSource);
+        state.SetPhase(TooltipPreviewPhase.Cover); WpfTestHost.DrainDispatcher(root.Dispatcher);
+        Assert.Contains(images, image => image.Source is null && image.Visibility == Visibility.Collapsed);
+        await fixture.Window.CloseGalleryForTestsAsync();
     });
-
     [Fact]
     public Task TooltipSink_BackgroundCallbackMarshalsStaleCheckToDispatcher() => Run(async fixture =>
     {
@@ -745,6 +604,159 @@ public sealed class MainWindowThumbnailRealizationTests
         Assert.Single(fixture.Loader.Paths);
     });
 
+    [Fact]
+    public Task GalleryClose_RemovedTargetReturnsKeyboardFocusToNextId() => Run(async fixture =>
+    {
+        var anchor = await fixture.RealizeAsync(fixture.A);
+        fixture.ViewModel.Videos.Add(fixture.B); await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);
+        fixture.Window.UpdateLayout(); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        fixture.Window.OpenGalleryForTests(fixture.A, anchor);
+        await WaitUntilAsync(() => fixture.Window.GalleryPopupIsOpenForTests, TimeSpan.FromSeconds(2));
+        fixture.ViewModel.Videos.Remove(fixture.A); await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);
+        fixture.Window.CloseGalleryAndRestoreForTests(); await fixture.Window.GalleryFocusRestoreTask;
+        var focused = Assert.IsType<ListBoxItem>(Keyboard.FocusedElement);
+        Assert.Equal(fixture.B.Id, Assert.IsType<VideoItem>(focused.DataContext).Id);
+        Assert.False(fixture.Window.GalleryPopupIsOpenForTests);
+    });
+
+    [Fact]
+    public Task CompactGallery_SearchBringIntoViewReturnsHeaderFromBottom() => Run(async fixture =>
+    {
+        await fixture.RealizeAsync(fixture.A); SetClientSize(fixture.Window, 415, 880);
+        fixture.ViewModel.Videos.Clear();
+        for (var i = 0; i < 12; i++) fixture.ViewModel.Videos.Add(new VideoItem { Title = $"영상 {i:D2}", LibraryPath = $"compact-{i}.mp4" });
+        await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);
+        var host = fixture.Window.GalleryHostForTests; var search = fixture.Window.SearchTextBox;
+        fixture.Window.UpdateLayout(); host.ScrollToIndex(11); fixture.Window.UpdateLayout(); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        Assert.True(host.VerticalOffset > 0); Assert.True(search.TranslatePoint(new Point(), host).Y < 0);
+        search.Focus(); search.BringIntoView(); fixture.Window.UpdateLayout(); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        Assert.Equal(0, host.VerticalOffset);
+        var bounds = search.TransformToAncestor(host).TransformBounds(new Rect(search.RenderSize));
+        Assert.InRange(bounds.Top, 0, host.ViewportHeight); Assert.InRange(bounds.Bottom, 0, host.ViewportHeight);
+        Assert.Same(search, Keyboard.FocusedElement);
+    });
+
+    [Theory]
+    [InlineData(415, 880)]
+    [InlineData(1280, 720)]
+    public Task ProductionGalleryTenThousand_RealizesExpectedTopMiddleEnd(double width, double height) => Run(async fixture =>
+    {
+        await fixture.RealizeAsync(fixture.A); SetClientSize(fixture.Window, width, height);
+        fixture.ViewModel.Videos.Clear();
+        for (var i = 0; i < 10000; i++) fixture.ViewModel.Videos.Add(new VideoItem { Title = $"영상 {i:D5}", LibraryPath = $"fixture-{i}.mp4", Actors = new[] { "배우" }, Studio = "제작사", Genres = new[] { "장르" } });
+        await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);
+        fixture.Window.UpdateLayout(); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+        var list = fixture.Window.GetVideoListForTests(); Assert.Equal(10000, list.Items.Count);
+        Assert.Equal(width==415?185.5:338,fixture.Window.GalleryHostForTests.Metrics.CardWidth,1);
+        foreach (var index in new[] { 0, 5000, 9999 })
+        {
+            fixture.Window.ScrollVideoToIndex(index); fixture.Window.UpdateLayout();
+            await fixture.Window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+            fixture.Window.UpdateLayout(); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+            if (index == 0) { var columns = fixture.Window.GalleryHostForTests.Metrics.Columns; var first = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(0)); var lastInRow = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(columns - 1)); var nextRow = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(columns)); Assert.Equal(first.TranslatePoint(new Point(), list).Y, lastInRow.TranslatePoint(new Point(), list).Y, 1); Assert.True(nextRow.TranslatePoint(new Point(), list).Y > first.TranslatePoint(new Point(), list).Y + 1); }
+            var count = Enumerable.Range(0, 10000).Count(i => list.ItemContainerGenerator.ContainerFromIndex(i) != null);
+            Assert.InRange(count, 1, 70); Assert.True(list.ItemContainerGenerator.ContainerFromIndex(index) != null, $"expected {index}, realized {count}, metrics {fixture.Window.GalleryHostForTests.Metrics}, extent {fixture.Window.GetVideoScrollViewer()?.ExtentHeight}");
+        }
+        if(width==415)
+        {
+            var host=fixture.Window.GalleryHostForTests;var footer=host.Suffix!;var y=footer.TranslatePoint(new Point(),host).Y;
+            Assert.InRange(y,0,host.ActualHeight-footer.ActualHeight+1);Assert.True(host.Header!.TranslatePoint(new Point(),host).Y<0);Assert.True(host.Prefix!.TranslatePoint(new Point(),host).Y<0);
+        }    });
+
+    [Fact]
+    public Task GalleryReferenceFixture_HostsNativeContent() => WpfTestHost.RunAsync(async () =>
+    {
+        if (Environment.GetEnvironmentVariable("AIRI_GALLERY_CAPTURE") != "1") return;
+        using var fixture = new Fixture(useStoredScanner: true);
+        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+        var sheet = new BitmapImage(new Uri(Path.Combine(repo, "docs/jira/AIRI-2/2026-11-19-cover-gallery-wpf-reference/assets/cover-sheet.png")));
+        var crops = new[] { new Int32Rect(235, 277, 423, 146), new Int32Rect(683, 277, 423, 146), new Int32Rect(1133, 276, 422, 147), new Int32Rect(235, 538, 423, 132), new Int32Rect(683, 538, 423, 132), new Int32Rect(1133, 538, 422, 132) };
+        var titles = new[] { "여름의 기록", "밤의 산책", "파도의 시간", "오래된 정원", "우리의 계절", "먼 곳의 편지", "숲의 문장", "도시의 틈", "바다를 건너", "느린 아침", "마지막 플랫폼", "빛을 따라서" };
+        var dates = new[] { "2025-08-14", "2024-11-06", "2025-05-22", "2023-04-02", "2024-03-18", "2022-09-16", "2025-10-08", "2024-07-23", "2025-02-10", "2023-12-01", "2024-09-11", "2025-01-19" };
+        var descriptions = new[] { "낯선 바닷가에서 보낸 여름, 오래 기억하고 싶은 하루의 기록.", "익숙한 거리를 천천히 걷다 마주한, 평범해서 특별한 밤.", "서로 다른 속도로 살아온 두 사람이 바다 앞에서 잠시 멈춘다.", "오랜만에 돌아온 집. 잊고 지낸 기억들이 정원의 계절과 함께 되살아난다.", "계절이 바뀌는 동안 조금씩 달라지는 우리들의 이야기.", "기차의 창밖으로 흐르는 풍경과 끝내 보내지 못한 편지.", "숲을 걸으며 기록한 사계절의 작은 변화들.", "", "섬에서 섬으로, 바람과 물결을 따라가는 여정.", "아무 일도 일어나지 않아 더 오래 남는 아침.", "막차가 떠난 뒤, 낯선 편지 한 장이 플랫폼에 남겨진다.", "오래된 카메라를 들고 빛이 머무는 장소를 찾아간다." };
+        var actors = new[] { new[] { "김서연", "이도윤" }, new[] { "김서연", "박지훈" }, new[] { "김서연", "이도윤" }, new[] { "김서연", "최유진" }, new[] { "김서연", "박지훈" }, new[] { "김서연", "최유진" }, new[] { "최유진" }, new[] { "박지훈" }, new[] { "이도윤" }, new[] { "정하늘" }, new[] { "박지훈", "정하늘" }, new[] { "최유진" } };
+        string?[] studios = { "스튜디오 온", "노을필름", "스튜디오 온", null, "노을필름", "스튜디오 온", "달빛영화", "노을필름", "스튜디오 온", null, "달빛영화", "달빛영화" };
+        var coverIndices = new[] { 0, 1, 2, 3, 4, 5, 3, 1, 2, 0, 5, 4 };
+        var referenceLibrary = new Airi.Domain.LibraryData();
+        for (var i = 0; i < 12; i++)
+        {
+            var key = $"reference-cover-{i}.png"; var crop = new CroppedBitmap(sheet, crops[coverIndices[i]]); crop.Freeze(); fixture.Loader.FixedSources[key] = crop;
+            var item = new VideoItem { Title = titles[i], LibraryPath = $"fixture-{i}.mp4", ReleaseDate = DateOnly.Parse(dates[i]), Actors = actors[i], Studio = studios[i], Genres = i < 6 ? new[] { "드라마" } : i == 9 ? Array.Empty<string>() : i == 10 ? new[] { "스릴러" } : new[] { "다큐멘터리" }, ThumbnailPath = key, Tags = new[] { "여행", "일상" }, Description = descriptions[i] };
+            var sourcePath = Path.Combine(fixture.Root, $"{titles[i]}.mp4");
+            if(i!=10)File.WriteAllBytes(sourcePath, new byte[] { 0 });
+            referenceLibrary.Videos.Add(new Airi.Domain.VideoEntry(sourcePath, new Airi.Domain.VideoMeta(item.Title, item.ReleaseDate, item.Actors, i == 11 ? string.Empty : key, item.Tags, item.Description) { Studio = item.Studio, Genres = item.Genres }, 3200000000, DateTime.UtcNow, DateTime.UtcNow) { Id = item.Id });
+        }
+        await fixture.Store.SaveAsync(referenceLibrary);
+        WpfTestHost.Show(fixture.Window);
+        await fixture.Window.InitializationTask;
+        await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);
+        fixture.Window.Left = 40; fixture.Window.Top = 40; fixture.Window.ShowInTaskbar = true;
+        fixture.ViewModel.AddFacetFilter(Airi.Domain.GalleryFacet.Actors, "김서연"); fixture.ViewModel.AddFacetFilter(Airi.Domain.GalleryFacet.Genres, "드라마");
+        await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel); fixture.ViewModel.SelectedVideo = fixture.ViewModel.Videos.First(item => item.Title == "여름의 기록");
+        var output = Path.Combine(repo, "TestResults/AIRI2/ui-native-spike"); Directory.CreateDirectory(output);
+        var sizes = new[] { new Size(1280, 720), new Size(1280, 900), new Size(1024, 768), new Size(415, 880) };
+        if (Environment.GetEnvironmentVariable("AIRI_CAPTURE_CLIENT") is { Length: > 0 } requested)
+        {
+            var parts = requested.Split('x');
+            if (parts.Length == 2 && double.TryParse(parts[0], out var w) && double.TryParse(parts[1], out var h)) sizes = new[] { new Size(w, h) };
+        }
+        foreach (var size in sizes)
+        {
+            SetClientSize(fixture.Window, size.Width, size.Height); fixture.Window.GalleryHostForTests.ResetOffset(); fixture.Window.UpdateLayout();
+            await fixture.Window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render); WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+            var captureState=Environment.GetEnvironmentVariable("AIRI_CAPTURE_STATE")??"gallery";
+            var active=fixture.ViewModel.SelectedVideo!;
+            if(captureState=="empty"){fixture.ViewModel.SearchQuery="__no_fixture_result__";await VideoDeletionFixture.WaitForQueryAsync(fixture.ViewModel);}
+            if(captureState is "detail" or "edit" or "batch" or "preview")
+            {
+                var list=fixture.Window.GetVideoListForTests();var anchor=(ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(active);
+                fixture.Window.OpenGalleryForTests(active,anchor);
+                if(captureState=="batch"){foreach(var item in list.Items.Cast<VideoItem>().Take(2))item.IsChecked=true;fixture.ViewModel.EditCommand.Execute(null);await fixture.ViewModel.GalleryActionTask;}
+                else if(captureState is "edit" or "preview"){fixture.ViewModel.EditInspectedCommand.Execute(null);await fixture.ViewModel.GalleryActionTask;}
+                if(captureState=="preview"){fixture.ViewModel.EditorDraft!.Fields.First(field=>field.Field==Airi.Domain.MetadataField.Title).Value+=" 수정";fixture.ViewModel.PreviewChangesCommand.Execute(null);}
+                fixture.Window.UpdateLayout();WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
+            }
+            fixture.Window.Title = $"Airi — AIRI-2 fixture {size.Width}x{size.Height} {captureState}";
+            void WriteReady()
+            {
+                var root = (FrameworkElement)fixture.Window.Content; var dpi = VisualTreeHelper.GetDpi(fixture.Window);
+                var list = fixture.Window.GetVideoListForTests(); var first = list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem;
+                var firstY = first?.TranslatePoint(new Point(), list).Y;
+                var firstRow = Enumerable.Range(0, Math.Min(12, list.Items.Count)).Select(i => list.ItemContainerGenerator.ContainerFromIndex(i)).OfType<ListBoxItem>().Count(item => Math.Abs(item.TranslatePoint(new Point(), list).Y - (firstY ?? -10000)) < 1);
+                var state = new { Utc = DateTime.UtcNow, ProcessId = Environment.ProcessId, fixture.Window.Title, fixture.Window.IsVisible, RequestedClient = size, Client = root.RenderSize, Window = new { fixture.Window.Width, fixture.Window.Height, fixture.Window.ActualWidth, fixture.Window.ActualHeight }, Dpi = new { dpi.DpiScaleX, dpi.DpiScaleY }, Metrics = fixture.Window.GalleryHostForTests.Metrics, FirstRowColumns = firstRow, ListSize = list.RenderSize, ListPadding = list.Padding, InnerViewport = fixture.Window.GetVideoScrollViewer()?.ViewportWidth, FirstContainer = first?.RenderSize, FirstDesired = first?.DesiredSize, fixture.ViewModel.ResultCount, fixture.ViewModel.IncompleteCount };
+                File.WriteAllText(Path.Combine(output, "capture-ready.json"), System.Text.Json.JsonSerializer.Serialize(state, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                File.WriteAllText(Path.Combine(output, "capture-ready.txt"), $"{DateTime.UtcNow:O} {fixture.Window.Title} visible={fixture.Window.IsVisible} client={root.RenderSize} dpi={dpi.DpiScaleX},{dpi.DpiScaleY} columns={firstRow}");
+            }
+            fixture.Window.SizeChanged += (_, _) => WriteReady();
+            fixture.Window.Activated += (_, _) => fixture.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() => { SetClientSize(fixture.Window, size.Width, size.Height); WriteReady(); }));
+            WriteReady();
+            if (Environment.GetEnvironmentVariable("AIRI_CAPTURE_STOP_FILE") is { Length: > 0 } stopFile)
+            {
+                var deadline = DateTime.UtcNow.AddMinutes(10);
+                while (!File.Exists(stopFile) && DateTime.UtcNow < deadline) await Task.Delay(250);
+                return; // Fixture hosting only; screenshot acceptance is performed externally.
+            }
+            if (int.TryParse(Environment.GetEnvironmentVariable("AIRI_CAPTURE_HOLD_MS"), out var hold) && hold > 0) await Task.Delay(Math.Min(hold, 60000));
+            await Task.Delay(100);
+            var root = (FrameworkElement)fixture.Window.Content; var bitmap = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth), (int)Math.Ceiling(root.ActualHeight), 96, 96, PixelFormats.Pbgra32); bitmap.Render(root);
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4]; bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0); Assert.True(pixels.Distinct().Count() > 20, "Native content render is blank.");
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var stream = File.Create(Path.Combine(output, $"gallery-{size.Width}x{size.Height}.png")); encoder.Save(stream);
+        }
+    });
+    private static void SetClientSize(Window window, double width, double height)
+    {
+        var root = (FrameworkElement)window.Content;
+        for (var i = 0; i < 2; i++) { window.Width += width - root.ActualWidth; window.Height += height - root.ActualHeight; window.UpdateLayout(); WpfTestHost.DrainDispatcher(window.Dispatcher); window.UpdateLayout(); }
+    }
+    [Fact]
+    public Task RealLauncherBoundary_DoubleClickInvokesOnceAndMissingTrashCannotPlay() => WpfTestHost.RunAsync(async () =>
+    {
+        var launcher = new CountingVideoLauncher(); using var fixture = new Fixture(videoLauncher: launcher);
+        fixture.MakeAvailable(fixture.A); var container = await fixture.RealizeAsync(fixture.A); var list = fixture.Window.GetVideoListForTests();
+        RaiseDoubleClick(list, container); Assert.Equal(1, launcher.PlayCount); Assert.Equal(fixture.A.SourcePath, launcher.LastPath);
+        fixture.A.Presence = VideoPresenceState.Missing; RaiseDoubleClick(list, container); Assert.Equal(1, launcher.PlayCount);
+        fixture.A.Presence = VideoPresenceState.Available; fixture.A.RecycleState = Airi.Domain.LibraryOperationState.Trashed; RaiseDoubleClick(list, container); Assert.Equal(1, launcher.PlayCount);
+    });
     private static int MeasureWidth(double width)
     {
         return MainWindow.CalculateThumbnailDecodeWidth(width, 1d);
@@ -820,7 +832,9 @@ public sealed class MainWindowThumbnailRealizationTests
 
         public Fixture(
             bool enablePreview = false,
-            bool? clientAreaAnimationsEnabledOverride = null)
+            bool? clientAreaAnimationsEnabledOverride = null,
+            bool useStoredScanner = false,
+            IVideoLauncher? videoLauncher = null)
         {
             _root = Path.Combine(Path.GetTempPath(), "AiriMainWindowThumbnailTests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_root);
@@ -834,9 +848,10 @@ public sealed class MainWindowThumbnailRealizationTests
                 new ThumbnailCache(_root),
                 NullTranslationService.Instance,
                 "KO");
+            Store = new LibraryStore(Path.Combine(_root, "videos.json"));
             ViewModel = new MainViewModel(
-                new LibraryStore(Path.Combine(_root, "videos.json")),
-                new LibraryScanner(new FileSystemScanner()),
+                Store,
+                useStoredScanner ? new StoredFixtureScanner(Store) : new LibraryScanner(new FileSystemScanner()),
                 metadata,
                 provider,
                 source,
@@ -853,11 +868,14 @@ public sealed class MainWindowThumbnailRealizationTests
                 Probe,
                 Loader,
                 PreviewController,
-                clientAreaAnimationsEnabledOverride);
+                clientAreaAnimationsEnabledOverride,
+                videoLauncher);
             A = CreateItem("a.jpg");
             B = CreateItem("b.jpg");
         }
 
+        public string Root => _root;
+        public LibraryStore Store { get; }
         public RecordingLoader Loader { get; }
         public ThumbnailPerformanceProbe Probe { get; }
         public MainViewModel ViewModel { get; }
@@ -998,6 +1016,7 @@ public sealed class MainWindowThumbnailRealizationTests
         public List<int> Widths { get; } = new();
         public List<CancellationToken> CancellationTokens { get; } = new();
         public List<ImageSource> Sources { get; } = new();
+        public Dictionary<string, ImageSource> FixedSources { get; } = new();
 
         public void DelayNextRequest() => _delayNextRequest = true;
 
@@ -1007,7 +1026,7 @@ public sealed class MainWindowThumbnailRealizationTests
             Paths.Add(thumbnailPath);
             Widths.Add(decodePixelWidth);
             CancellationTokens.Add(cancellationToken);
-            var source = CreateBitmap((byte)Math.Clamp(decodePixelWidth % 255, 1, 254));
+            var source = FixedSources.TryGetValue(thumbnailPath, out var fixedSource) ? fixedSource : CreateBitmap((byte)Math.Clamp(decodePixelWidth % 255, 1, 254));
             Sources.Add(source);
             if (!_delayNextRequest)
             {
@@ -1029,6 +1048,21 @@ public sealed class MainWindowThumbnailRealizationTests
         }
     }
 
+    private sealed class CountingVideoLauncher : IVideoLauncher
+    {
+        public int PlayCount { get; private set; }
+        public string? LastPath { get; private set; }
+        public VideoLaunchResult Play(string path) { PlayCount++; LastPath = path; return new(true); }
+        public VideoLaunchResult ShowInFolder(string path) => new(true);
+    }
+    private sealed class StoredFixtureScanner(LibraryStore store) : ILibraryScanner
+    {
+        public async Task<LibraryScanResult> ScanAsync(Airi.Domain.LibraryData library, IReadOnlyList<Airi.Domain.TargetFolder> targets, CancellationToken token)
+        {
+            var stored = await store.LoadAsync(token);
+            return new LibraryScanResult(stored.Videos.Where(entry=>File.Exists(entry.Path)).Select(entry => new FileSnapshot(entry.Path, entry.Path, entry.SizeBytes, entry.LastModifiedUtc, entry.CreatedUtc)).ToArray(), Array.Empty<FileSnapshot>(), stored.Videos.Where(entry=>!File.Exists(entry.Path)).ToArray(), Array.Empty<UpdatedFile>());
+        }
+    }
     private sealed class NoopMetaSource : IWebVideoMetaSource
     {
         public string Name => "Noop";

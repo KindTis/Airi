@@ -25,9 +25,9 @@ public sealed class WindowVisualStyleTests
             var customWindowStyle = Assert.IsType<Style>(
                 application.TryFindResource("CustomWindowStyle"));
 
-            Assert.Same(customWindowStyle, mainWindow.Style);
-            var titleBarBrush = Assert.IsType<SolidColorBrush>(mainWindow.BorderBrush);
-            Assert.Equal(Color.FromRgb(0x15, 0x18, 0x28), titleBarBrush.Color);
+            Assert.Equal(WindowStyle.SingleBorderWindow, mainWindow.WindowStyle);
+            var titleBarBrush = Assert.IsType<SolidColorBrush>(mainWindow.Background);
+            Assert.Equal(Color.FromRgb(0x18, 0x1C, 0x1E), titleBarBrush.Color);
             Assert.Equal(WindowStyle.None, metadataWindow.WindowStyle);
             Assert.Equal(WindowStyle.None, thumbnailWindow.WindowStyle);
         }
@@ -65,7 +65,7 @@ public sealed class WindowVisualStyleTests
                 secondaryStyle,
                 Control.BackgroundProperty,
                 Color.FromRgb(0x1E, 0x22, 0x34));
-            AssertButtonsUseStyle(mainWindow, primaryStyle, "Random Play", "Fetch Metadata");
+            Assert.NotSame(primaryStyle, FindDescendants<Button>(mainWindow).Single(button => ReferenceEquals(button.Command, mainWindow.ViewModel.RandomPlayCommand)).Style);
             AssertButtonsUseStyle(
                 metadataWindow,
                 primaryStyle,
@@ -78,15 +78,9 @@ public sealed class WindowVisualStyleTests
                 "초기화",
                 "Try Parse On 141Jav",
                 "취소");
-            AssertButtonsUseStyle(thumbnailWindow, primaryStyle, "다시 생성", "선택");
-            AssertButtonsUseStyle(thumbnailWindow, secondaryStyle, "취소");
+            AssertButtonsUseStyle(thumbnailWindow, Assert.IsType<Style>(thumbnailWindow.FindResource("PrimaryActionButtonStyle")), "다시 생성", "선택");
+            AssertButtonsUseStyle(thumbnailWindow, Assert.IsType<Style>(thumbnailWindow.FindResource("SecondaryActionButtonStyle")), "취소");
 
-            var clearSearchButton = FindDescendants<Button>(mainWindow)
-                .Single(button => ReferenceEquals(button.Command, mainWindow.ViewModel.ClearSearchCommand));
-            Assert.NotSame(primaryStyle, clearSearchButton.Style);
-            Assert.NotSame(secondaryStyle, clearSearchButton.Style);
-
-            AssertRounded(FindButton(mainWindow, "Random Play"));
             AssertRounded(FindButton(metadataWindow, "취소"));
         }
         finally
@@ -119,44 +113,21 @@ public sealed class WindowVisualStyleTests
     });
 
     [Fact]
-    public Task SearchAndSortControls_UseRoundedInputChrome() => WpfTestHost.RunAsync(() =>
+    public Task SearchAndSortControls_UseGalleryNativeChrome() => WpfTestHost.RunAsync(() =>
     {
         var window = new MainWindow();
-
         try
         {
-            var expectedStyle = Assert.IsType<Style>(
-                window.TryFindResource("RoundedInputBorderStyle"));
-            var searchBorder = Assert.IsType<Border>(window.FindName("SearchInputBorder"));
-            var sortBorder = Assert.IsType<Border>(window.FindName("SortInputBorder"));
-            var sortComboBox = Assert.IsType<ComboBox>(window.FindName("SortComboBox"));
-
-            Assert.Same(expectedStyle, searchBorder.Style);
-            Assert.Same(expectedStyle, sortBorder.Style);
-            Assert.Equal(new CornerRadius(14), searchBorder.CornerRadius);
-            Assert.Equal(new CornerRadius(14), sortBorder.CornerRadius);
-            Assert.Equal(new Thickness(0), window.SearchTextBox.BorderThickness);
-            Assert.Equal(new Thickness(0), sortComboBox.BorderThickness);
-
-            sortComboBox.ApplyTemplate();
-            var toggleButton = Assert.IsType<ToggleButton>(
-                sortComboBox.Template.FindName("toggleButton", sortComboBox));
-            toggleButton.ApplyTemplate();
-            var comboBoxBorder = Assert.IsType<Border>(
-                toggleButton.Template.FindName("templateRoot", toggleButton));
-            var comboBoxArrowBorder = Assert.IsType<Border>(
-                toggleButton.Template.FindName("splitBorder", toggleButton));
-            Assert.Equal(new CornerRadius(14), comboBoxBorder.CornerRadius);
-            Assert.Equal(new CornerRadius(0, 14, 14, 0), comboBoxArrowBorder.CornerRadius);
+            var search = Assert.IsType<Border>(window.FindName("SearchBorder"));
+            Assert.Equal(new CornerRadius(7), search.CornerRadius); Assert.Equal(39, search.Height);
+            Assert.Equal(Color.FromRgb(0x18, 0x1C, 0x1E), Assert.IsType<SolidColorBrush>(search.Background).Color);
+            var sort = Assert.IsType<ComboBox>(window.FindName("SortPicker")); sort.ApplyTemplate();
+            Assert.NotNull(sort.Template.FindName("PART_Popup", sort));
+            Assert.Equal(6, window.ViewModel.SortOptions.Count);
         }
-        finally
-        {
-            window.Close();
-        }
-
+        finally { window.Close(); }
         return Task.CompletedTask;
     });
-
     [Fact]
     public Task MetadataFields_UseRoundedInputChrome() => WpfTestHost.RunAsync(() =>
     {
