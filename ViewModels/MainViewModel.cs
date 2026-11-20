@@ -104,7 +104,7 @@ namespace Airi.ViewModels
         private readonly Func<VideoEntry, CancellationToken, VideoItem>? _storedVideoMapper;
         private readonly object _lifetimeSchedulingLock = new();
         private bool _lifetimeEnded;
-        private readonly Dictionary<string, VideoItem> _videoIndex = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<Guid, VideoItem> _videoIndex = new();
         private readonly object _metadataQueueLock = new();
         private readonly Queue<string> _pendingMetadata = new();
         private readonly HashSet<string> _metadataScheduled = new(StringComparer.OrdinalIgnoreCase);
@@ -160,10 +160,7 @@ namespace Airi.ViewModels
             get => _selectedSortOption;
             set
             {
-                if (value is null)
-                {
-                    return;
-                }
+                if (value is null || !GuardGalleryEdit()) return;
 
                 if (SetProperty(ref _selectedSortOption, value))
                 {
@@ -184,7 +181,7 @@ namespace Airi.ViewModels
         internal Task SettingsSaveTask => _settingsSaveTask;
 
         public RelayCommand RandomPlayCommand { get; }
-        public RelayCommand FetchMetadataCommand { get; }
+        public RelayCommand FetchMetadataCommand { get; private set; }
         public RelayCommand ClearSearchCommand { get; }
         public RelayCommand StartCrawlerCommand { get; }
 
@@ -254,23 +251,25 @@ namespace Airi.ViewModels
 
             SortOptions = new ObservableCollection<SortOption>(new[]
             {
-                new SortOption("제목 내림차순", SortField.Title, ListSortDirection.Descending),
-                new SortOption("제목 오름차순", SortField.Title, ListSortDirection.Ascending),
-                new SortOption("출시일 내림차순", SortField.ReleaseDate, ListSortDirection.Descending),
-                new SortOption("출시일 오름차순", SortField.ReleaseDate, ListSortDirection.Ascending),
-                new SortOption("생성일 내림차순", SortField.CreatedUtc, ListSortDirection.Descending),
-                new SortOption("생성일 오름차순", SortField.CreatedUtc, ListSortDirection.Ascending)
+                new SortOption("출시일 최신순", SortField.ReleaseDate, ListSortDirection.Descending),
+                new SortOption("출시일 오래된순", SortField.ReleaseDate, ListSortDirection.Ascending),
+                new SortOption("제목 가나다순", SortField.Title, ListSortDirection.Ascending),
+                new SortOption("등록순", SortField.CreatedUtc, ListSortDirection.Descending),
+                new SortOption("제목 역순", SortField.Title, ListSortDirection.Descending),
+                new SortOption("등록 오래된순", SortField.CreatedUtc, ListSortDirection.Ascending)
             });
 
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
-                _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available && !IsVideoDeletionTarget(v)));
+                _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available && !v.IsInRecycleBin && !IsVideoDeletionTarget(v)));
             FetchMetadataCommand = new RelayCommand(
                 async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false),
                 _ => CanMutateLibrary);
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
             StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync(CancellationToken.None).ConfigureAwait(false), _ => !IsCrawlerRunning);
 
+            InitializeGallery();
+            FetchMetadataCommand = new RelayCommand(_ => StartGalleryAction(() => EnrichGalleryTargetsAsync()), _ => !IsEditing && CanMutateLibrary);
             var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
             _selectedSortOption = defaultSort;
             ApplySort(defaultSort.Field, defaultSort.Direction, updateStatus: false);
@@ -286,11 +285,8 @@ namespace Airi.ViewModels
             get => _searchQuery;
             set
             {
-                if (SetProperty(ref _searchQuery, value))
-                {
-                    FilteredVideos.Refresh();
-                    UpdateStatus();
-                }
+                if (!GuardGalleryEdit()) { PropertyChanged?.Invoke(this, new(nameof(SearchQuery))); return; }
+                if (SetProperty(ref _searchQuery, value ?? string.Empty)) RequestGalleryQuery();
             }
         }
 
@@ -306,10 +302,12 @@ namespace Airi.ViewModels
                     normalized = AllActorsLabel;
                 }
 
+                if (!GuardGalleryEdit()) return;
                 if (SetProperty(ref _selectedActor, normalized))
                 {
-                    FilteredVideos?.Refresh();
-                    UpdateStatus();
+                    _actorFilters.Clear();
+                    if (normalized != AllActorsLabel) _actorFilters.Add(new(normalized));
+                    RequestGalleryQuery();
                 }
             }
         }
@@ -319,18 +317,21 @@ namespace Airi.ViewModels
             get => _showMissingMetadataOnly;
             set
             {
-                if (SetProperty(ref _showMissingMetadataOnly, value))
-                {
-                    FilteredVideos.Refresh();
-                    UpdateStatus();
-                }
+                if (!GuardGalleryEdit()) return;
+                if (SetProperty(ref _showMissingMetadataOnly, value)) SetGalleryView(value ? GalleryView.Incomplete : GalleryView.All);
             }
         }
 
         public VideoItem? SelectedVideo
         {
             get => _selectedVideo;
-            set => SetProperty(ref _selectedVideo, value);
+            set
+            {
+                if (ReferenceEquals(_selectedVideo, value)) return;
+                if (_selectedVideo is not null) _selectedVideo.IsActive = false;
+                SetProperty(ref _selectedVideo, value);
+                if (value is not null) value.IsActive = true;
+            }
         }
 
         public string StatusMessage
@@ -409,9 +410,9 @@ namespace Airi.ViewModels
             {
                 (StartupLibraryState.Loading, StartupLibraryState.Publishing or StartupLibraryState.Faulted) => true,
                 (StartupLibraryState.Publishing, StartupLibraryState.Scanning or StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
-                (StartupLibraryState.Scanning, StartupLibraryState.ApplyingScan or StartupLibraryState.Ready) => true,
+                (StartupLibraryState.Scanning, StartupLibraryState.SavingScan or StartupLibraryState.ApplyingScan or StartupLibraryState.Ready) => true,
                 (StartupLibraryState.ApplyingScan, StartupLibraryState.SavingScan or StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
-                (StartupLibraryState.SavingScan, StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
+                (StartupLibraryState.SavingScan, StartupLibraryState.ApplyingScan or StartupLibraryState.Ready or StartupLibraryState.Faulted) => true,
                 _ => false
             };
             if (!allowed)
@@ -485,6 +486,8 @@ namespace Airi.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanMutateLibrary)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsFetchingMetadata)));
             FetchMetadataCommand?.RaiseCanExecuteChanged();
+            UndoCommand?.RaiseCanExecuteChanged(); RestoreCommand?.RaiseCanExecuteChanged();
+            RestoreInspectedCommand?.RaiseCanExecuteChanged(); ReinspectInspectedCommand?.RaiseCanExecuteChanged();
         }
 
         public Task RequestThumbnailAsync(
@@ -676,12 +679,14 @@ namespace Airi.ViewModels
                 await _dispatcher.InvokeAsync(() =>
                 {
                     _settings = loadedSettings;
+                    PropertyChanged?.Invoke(this, new(nameof(LibraryFolderPaths)));
                     ApplyLoadedSort(loadedSettings.Sort);
                     StatusMessage = "Loading library...";
                 });
                 settingsReady = true;
 
                 var loadedLibrary = await _libraryStore.LoadAsync(startupToken).ConfigureAwait(false);
+                loadedLibrary = await RecoverPendingJournalAsync(loadedLibrary).ConfigureAwait(false);
                 _performanceProbe.TryMark(StartupTimingMarker.LibraryLoaded);
                 _startupPublishesStoredLibrary = loadedLibrary.Videos.Count > 0;
                 AppLogger.Info($"Library loaded. Videos: {loadedLibrary.Videos.Count}.");
@@ -888,6 +893,8 @@ namespace Airi.ViewModels
                 _lifetimeCts.Token.ThrowIfCancellationRequested();
                 var entry = entries[startIndex + offset];
                 batch[offset] = _storedVideoMapper?.Invoke(entry, cancellationToken) ?? MapVideo(entry);
+                batch[offset].Id = entry.Id;
+                batch[offset].Revision = entry.Revision;
             }
             return batch;
         }
@@ -1007,6 +1014,13 @@ namespace Airi.ViewModels
                 var plan = await Task.Run(
                     () => PrepareScanApplyPlan(result, seed!, cancellationToken),
                     cancellationToken).ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    EnsureCurrentLease(startupLease);
+                    SetStartupState(StartupLibraryState.SavingScan);
+                });
+                cancellationToken.ThrowIfCancellationRequested();
+                await _libraryStore.SaveAsync(plan.FinalLibrary, CancellationToken.None).ConfigureAwait(false);
                 if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("ScanCommitStart", 0, () =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -1070,14 +1084,12 @@ namespace Airi.ViewModels
                         IsInitialLoading = false;
                         IsActorListLoading = false;
                     }
-                    SetStartupState(StartupLibraryState.SavingScan);
+                    RequestGalleryQuery(moveToTop: false);
                     _performanceProbe.TryMark(StartupTimingMarker.AllItemsPublished);
                 }).ConfigureAwait(false))
                 {
                     return;
                 }
-
-                await _libraryStore.SaveAsync(plan.FinalLibrary, _lifetimeCts.Token).ConfigureAwait(false);
 
                 LibraryMutationLease? autoMetadataLease = null;
                 if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("StartupTerminal", 0, () =>
@@ -1253,7 +1265,7 @@ namespace Airi.ViewModels
                 {
                     index++;
                     var normalizedPath = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
-                    var entry = FindEntry(normalizedPath);
+                    var entry = _library.Videos.SingleOrDefault(entry => entry.Id == video.Id);
                     if (entry is null)
                     {
                         AppLogger.Info($"[Crawler] Skipping {video.LibraryPath}; no library entry found.");
@@ -1293,17 +1305,8 @@ namespace Airi.ViewModels
                         continue;
                     }
 
-                    await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-                    UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
-
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        ApplyMetadataToCollections(updatedEntry);
-                        StatusMessage = $"[{index}/{total}] Metadata updated for {displayName}.";
-                    });
-
-                    await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-                    await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
+                    await CommitEntryCandidateAsync(entry, updatedEntry, lease).ConfigureAwait(false);
+                    await _dispatcher.InvokeAsync(() => StatusMessage = $"[{index}/{total}] Metadata updated for {displayName}.");
                 }
             }
             finally
@@ -1389,6 +1392,7 @@ namespace Airi.ViewModels
                 try
                 {
                     var result = await _crawlerSessionFactory.StartAsync(cancellationToken).ConfigureAwait(false);
+                    if (cancellationToken.IsCancellationRequested) { result.Handle.Dispose(); cancellationToken.ThrowIfCancellationRequested(); }
                     await _dispatcher.InvokeAsync(() =>
                     {
                         SetCrawlerState(result.Handle, result.Session);
@@ -1582,7 +1586,8 @@ namespace Airi.ViewModels
             EnsureCurrentLease(startupLease);
             return new ScanPreparationSeed(
                 _library.Videos.ToArray(),
-                _videoIndex.ToArray());
+                _videoIndex.ToArray(),
+                _library.WithVideos(_library.Videos.Select(CloneEntry)));
         }
 
         internal ScanApplyPlan PrepareScanApplyPlan(
@@ -1592,23 +1597,20 @@ namespace Airi.ViewModels
         {
             cancellationToken.ThrowIfCancellationRequested();
             var videos = seed.VideoReferences.Select(CloneEntry).ToArray();
-            var itemIdentities = seed.ItemIdentitiesByNormalizedPath.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value,
-                StringComparer.OrdinalIgnoreCase);
-            var existing = new Dictionary<string, ExistingScanItemSnapshot>(StringComparer.OrdinalIgnoreCase);
+            var itemIdentities = seed.ItemIdentitiesById.ToDictionary(pair => pair.Key, pair => pair.Value);
+            var existing = new Dictionary<Guid, ExistingScanItemSnapshot>();
             foreach (var entry in videos)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var normalized = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
-                if (itemIdentities.TryGetValue(normalized, out var item))
+                if (itemIdentities.TryGetValue(entry.Id, out var item))
                 {
-                    existing[normalized] = new ExistingScanItemSnapshot(normalized, entry, item);
+                    existing[entry.Id] = new ExistingScanItemSnapshot(normalized, entry, item);
                 }
             }
             var preparation = new ScanPreparationSnapshot(
                 Array.AsReadOnly(videos),
-                new System.Collections.ObjectModel.ReadOnlyDictionary<string, ExistingScanItemSnapshot>(existing));
+                new System.Collections.ObjectModel.ReadOnlyDictionary<Guid, ExistingScanItemSnapshot>(existing));
 
             var snapshots = result.Snapshots.ToDictionary(
                 snapshot => LibraryPathHelper.NormalizeLibraryPath(snapshot.LibraryPath),
@@ -1619,8 +1621,10 @@ namespace Airi.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var normalized = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
-                if (!preparation.ExistingByPath.TryGetValue(normalized, out var existingItem))
+                if (!preparation.ExistingById.TryGetValue(entry.Id, out var existingItem) ||
+                    seed.Envelope?.IsInRecycleBin(entry.Id) == true)
                 {
+                    finalVideos.Add(entry);
                     continue;
                 }
 
@@ -1631,7 +1635,9 @@ namespace Airi.ViewModels
                     {
                         SizeBytes = snapshot.SizeBytes,
                         LastModifiedUtc = snapshot.LastWriteUtc,
-                        CreatedUtc = createdUtc
+                        CreatedUtc = createdUtc,
+                        Presence = LibraryFilePresence.Available,
+                        PresenceProbedAtUtc = DateTime.UtcNow
                     };
                     finalVideos.Add(updatedEntry);
                     operations.Add(new UpdateScanItem(
@@ -1644,7 +1650,7 @@ namespace Airi.ViewModels
                 }
                 else
                 {
-                    finalVideos.Add(entry);
+                    finalVideos.Add(entry with { Presence = LibraryFilePresence.Missing, PresenceProbedAtUtc = DateTime.UtcNow });
                     operations.Add(new UpdateScanItem(
                         existingItem.ItemIdentity,
                         LibraryPathHelper.ResolveToAbsolute(entry.Path),
@@ -1659,6 +1665,10 @@ namespace Airi.ViewModels
             foreach (var snapshot in result.NewFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (finalVideos.Any(existingEntry => string.Equals(
+                    LibraryPathHelper.NormalizeLibraryPath(existingEntry.Path),
+                    LibraryPathHelper.NormalizeLibraryPath(snapshot.LibraryPath), StringComparison.OrdinalIgnoreCase)))
+                    continue;
                 var entry = CreateEntryFromSnapshot(snapshot);
                 var item = MapVideo(entry);
                 finalVideos.Add(CloneEntry(entry));
@@ -1666,11 +1676,7 @@ namespace Airi.ViewModels
                 metadataPaths.Add(entry.Path);
             }
 
-            var finalLibrary = new LibraryData
-            {
-                Version = 1,
-                Videos = finalVideos.Select(CloneEntry).ToList()
-            };
+            var finalLibrary = (seed.Envelope ?? new LibraryData()).WithVideos(finalVideos.Select(CloneEntry));
             var actors = finalLibrary.Videos
                 .SelectMany(entry => entry.Meta.Actors)
                 .Where(actor => !string.IsNullOrWhiteSpace(actor))
@@ -1692,7 +1698,10 @@ namespace Airi.ViewModels
             Meta = entry.Meta with
             {
                 Actors = entry.Meta.Actors.ToArray(),
-                Tags = entry.Meta.Tags.ToArray()
+                Tags = entry.Meta.Tags.ToArray(),
+                Genres = entry.Meta.Genres.ToArray(),
+                ManualFieldLocks = entry.Meta.ManualFieldLocks.ToArray(),
+                AdditionalData = entry.Meta.AdditionalData is null ? null : new(entry.Meta.AdditionalData)
             }
         };
 
@@ -1766,16 +1775,15 @@ namespace Airi.ViewModels
             }
         }
 
-        private async Task ProcessMetadataForPathAsync(
-            string normalizedPath,
-            LibraryMutationLease lease)
+        private async Task ProcessMetadataForPathAsync(string normalizedPath, LibraryMutationLease lease)
         {
-            var entry = FindEntry(normalizedPath);
-            if (entry is null)
-            {
-                return;
-            }
+            VideoEntry[] entries = await _dispatcher.InvokeAsync(() => _library.Videos.Where(entry =>
+                LibraryPathHelper.NormalizeLibraryPath(entry.Path).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)).ToArray());
+            foreach (var entry in entries) await ProcessMetadataForEntryAsync(entry, normalizedPath, lease).ConfigureAwait(false);
+        }
 
+        private async Task ProcessMetadataForEntryAsync(VideoEntry entry, string normalizedPath, LibraryMutationLease lease)
+        {
             var displayName = Path.GetFileName(LibraryPathHelper.ResolveToAbsolute(normalizedPath));
 
             await _dispatcher.InvokeAsync(() =>
@@ -1802,17 +1810,8 @@ namespace Airi.ViewModels
                     return;
                 }
 
-                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-                UpdateLibraryEntry(updatedEntry.Path, _ => updatedEntry);
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    ApplyMetadataToCollections(updatedEntry);
-                    StatusMessage = $"Metadata updated for {displayName}.";
-                });
-
-                await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-                await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
+                await CommitEntryCandidateAsync(entry, updatedEntry, lease).ConfigureAwait(false);
+                await _dispatcher.InvokeAsync(() => StatusMessage = $"Metadata updated for {displayName}.");
             }
             catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
             {
@@ -1826,34 +1825,32 @@ namespace Airi.ViewModels
 
         private void ApplyMetadataToCollections(VideoEntry updatedEntry)
         {
-            var normalized = LibraryPathHelper.NormalizeLibraryPath(updatedEntry.Path);
-            var mapped = MapVideo(updatedEntry);
-
-            if (_videoIndex.TryGetValue(normalized, out var existing))
+            if (_videoIndex.TryGetValue(updatedEntry.Id, out var existing))
             {
-                var index = Videos.IndexOf(existing);
-                if (index >= 0)
+                var oldThumbnail = existing.ThumbnailPath;
+                var realizedWidth = GetRealizedThumbnailWidth(existing);
+                existing.Revision = updatedEntry.Revision;
+                existing.Title = updatedEntry.Meta.Title;
+                existing.ReleaseDate = updatedEntry.Meta.Date;
+                existing.RawDate = updatedEntry.Meta.RawDate;
+                existing.Actors = updatedEntry.Meta.Actors;
+                existing.Tags = updatedEntry.Meta.Tags;
+                existing.Description = updatedEntry.Meta.Description;
+                existing.Studio = updatedEntry.Meta.Studio;
+                existing.Genres = updatedEntry.Meta.Genres;
+                existing.ThumbnailPath = updatedEntry.Meta.Thumbnail;
+                existing.ThumbnailUri = ResolveThumbnailPath(updatedEntry.Meta.Thumbnail);
+                if (!StringComparer.OrdinalIgnoreCase.Equals(oldThumbnail, existing.ThumbnailPath))
                 {
-                    RemoveThumbnailRuntimeState(existing);
-                    Videos[index] = mapped;
-                    RegisterVideo(mapped);
-                }
-                else
-                {
-                    RemoveThumbnailRuntimeState(existing);
-                    Videos.Add(mapped);
-                    RegisterVideo(mapped);
+                    ReleaseThumbnail(existing);
+                    if (realizedWidth > 0) _ = RequestThumbnailAsync(existing, realizedWidth);
                 }
             }
             else
             {
+                var mapped = MapVideo(updatedEntry);
                 Videos.Add(mapped);
                 RegisterVideo(mapped);
-            }
-
-            if (ReferenceEquals(SelectedVideo, existing) || SelectedVideo?.LibraryPath == normalized)
-            {
-                SelectedVideo = mapped;
             }
 
             RefreshActorList();
@@ -1947,28 +1944,13 @@ namespace Airi.ViewModels
 
         private void ApplySort(SortField field, ListSortDirection direction, bool updateStatus = true)
         {
-            var property = field switch
-            {
-                SortField.Title => nameof(VideoItem.Title),
-                SortField.ReleaseDate => nameof(VideoItem.ReleaseDate),
-                SortField.CreatedUtc => nameof(VideoItem.CreatedUtc),
-                _ => nameof(VideoItem.Title)
-            };
-
-            FilteredVideos.SortDescriptions.Clear();
-            FilteredVideos.SortDescriptions.Add(new SortDescription(property, direction));
-            FilteredVideos.Refresh();
-
-            if (updateStatus)
-            {
-                UpdateStatus();
-            }
+            if (SortOptions is not null && _selectedSortOption is not null) RequestGalleryQuery();
         }
 
         private void PlayRandomVideo()
         {
             var candidates = FilteredVideos.Cast<VideoItem>()
-                .Where(v => v.Presence == VideoPresenceState.Available && !IsVideoDeletionTarget(v))
+                .Where(v => v.Presence == VideoPresenceState.Available && !v.IsInRecycleBin && !IsVideoDeletionTarget(v))
                 .ToList();
 
             if (candidates.Count == 0)
@@ -2014,79 +1996,73 @@ namespace Airi.ViewModels
                 throw new InvalidOperationException("Metadata edits require an EditorSave lease.");
             }
 
-            var actors = result.Actors ?? Array.Empty<string>();
-            var tags = result.Tags ?? Array.Empty<string>();
-            var description = result.Description ?? string.Empty;
-            var title = string.IsNullOrWhiteSpace(result.Title) ? item.Title : result.Title.Trim();
-            var thumbnailPath = string.IsNullOrWhiteSpace(result.ThumbnailPath) ? item.ThumbnailPath : result.ThumbnailPath;
-            var thumbnailUri = ResolveThumbnailPath(thumbnailPath);
+            var entry = await _dispatcher.InvokeAsync(() =>
+            {
+                EnsureCurrentLease(lease);
+                return _library.Videos.SingleOrDefault(entry => entry.Id == item.Id) ?? throw new InvalidOperationException("편집 대상이 없습니다.");
+            });
+            var updatedMeta = entry.Meta with
+            {
+                Title = result.Title?.Trim() ?? string.Empty,
+                Date = result.ReleaseDate,
+                RawDate = null,
+                Actors = result.Actors ?? Array.Empty<string>(),
+                Tags = result.Tags ?? Array.Empty<string>(),
+                Description = result.Description?.Trim() ?? string.Empty,
+                Thumbnail = result.ThumbnailPath ?? string.Empty
+            };
+            var changed = Enum.GetValues<MetadataField>().Where(field => !MetadataValuesEqual(entry.Meta, updatedMeta, field));
+            updatedMeta = updatedMeta with { ManualFieldLocks = entry.Meta.ManualFieldLocks.Concat(changed).Distinct().ToArray() };
+            await CommitEntryCandidateAsync(entry, entry with { Meta = updatedMeta }, lease).ConfigureAwait(false);
+            await _dispatcher.InvokeAsync(() => StatusMessage = $"'{updatedMeta.Title}' 정보를 저장했습니다.");
+        }
 
+        private static bool MetadataValuesEqual(VideoMeta left, VideoMeta right, MetadataField field) => field switch
+        {
+            MetadataField.Title => left.Title == right.Title,
+            MetadataField.Date => left.Date == right.Date && left.RawDate == right.RawDate,
+            MetadataField.Actors => left.Actors.SequenceEqual(right.Actors),
+            MetadataField.Tags => left.Tags.SequenceEqual(right.Tags),
+            MetadataField.Thumbnail => left.Thumbnail == right.Thumbnail,
+            MetadataField.Description => left.Description == right.Description,
+            MetadataField.Studio => left.Studio == right.Studio,
+            MetadataField.Genres => left.Genres.SequenceEqual(right.Genres),
+            _ => false
+        };
+
+        internal async Task CommitEntryCandidateAsync(VideoEntry before, VideoEntry proposal, LibraryMutationLease lease)
+        {
+            LibraryData? candidate = null;
+            var confirmed = proposal with { Id = before.Id, Revision = checked(before.Revision + 1) };
             await _dispatcher.InvokeAsync(() =>
             {
                 EnsureCurrentLease(lease);
-                var oldThumbnailPath = item.ThumbnailPath;
-                var realizedWidth = GetRealizedThumbnailWidth(item);
-                item.Title = title;
-                item.ReleaseDate = result.ReleaseDate;
-                item.Actors = actors;
-                item.Tags = tags;
-                item.Description = description;
-                item.ThumbnailPath = thumbnailPath;
-                item.ThumbnailUri = thumbnailUri;
-
-                if (!StringComparer.OrdinalIgnoreCase.Equals(oldThumbnailPath, thumbnailPath))
-                {
-                    ReleaseThumbnail(item);
-                    if (realizedWidth > 0)
-                    {
-                        _ = RequestThumbnailAsync(item, realizedWidth);
-                    }
-                }
+                var current = _library.Videos.SingleOrDefault(entry => entry.Id == before.Id);
+                if (current is null || current.Revision != before.Revision)
+                    throw new InvalidOperationException("대상 정보가 변경되었습니다. 미리보기를 다시 확인해 주세요.");
+                candidate = _library.WithVideos(_library.Videos.Select(entry => entry.Id == before.Id ? confirmed : entry));
             });
-
-            UpdateLibraryEntry(item.LibraryPath, entry =>
+            _lifetimeCts.Token.ThrowIfCancellationRequested();
+            try
             {
-                var updatedMeta = entry.Meta with
-                {
-                    Title = title,
-                    Date = result.ReleaseDate,
-                    Actors = actors,
-                    Tags = tags,
-                    Description = description,
-                    Thumbnail = thumbnailPath
-                };
-                return entry with { Meta = updatedMeta };
-            });
-
-            await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
-            await _libraryStore.SaveAsync(_library, _lifetimeCts.Token).ConfigureAwait(false);
-
+                await _libraryStore.SaveAsync(candidate!, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch { _webMetadataService.DiscardCandidate(proposal); throw; }
+            _webMetadataService.AcceptCandidate(proposal);
             await _dispatcher.InvokeAsync(() =>
             {
+                EnsureCurrentLease(lease);
+                _library = candidate!;
+                ApplyMetadataToCollections(confirmed);
+                RequestGalleryQuery(moveToTop: false);
                 RefreshActorList();
                 FilteredVideos.Refresh();
                 UpdateStatus();
-                StatusMessage = $"Metadata updated for '{title}'.";
             });
-
-            AppLogger.Info($"Metadata updated for '{title}'.");
         }
 
-        private bool FilterVideo(object? obj)
-        {
-            if (obj is not VideoItem video)
-            {
-                return false;
-            }
-
-            var matchesActor = SelectedActor == AllActorsLabel || video.Actors.Contains(SelectedActor, StringComparer.OrdinalIgnoreCase);
-            var matchesSearch = string.IsNullOrWhiteSpace(SearchQuery) ||
-                                video.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ||
-                                video.Actors.Any(actor => actor.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase));
-            var matchesMetadata = !ShowMissingMetadataOnly || IsMetadataIncomplete(video);
-
-            return matchesActor && matchesSearch && matchesMetadata;
-        }
+        private bool FilterVideo(object? obj) => obj is VideoItem video &&
+            (!_hasGalleryResult || _galleryResultIds.Contains(video.Id));
 
         private void ClearSearch()
         {
@@ -2133,6 +2109,11 @@ namespace Airi.ViewModels
                 }
             }
 
+            _gallerySnapshotDirty = true;
+            if (e.NewItems is not null) foreach (VideoItem item in e.NewItems) ConfigureGalleryItem(item);
+            if (e.OldItems is not null) foreach (VideoItem item in e.OldItems) item.PropertyChanged -= GalleryItemChanged;
+            RequestGalleryQuery(moveToTop: false);
+            NotifyGallerySelection();
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowVideoSkeleton)));
         }
 
@@ -2178,6 +2159,11 @@ namespace Airi.ViewModels
             var item = new VideoItem
             {
                 LibraryPath = libraryPath,
+                Id = entry.Id,
+                Revision = entry.Revision,
+                Studio = entry.Meta.Studio,
+                Genres = entry.Meta.Genres,
+                RawDate = entry.Meta.RawDate,
                 Title = entry.Meta.Title,
                 ReleaseDate = entry.Meta.Date,
                 Actors = entry.Meta.Actors,
@@ -2187,8 +2173,10 @@ namespace Airi.ViewModels
                 ThumbnailPath = entry.Meta.Thumbnail
             };
 
+            ApplyJournalToItem(item, _library.LatestOperation(entry.Id));
             item.ReleaseThumbnail(_thumbnailImageLoader.FallbackSource);
-            item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, VideoPresenceState.Available, createdUtc);
+            item.UpdateFileState(absolutePath, entry.SizeBytes, lastModified, entry.Presence switch
+            { LibraryFilePresence.Available => VideoPresenceState.Available, LibraryFilePresence.Missing => VideoPresenceState.Missing, _ => VideoPresenceState.Checking }, createdUtc);
             return item;
         }
 
@@ -2205,6 +2193,11 @@ namespace Airi.ViewModels
             {
                 _lifetimeEnded = true;
             }
+            _toastTimer?.Stop();
+            _draftFetchCts?.Cancel();
+            _editorDraft?.Dispose();
+            _galleryQueryCancellation?.Cancel();
+            _galleryQueryCompletion.TrySetCanceled();
             _lifetimeCts.Cancel();
             _mutationLease = null;
             RaiseMutationStateChanged();
@@ -2445,11 +2438,12 @@ namespace Airi.ViewModels
                 string.IsNullOrWhiteSpace(title) ? "Untitled" : title,
                 null,
                 Array.Empty<string>(),
-                "resources/noimage.jpg",
+                string.Empty,
                 Array.Empty<string>(),
                 string.Empty);
 
-            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc, snapshot.CreatedUtc);
+            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc, snapshot.CreatedUtc)
+            { Presence = LibraryFilePresence.Available, PresenceProbedAtUtc = DateTime.UtcNow };
         }
 
         private string ResolveThumbnailPath(string? path)
@@ -2481,15 +2475,7 @@ namespace Airi.ViewModels
 
         private void RegisterVideo(VideoItem item)
         {
-            var key = LibraryPathHelper.NormalizeLibraryPath(item.LibraryPath);
-            _videoIndex[key] = item;
-        }
-
-        private VideoEntry? FindEntry(string libraryPath)
-        {
-            var normalized = LibraryPathHelper.NormalizeLibraryPath(libraryPath);
-            return _library.Videos.FirstOrDefault(v =>
-                LibraryPathHelper.NormalizeLibraryPath(v.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase));
+            _videoIndex[item.Id] = item;
         }
 
         private void RefreshActorList()
@@ -2506,20 +2492,6 @@ namespace Airi.ViewModels
             if (!snapshot.Any(actor => actor.Equals(previousSelection, StringComparison.OrdinalIgnoreCase)))
             {
                 SelectedActor = AllActorsLabel;
-            }
-        }
-
-        private void UpdateLibraryEntry(string path, Func<VideoEntry, VideoEntry> updater)
-        {
-            var normalized = LibraryPathHelper.NormalizeLibraryPath(path);
-            for (var i = 0; i < _library.Videos.Count; i++)
-            {
-                var current = _library.Videos[i];
-                if (LibraryPathHelper.NormalizeLibraryPath(current.Path).Equals(normalized, StringComparison.OrdinalIgnoreCase))
-                {
-                    _library.Videos[i] = updater(current);
-                    return;
-                }
             }
         }
 

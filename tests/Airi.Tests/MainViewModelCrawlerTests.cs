@@ -330,7 +330,7 @@ namespace Airi.Tests
         }
 
         [Fact]
-        public void FetchMissingMetadataWithCrawlerAsync_UsesWebMetadataServiceResultAndSaves()
+        public void FetchMissingMetadataWithCrawlerAsync_PreservesExistingAndSavesMissingSourceFields()
         {
             RunInStaAsync(async () =>
             {
@@ -351,8 +351,9 @@ namespace Airi.Tests
                 Assert.Equal(1, fixture.Factory.StartCount);
                 Assert.Equal(1, metadataSource.CallCount);
                 var video = Assert.Single(viewModel.Videos);
-                Assert.Equal("Updated Title", video.Title);
-                Assert.Contains("Updated Title", await File.ReadAllTextAsync(fixture.LibraryPath));
+                Assert.Equal("ABC-123", video.Title);
+                Assert.Equal(new DateOnly(2024, 1, 2), video.ReleaseDate);
+                Assert.Contains("Actor One", await File.ReadAllTextAsync(fixture.LibraryPath));
             });
         }
 
@@ -386,7 +387,8 @@ namespace Airi.Tests
                 Assert.Equal(0, fixture.Factory.StartCount);
                 Assert.Equal(1, fallback.CallCount);
                 var video = Assert.Single(viewModel.Videos);
-                Assert.Equal("Fallback Title", video.Title);
+                Assert.Equal("ABC-123", video.Title);
+                Assert.Contains("Actor One", video.Actors);
             });
         }
 
@@ -438,6 +440,8 @@ namespace Airi.Tests
             SetPrivateField(viewModel, "_library", new LibraryData { Videos = { entry } });
             var item = new VideoItem
             {
+                Id = entry.Id,
+                Revision = entry.Revision,
                 LibraryPath = LibraryPathHelper.NormalizeLibraryPath(entry.Path),
                 Title = entry.Meta.Title,
                 ReleaseDate = entry.Meta.Date,

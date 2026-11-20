@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,8 +27,7 @@ namespace Airi.Tests
             var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
 
             Assert.NotNull(updated);
-            Assert.Equal("Stub Title", updated!.Meta.Title);
-            Assert.NotEqual(original.Meta.Title, updated.Meta.Title);
+            Assert.Equal("Original Title", updated!.Meta.Title);
             Assert.NotEmpty(updated.Meta.Actors);
 
             var absolutePath = LibraryPathHelper.ResolveToAbsolute(updated.Meta.Thumbnail);
@@ -36,7 +35,7 @@ namespace Airi.Tests
         }
 
         [Fact]
-        public async Task EnrichAsync_TranslatesDescription_WhenTranslatorEnabled()
+        public async Task EnrichAsync_PreservesExistingDescriptionWithoutRetranslation()
         {
             var cache = new ThumbnailCache(AppDomain.CurrentDomain.BaseDirectory);
             var translation = new StubTranslationService();
@@ -57,8 +56,8 @@ namespace Airi.Tests
             var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
 
             Assert.NotNull(updated);
-            Assert.Equal("Translated Description", updated!.Meta.Description);
-            Assert.True(translation.Invoked);
+            Assert.Equal("원본 설명", updated!.Meta.Description);
+            Assert.False(translation.Invoked);
         }
 
         [Fact]
@@ -169,9 +168,40 @@ namespace Airi.Tests
             var updated = await service.EnrichAsync(original, "Sample Query", CancellationToken.None);
 
             Assert.NotNull(updated);
-            Assert.Equal("Fallback", updated!.Meta.Title);
+            Assert.Equal("Original Title", updated!.Meta.Title);
             Assert.Equal(1, first.CallCount);
             Assert.Equal(1, fallback.CallCount);
+        }
+
+        [Fact]
+        public void MergeMeta_ManualEmptyAndExistingValuesRemainProtected()
+        {
+            var original = new VideoMeta("", null, Array.Empty<string>(), "old-cover.jpg", Array.Empty<string>(), "existing")
+            {
+                ManualFieldLocks = new[] { MetadataField.Title, MetadataField.Date, MetadataField.Tags },
+                Studio = null
+            };
+            var incoming = new VideoMeta("new", new DateOnly(2024, 1, 2), new[] { "Actor" }, "new-cover.jpg", new[] { "Tag" }, "new")
+            { Studio = "Confirmed studio", Genres = new[] { "Confirmed genre" } };
+            var merged = WebMetadataService.MergeMeta(original, incoming);
+            Assert.Equal("", merged.Title);
+            Assert.Null(merged.Date);
+            Assert.Empty(merged.Tags);
+            Assert.Equal("old-cover.jpg", merged.Thumbnail);
+            Assert.Equal("existing", merged.Description);
+            Assert.Equal(incoming.Actors, merged.Actors);
+            Assert.Equal("Confirmed studio", merged.Studio);
+            Assert.Equal(incoming.Genres, merged.Genres);
+            Assert.Equal(original.ManualFieldLocks, merged.ManualFieldLocks);
+        }
+
+        [Fact]
+        public void MergeMeta_BlankRawDateCanBeFilledWithoutLosingTheParsedCandidate()
+        {
+            var original = new VideoMeta("title", null, [], "", [], "") { RawDate = "" };
+            var incoming = original with { Date = new DateOnly(2024, 2, 3), RawDate = null };
+            var result = WebMetadataService.MergeMeta(original, incoming);
+            Assert.Equal(incoming.Date, result.Date); Assert.Null(result.RawDate);
         }
 
         private sealed class StubSource : IWebVideoMetaSource
@@ -189,7 +219,7 @@ namespace Airi.Tests
                     string.Empty,
                     Array.Empty<string>(),
                     string.Empty);
-                var bytes = new byte[] { 1, 2, 3 };
+                var bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
                 return Task.FromResult<WebVideoMetaResult?>(new WebVideoMetaResult(meta, bytes, ".jpg"));
             }
         }

@@ -26,7 +26,8 @@ public partial class MainWindow
         _videoDeleteKeyHeld = true;
         try
         {
-            await ViewModel.DeleteSelectedVideoAsync(ConfirmVideoDeletionAsync, StopDeletedVideoPreviewAsync);
+            ViewModel.DeleteCommand.Execute(null);
+            await ViewModel.GalleryActionTask;
         }
         finally
         {

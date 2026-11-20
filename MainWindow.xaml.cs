@@ -115,7 +115,8 @@ namespace Airi
             ThumbnailPerformanceProbe? performanceProbe = null,
             IThumbnailImageLoader? thumbnailImageLoader = null,
             TooltipPreviewController? tooltipPreviewController = null,
-            bool? clientAreaAnimationsEnabledOverride = null)
+            bool? clientAreaAnimationsEnabledOverride = null,
+            IVideoLauncher? videoLauncher = null)
         {
             InitializeComponent();
             _translationService = NullTranslationService.Instance;
@@ -123,6 +124,7 @@ namespace Airi
             _thumbnailImageLoader = thumbnailImageLoader;
             _tooltipPreviewController = tooltipPreviewController;
             _clientAreaAnimationsEnabledOverride = clientAreaAnimationsEnabledOverride;
+            _videoLauncher = videoLauncher ?? new WindowsVideoLauncher();
             ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
             WireViewModelEvents();
         }
@@ -130,6 +132,7 @@ namespace Airi
         private void WireViewModelEvents()
         {
             DataContext = ViewModel;
+            InitializeGallerySurface();
             ViewModel.PlayVideoRequested += OnPlayVideoRequested;
             ViewModel.Videos.CollectionChanged += OnPerformanceVideosChanged;
             Loaded += OnLoaded;
@@ -139,6 +142,7 @@ namespace Airi
         {
             try
             {
+                if (HandleGalleryNavigationKey(e)) return;
                 if (e.Key == Key.Delete)
                 {
                     var focused = Keyboard.FocusedElement as DependencyObject;
@@ -159,38 +163,9 @@ namespace Airi
 
         private async Task OpenMetadataEditorAsync()
         {
-            var selected = ViewModel.SelectedVideo;
-            if (selected is null)
-            {
-                return;
-            }
-
-            var lease = ViewModel.TryBeginMetadataEditorMutation();
-            if (lease is null)
-            {
-                return;
-            }
-
-            try
-            {
-                var dialog = new MetadataEditorWindow(selected)
-                {
-                    Owner = this
-                };
-
-                if (dialog.ShowDialog() == true && dialog.Result is MetadataEditResult result)
-                {
-                    await ViewModel.ApplyMetadataEditAsync(selected, result, lease);
-                }
-            }
-            finally
-            {
-                ViewModel.EndMetadataEditorMutation(lease);
-            }
+            ViewModel.EditCommand.Execute(null);
+            await ViewModel.GalleryActionTask;
         }
-
-
-
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             if (_initializationStarted)
@@ -683,7 +658,7 @@ namespace Airi
                 return;
             }
 
-            VideoList.ScrollIntoView(VideoList.Items[index]);
+            GalleryHost.ScrollToIndex(index);
             UpdateLayout();
         }
 
@@ -707,6 +682,7 @@ namespace Airi
                 return;
             }
 
+            if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null) return;
             if (e.OriginalSource is not DependencyObject source ||
                 ItemsControl.ContainerFromElement(listBox, source) is not ListBoxItem { DataContext: VideoItem video })
             {
@@ -873,21 +849,10 @@ namespace Airi
                 return;
             }
 
-            try
-            {
-                AppLogger.Info($"Launching video with default player: {video.SourcePath}");
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = video.SourcePath,
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error($"Failed to launch video: {video.SourcePath}", ex);
-            }
+            if(video.IsInRecycleBin)return;
+            var result=_videoLauncher.Play(video.SourcePath);
+            if(!result.Succeeded)ShowGalleryMessage("영상을 재생할 수 없습니다",result.Reason??"파일을 확인해 주세요.");
         }
-
         internal sealed class MainWindowTooltipPreviewSink : ITooltipPreviewSink
         {
             private readonly MainWindow _window;
@@ -974,7 +939,8 @@ namespace Airi
 
         protected override async void OnClosing(CancelEventArgs e)
         {
-            if (!_previewShutdownComplete && (_tooltipPreviewController is not null || !ViewModel.VideoDeletionTask.IsCompleted))
+            if (ViewModel is null) { base.OnClosing(e); return; }
+            if (!_previewShutdownComplete && (_tooltipPreviewController is not null || !ViewModel.VideoDeletionTask.IsCompleted || !ViewModel.GalleryActionTask.IsCompleted || !_galleryThumbnailTask.IsCompleted || ViewModel.IsEditing || ViewModel.IsFetchingDraft))
             {
                 e.Cancel = true;
                 if (_previewShutdownStarted) return;
@@ -982,7 +948,12 @@ namespace Airi
                 try
                 {
                     _videoDeleteConfirmation?.Close();
+                    CancelGalleryThumbnailWork();
+                    if (ViewModel.CancelEditCommand.CanExecute(null)) ViewModel.CancelEditCommand.Execute(null);
+                    _galleryDialog?.Close();
                     await ViewModel.VideoDeletionTask;
+                    await ViewModel.GalleryActionTask;
+                    await StopGallerySurfaceAsync();
                     if (_tooltipPreviewController is not null) await _tooltipPreviewController.DisposeAsync();
                 }
                 catch (OperationCanceledException)
@@ -1003,7 +974,12 @@ namespace Airi
 
         protected override void OnClosed(System.EventArgs e)
         {
+            if (ViewModel is null) { base.OnClosed(e); return; }
             Loaded -= OnLoaded;
+            _galleryPopup?.Dispose();
+            ViewModel.PropertyChanged -= OnGalleryPropertyChanged;
+            ViewModel.GalleryScrollToTopRequested -= OnGalleryScrollToTop;
+            ViewModel.GalleryQueryRequested -= CloseGalleryReadingForQuery;
             DetachPerformanceRendering();
             ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;

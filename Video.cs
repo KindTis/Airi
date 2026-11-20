@@ -3,13 +3,15 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using Airi.Domain;
 
 namespace Airi
 {
     public enum VideoPresenceState
     {
         Available,
-        Missing
+        Missing,
+        Checking
     }
 
     public enum ThumbnailLoadState
@@ -41,6 +43,63 @@ namespace Airi
         private ThumbnailLoadState _thumbnailLoadState;
 
         public string LibraryPath { get; init; } = string.Empty;
+        public Guid Id { get; internal set; } = Guid.NewGuid();
+        private long _revision;
+        private string? _studio;
+        private string? _rawDate;
+        private IReadOnlyList<string> _genres = Array.Empty<string>();
+        public long Revision { get => _revision; set => SetField(ref _revision, value); }
+        public string? Studio
+        {
+            get => _studio;
+            set { if (SetField(ref _studio, value)) OnPropertyChanged(nameof(StudioLabel)); }
+        }
+        public IReadOnlyList<string> Genres
+        {
+            get => _genres;
+            set { if (SetField(ref _genres, value ?? Array.Empty<string>())) OnPropertyChanged(nameof(GenresLabel)); }
+        }
+        public string? RawDate
+        {
+            get => _rawDate;
+            set { if (SetField(ref _rawDate, value)) OnPropertyChanged(nameof(ReleaseLabel)); }
+        }
+        public string StudioLabel => string.IsNullOrWhiteSpace(Studio) ? "미지정" : Studio;
+        public string GenresLabel => Genres.Count == 0 ? "미지정" : string.Join(", ", Genres);
+
+        private LibraryOperationState? _recycleState;
+        private string? _recycleReason;
+        private bool _canRestore;
+        public LibraryOperationState? RecycleState
+        {
+            get => _recycleState;
+            set { if (SetField(ref _recycleState, value)) { OnPropertyChanged(nameof(RecycleStatusLabel)); OnPropertyChanged(nameof(IsInRecycleBin)); } }
+        }
+        public string? RecycleReason { get => _recycleReason; set => SetField(ref _recycleReason, value); }
+        public bool CanRestore { get => _canRestore; set => SetField(ref _canRestore, value); }
+        public bool IsInRecycleBin => RecycleState is LibraryOperationState.Pending or LibraryOperationState.Trashed or
+            LibraryOperationState.RestorePending or LibraryOperationState.Uncertain or LibraryOperationState.RepairRequired;
+        public string RecycleStatusLabel => RecycleState switch
+        {
+            LibraryOperationState.Pending or LibraryOperationState.RestorePending => "진행 중",
+            LibraryOperationState.Uncertain => "결과 확인 필요", LibraryOperationState.RepairRequired => "복구 필요",
+            LibraryOperationState.Trashed when !CanRestore => "복원 근거 없음", _ => string.Empty
+        };
+        private bool _isChecked;
+        private bool _isActive;
+        internal Func<bool>? CheckedChangeAllowed { get; set; }
+        public bool IsChecked
+        {
+            get => _isChecked;
+            set
+            {
+                if (_isChecked == value) return;
+                if (CheckedChangeAllowed?.Invoke() ?? true) SetField(ref _isChecked, value);
+                else OnPropertyChanged(nameof(IsChecked));
+            }
+        }
+        internal void SetCheckedFromOwner(bool value) => SetField(ref _isChecked, value, nameof(IsChecked));
+        public bool IsActive { get => _isActive; set => SetField(ref _isActive, value); }
 
         public string Title
         {
@@ -162,7 +221,7 @@ namespace Airi
 
         public string ActorsLabel => Actors.Count == 0 ? string.Empty : string.Join(", ", Actors);
         public string TagsLabel => Tags.Count == 0 ? string.Empty : string.Join(", ", Tags);
-        public string ReleaseLabel => ReleaseDate?.ToString("yyyy-MM-dd") ?? "Date TBD";
+        public string ReleaseLabel => ReleaseDate?.ToString("yyyy-MM-dd") ?? (!string.IsNullOrWhiteSpace(RawDate) ? RawDate + " (확인 필요)" : "미지정");
         public string CreatedLabel => _lastModifiedUtc == default
             ? "Unknown"
             : _lastModifiedUtc.ToLocalTime().ToString("yyyy-MM-dd");

@@ -49,7 +49,7 @@ internal static class WpfTestHost
             try
             {
                 await action();
-                DrainDispatcher(dispatcher);
+                try { DrainDispatcher(dispatcher); } catch (Exception dispatcherError) { failure ??= dispatcherError; }
             }
             catch (Exception ex)
             {
@@ -59,10 +59,10 @@ internal static class WpfTestHost
             var leakedWindows = Application.Current?.Windows.Cast<Window>().ToArray() ?? Array.Empty<Window>();
             foreach (var window in leakedWindows)
             {
-                window.Close();
+                try { window.Close(); } catch (Exception cleanupError) { failure ??= cleanupError; }
             }
 
-            DrainDispatcher(dispatcher);
+            try { DrainDispatcher(dispatcher); } catch (Exception dispatcherError) { failure ??= dispatcherError; }
 
             if (failure is not null)
             {

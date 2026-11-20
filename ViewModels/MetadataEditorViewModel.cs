@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Airi.ViewModels
 {
-    public sealed class MetadataEditorViewModel : INotifyPropertyChanged
+    public sealed class MetadataEditorViewModel : INotifyPropertyChanged, IDisposable
     {
         private readonly ThumbnailCache _thumbnailCache;
         private readonly string _thumbnailKey;
@@ -118,6 +118,7 @@ namespace Airi.ViewModels
             var absolutePath = LibraryPathHelper.ResolveToAbsolute(relativePath);
             var previewUri = File.Exists(absolutePath) ? new Uri(absolutePath).AbsoluteUri : ThumbnailPreviewUri;
 
+            _thumbnailCache.DiscardOwned(ThumbnailPath);
             ThumbnailPath = relativePath;
             ThumbnailPreviewUri = previewUri;
             ThumbnailDisplayName = string.IsNullOrWhiteSpace(displayName)
@@ -145,6 +146,7 @@ namespace Airi.ViewModels
             var absolutePath = LibraryPathHelper.ResolveToAbsolute(relativePath);
             var previewUri = File.Exists(absolutePath) ? new Uri(absolutePath).AbsoluteUri : ThumbnailPreviewUri;
 
+            _thumbnailCache.DiscardOwned(ThumbnailPath);
             ThumbnailPath = relativePath;
             ThumbnailPreviewUri = previewUri;
             ThumbnailDisplayName = Path.GetFileName(filePath);
@@ -152,8 +154,12 @@ namespace Airi.ViewModels
             return true;
         }
 
+        public void AcceptChanges() => _thumbnailCache.AcceptOwned(ThumbnailPath);
+        public void Dispose() => _thumbnailCache.DiscardOwned(ThumbnailPath);
+
         public void ResetThumbnail()
         {
+            _thumbnailCache.DiscardOwned(ThumbnailPath);
             ThumbnailPath = _fallbackThumbnailPath;
             ThumbnailPreviewUri = _fallbackThumbnailPreviewUri;
             ThumbnailDisplayName = BuildDisplayName(string.Empty);

@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="썸네일 선택" Width="1120" Height="480"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
-        Background="#0F111C" Foreground="#E8ECF9"
+        Background="{DynamicResource GalleryBackground}" Foreground="{DynamicResource GalleryText}"
         WindowStyle="None" ShowInTaskbar="False"
         PreviewKeyDown="OnWindowPreviewKeyDown">
+    <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Airi;component/Resources/Gallery.xaml"/></ResourceDictionary.MergedDictionaries><Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource GalleryPrimary}"/><Style x:Key="SecondaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"/></ResourceDictionary></Window.Resources>
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -14,9 +15,9 @@
         </Grid.RowDefinitions>
 
         <StackPanel Margin="0,0,0,18">
-            <TextBlock Text="썸네일 후보 선택" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
+            <TextBlock Text="썸네일 후보 선택" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource GalleryText}"/>
             <TextBlock Text="이미지 한 장을 선택하거나 후보 전체를 다시 생성하세요."
-                       Margin="0,6,0,0" Foreground="#96A1C2"/>
+                       Margin="0,6,0,0" Foreground="{DynamicResource GalleryMuted}"/>
         </StackPanel>
 
         <ListBox x:Name="CandidateList" Grid.Row="1"
@@ -44,16 +45,16 @@
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
                                 <Border x:Name="FocusBorder" BorderBrush="Transparent"
-                                        BorderThickness="2" CornerRadius="14" Padding="2">
+                                        BorderThickness="2" CornerRadius="7" Padding="2">
                                     <Border x:Name="SelectionBorder" BorderBrush="Transparent"
-                                            BorderThickness="3" CornerRadius="11"
-                                            Background="#1A1E2F" Padding="5">
+                                            BorderThickness="3" CornerRadius="7"
+                                            Background="{DynamicResource GalleryPanel}" Padding="5">
                                         <ContentPresenter/>
                                     </Border>
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="#3B82F6"/>
+                                        <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="{DynamicResource GalleryAccent}"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>

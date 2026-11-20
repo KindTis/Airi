@@ -35,7 +35,8 @@ namespace Airi.Services
 
     public class LibraryStore : ILibraryStore
     {
-        private const int CurrentVersion = 1;
+        private const int CurrentVersion = 2;
+        private bool _writeProtected;
         private readonly string _filePath;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly Action<LibraryStoreSaveStage, string, int>? _saveStage;
@@ -80,42 +81,154 @@ namespace Airi.Services
             if (!File.Exists(_filePath))
             {
                 AppLogger.Info($"Library file not found. Creating new library at {_filePath}.");
-                var defaultData = Normalize(CreateDefaultLibrary());
+                var defaultData = CreateDefaultLibrary();
                 await SaveCoreAsync(defaultData, cancellationToken).ConfigureAwait(false);
                 return defaultData;
             }
 
-            LibraryData? data;
             try
             {
                 AppLogger.Info($"Loading library from {_filePath}.");
                 ObserveIo(LibraryStoreIoStage.DestinationOpen);
-                await using var stream = new FileStream(
-                    _filePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    64 * 1024,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                var bytes = await File.ReadAllBytesAsync(_filePath, cancellationToken).ConfigureAwait(false);
                 ObserveIo(LibraryStoreIoStage.BeforeDeserialize);
-                data = await JsonSerializer.DeserializeAsync<LibraryData>(
-                    stream,
-                    _jsonOptions,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (JsonException ex)
-            {
-                AppLogger.Error("Library JSON is invalid; resetting to defaults.", ex);
-                return await ResetWithDefaultsCoreAsync(cancellationToken).ConfigureAwait(false);
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                ReadOnlyMemory<byte> jsonBytes = bytes;
+                if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) jsonBytes = jsonBytes[3..];
+                using var document = JsonDocument.Parse(jsonBytes);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object ||
+                    !root.TryGetProperty("Version", out var versionElement) ||
+                    !versionElement.TryGetInt32(out var version) || version is not (1 or CurrentVersion) ||
+                    !root.TryGetProperty("Videos", out var videosElement) || videosElement.ValueKind != JsonValueKind.Array)
+                    throw new JsonException("Unsupported library schema. The original file has been preserved.");
+                if (version == CurrentVersion) ValidateVersionTwoShape(root);
+                var data = JsonSerializer.Deserialize<LibraryData>(jsonBytes.Span, _jsonOptions)
+                    ?? throw new JsonException("Library cannot be null.");
+                Validate(data);
+                if (version == CurrentVersion)
+                {
+                    _writeProtected = false;
+                    return data;
+                }
 
-            if (data is null)
-            {
-                AppLogger.Error("Library JSON contained null; resetting to defaults.");
-                return await ResetWithDefaultsCoreAsync(cancellationToken).ConfigureAwait(false);
+                // Do not normalize legacy values: whitespace, duplicates, paths and file times are authored data.
+                var migrated = data.WithVideos(data.Videos.Select(entry => entry with
+                {
+                    Meta = entry.Meta with { ManualFieldLocks = LegacyLocks(entry.Meta) }
+                }));
+                migrated.Version = CurrentVersion;
+                migrated.AdditionalData?.Remove("Targets");
+                migrated.AdditionalData?.Remove("LastScanUtc");
+                var backupPath = _filePath + $".v1-backup-{Guid.NewGuid():N}.json";
+                await using (var backup = new FileStream(backupPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                {
+                    await backup.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                    await backup.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    backup.Flush(true);
+                }
+                _writeProtected = false;
+                try
+                {
+                    await SaveCoreAsync(migrated, cancellationToken).ConfigureAwait(false);
+                    var reread = JsonSerializer.Deserialize<LibraryData>(
+                        await File.ReadAllBytesAsync(_filePath, CancellationToken.None).ConfigureAwait(false), _jsonOptions)
+                        ?? throw new JsonException("Migrated library could not be read back.");
+                    Validate(reread);
+                    if (JsonSerializer.Serialize(migrated, _jsonOptions) != JsonSerializer.Serialize(reread, _jsonOptions))
+                        throw new JsonException("Migrated library verification failed. The v1 backup is preserved.");
+                    return reread;
+                }
+                catch
+                {
+                    _writeProtected = true;
+                    // Restore exact bytes even if a read-back or after-commit failure occurs.
+                    var originalNow = await File.ReadAllBytesAsync(_filePath, CancellationToken.None).ConfigureAwait(false);
+                    if (!bytes.AsSpan().SequenceEqual(originalNow))
+                    {
+                        var restorePath = _filePath + $".airi-rollback-{Guid.NewGuid():N}";
+                        try
+                        {
+                            await File.WriteAllBytesAsync(restorePath, bytes, CancellationToken.None).ConfigureAwait(false);
+                            File.Replace(restorePath, _filePath, null, ignoreMetadataErrors: true);
+                        }
+                        finally { if (File.Exists(restorePath)) File.Delete(restorePath); }
+                    }
+                    throw;
+                }
             }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException or UnauthorizedAccessException)
+            {
+                _writeProtected = true;
+                AppLogger.Error("Library could not be read. The original file is protected; retry after recovery.", ex);
+                throw;
+            }
+        }
 
-            return Normalize(data);
+        private static void ValidateVersionTwoShape(JsonElement root)
+        {
+            static void Require(JsonElement value, params string[] names)
+            {
+                if (value.ValueKind != JsonValueKind.Object || names.Any(name => !value.TryGetProperty(name, out _)))
+                    throw new JsonException("Version 2 library is missing required identity or journal fields.");
+            }
+            foreach (var entry in root.GetProperty("Videos").EnumerateArray()) Require(entry, "Id", "Revision");
+            if (!root.TryGetProperty("Journal", out var journal) || journal.ValueKind != JsonValueKind.Array)
+                throw new JsonException("Version 2 library is missing its journal.");
+            foreach (var record in journal.EnumerateArray())
+            {
+                Require(record, "OperationId", "EntryId", "BaseRevision", "OriginalPath", "Snapshot", "TimestampUtc", "Intent", "State", "MoveConfirmed", "RestoreAvailable");
+                Require(record.GetProperty("Snapshot"), "Id", "Revision", "Path", "Meta");
+                if (record.GetProperty("Intent").ValueKind != JsonValueKind.String ||
+                    !Enum.TryParse<LibraryOperationIntent>(record.GetProperty("Intent").GetString(), out var intent) || !Enum.IsDefined(intent) ||
+                    record.GetProperty("State").ValueKind != JsonValueKind.String ||
+                    !Enum.TryParse<LibraryOperationState>(record.GetProperty("State").GetString(), out var state) || !Enum.IsDefined(state))
+                    throw new JsonException("Journal contains an unsupported intent or state.");
+            }
+        }
+
+        private static bool IsValidEntry(VideoEntry? entry) => entry is not null && entry.Meta is not null && entry.Path is not null &&
+            entry.Id != Guid.Empty && entry.Revision >= 0 && Enum.IsDefined(entry.Presence) && entry.Meta.Actors is not null &&
+            entry.Meta.Tags is not null && entry.Meta.Genres is not null && entry.Meta.ManualFieldLocks is not null &&
+            entry.Meta.ManualFieldLocks.All(Enum.IsDefined);
+
+        private static void Validate(LibraryData data)
+        {
+            if (data.Videos is null || data.Journal is null || data.Videos.Any(entry => !IsValidEntry(entry)) ||
+                data.Videos.Select(entry => entry.Id).Distinct().Count() != data.Videos.Count)
+                throw new JsonException("Library contains invalid entries or duplicate identities. The original file is preserved.");
+            var ids = data.Videos.Select(entry => entry.Id).ToHashSet();
+            var operations = new HashSet<Guid>();
+            foreach (var record in data.Journal)
+            {
+                if (record is null || record.OperationId == Guid.Empty || !operations.Add(record.OperationId) ||
+                    !ids.Contains(record.EntryId) || record.BaseRevision < 0 || string.IsNullOrWhiteSpace(record.OriginalPath) ||
+                    record.TimestampUtc == default || !Enum.IsDefined(record.Intent) || !Enum.IsDefined(record.State) ||
+                    !IsValidEntry(record.Snapshot) || record.Snapshot!.Id != record.EntryId || record.Snapshot.Revision != record.BaseRevision ||
+                    !string.Equals(record.Snapshot.Path, record.OriginalPath, StringComparison.Ordinal) ||
+                    (record.RestoreAvailable && string.IsNullOrWhiteSpace(record.ReceiptJson)) ||
+                    (record.State == LibraryOperationState.Pending && record.Intent != LibraryOperationIntent.Recycle) ||
+                    (record.State == LibraryOperationState.RestorePending && record.Intent != LibraryOperationIntent.Restore) ||
+                    // Intent is the requested operation; exact inspection can observe an external restore after Recycle.
+                    (record.State == LibraryOperationState.Restored && (!record.MoveConfirmed || string.IsNullOrWhiteSpace(record.ReceiptJson))) ||
+                    (record.State == LibraryOperationState.Failed && record.Intent != LibraryOperationIntent.Recycle))
+                    throw new JsonException("Library journal is invalid. The original file is preserved.");
+            }
+        }
+
+        private static IReadOnlyList<MetadataField> LegacyLocks(VideoMeta meta)
+        {
+            var fields = new List<MetadataField>(meta.ManualFieldLocks);
+            void Add(MetadataField field, bool nonempty) { if (nonempty && !fields.Contains(field)) fields.Add(field); }
+            Add(MetadataField.Title, !string.IsNullOrWhiteSpace(meta.Title));
+            Add(MetadataField.Date, meta.Date.HasValue || !string.IsNullOrWhiteSpace(meta.RawDate));
+            Add(MetadataField.Actors, meta.Actors.Any(value => !string.IsNullOrWhiteSpace(value)));
+            Add(MetadataField.Thumbnail, !string.IsNullOrWhiteSpace(meta.Thumbnail));
+            Add(MetadataField.Tags, meta.Tags.Any(value => !string.IsNullOrWhiteSpace(value)));
+            Add(MetadataField.Description, !string.IsNullOrWhiteSpace(meta.Description));
+            Add(MetadataField.Studio, !string.IsNullOrWhiteSpace(meta.Studio));
+            Add(MetadataField.Genres, meta.Genres.Any(value => !string.IsNullOrWhiteSpace(value)));
+            return fields;
         }
 
         private async Task SaveCoreAsync(LibraryData library, CancellationToken cancellationToken)
@@ -124,11 +237,11 @@ namespace Airi.Services
             var directory = Path.GetDirectoryName(_filePath)!;
             Directory.CreateDirectory(directory);
             ObserveIo(LibraryStoreIoStage.PersistenceProjection);
-            var persistenceProjection = new LibraryData
-            {
-                Version = CurrentVersion,
-                Videos = library.Videos.ToList()
-            };
+            if (_writeProtected) throw new InvalidOperationException("Library is protected after a read failure. Reload successfully before saving.");
+            if (library.Version > CurrentVersion) throw new NotSupportedException("Cannot overwrite a future library schema.");
+            var persistenceProjection = library.WithVideos(library.Videos);
+            persistenceProjection.Version = CurrentVersion;
+            Validate(persistenceProjection);
             var tempPath = Path.Combine(
                 directory,
                 $".{Path.GetFileName(_filePath)}.airi-tmp-{Guid.NewGuid():D}");
@@ -157,6 +270,12 @@ namespace Airi.Services
                     stream.Flush(flushToDisk: true);
                 }
 
+                var verification = JsonSerializer.Deserialize<LibraryData>(
+                    await File.ReadAllBytesAsync(tempPath, cancellationToken).ConfigureAwait(false), _jsonOptions)
+                    ?? throw new JsonException("Candidate library could not be read back.");
+                Validate(verification);
+                if (JsonSerializer.Serialize(persistenceProjection, _jsonOptions) != JsonSerializer.Serialize(verification, _jsonOptions))
+                    throw new JsonException("Candidate library verification failed.");
                 ObserveSave(LibraryStoreSaveStage.AfterTemporaryFlush, tempPath);
                 cancellationToken.ThrowIfCancellationRequested();
                 ObserveSave(LibraryStoreSaveStage.BeforeCommit, tempPath);
@@ -206,17 +325,11 @@ namespace Airi.Services
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
 
+            options.Converters.Add(new PreservedVideoEntryConverter());
+            options.Converters.Add(new PreservedVideoMetaConverter());
             options.Converters.Add(new DateOnlyJsonConverter());
             options.Converters.Add(new JsonStringEnumConverter());
             return options;
-        }
-
-        private async Task<LibraryData> ResetWithDefaultsCoreAsync(CancellationToken cancellationToken)
-        {
-            AppLogger.Info("Resetting library to default state.");
-            var data = Normalize(CreateDefaultLibrary());
-            await SaveCoreAsync(data, cancellationToken).ConfigureAwait(false);
-            return data;
         }
 
         private void CleanupOwnedStaleTemporaryFiles()
@@ -261,149 +374,6 @@ namespace Airi.Services
         private void ObserveIo(LibraryStoreIoStage stage) =>
             _ioStage?.Invoke(stage, Environment.CurrentManagedThreadId);
 
-        private static LibraryData CreateDefaultLibrary()
-        {
-            var library = new LibraryData
-            {
-                Version = CurrentVersion
-            };
-
-#if DEBUG
-            AppLogger.Info("Creating debug sample entries.");
-            library.Videos.AddRange(new[]
-            {
-                new VideoEntry("./Videos/forest-gump.mp4",
-                    new VideoMeta(
-                        "Forest Gump",
-                        new DateOnly(1994, 7, 6),
-                        new[] { "Tom Hanks" },
-                        "resources/noimage.jpg",
-                        Array.Empty<string>(),
-                        string.Empty)),
-                new VideoEntry("./Videos/devil-wears-prada.mp4",
-                    new VideoMeta(
-                        "The Devil Wears Prada",
-                        new DateOnly(2006, 6, 30),
-                        new[] { "Meryl Streep" },
-                        "resources/noimage.jpg",
-                        Array.Empty<string>(),
-                        string.Empty)),
-                new VideoEntry("./Videos/inception.mp4",
-                    new VideoMeta(
-                        "Inception",
-                        new DateOnly(2010, 7, 16),
-                        new[] { "Leonardo DiCaprio", "Tom Hardy" },
-                        "resources/noimage.jpg",
-                        Array.Empty<string>(),
-                        string.Empty)),
-                new VideoEntry("./Videos/black-widow.mp4",
-                    new VideoMeta(
-                        "Black Widow",
-                        new DateOnly(2021, 7, 9),
-                        new[] { "Scarlett Johansson", "Florence Pugh" },
-                        "resources/noimage.jpg",
-                        Array.Empty<string>(),
-                        string.Empty)),
-                new VideoEntry("./Videos/fight-club.mp4",
-                    new VideoMeta(
-                        "Fight Club",
-                        new DateOnly(1999, 10, 15),
-                        new[] { "Brad Pitt", "Edward Norton" },
-                        "resources/noimage.jpg",
-                        Array.Empty<string>(),
-                        string.Empty))
-            });
-#endif
-
-            return library;
-        }
-
-        private static LibraryData Normalize(LibraryData data)
-        {
-            data.Version = data.Version <= 0 ? CurrentVersion : data.Version;
-
-            var originalVideoCount = data.Videos?.Count ?? 0;
-            var videos = (data.Videos ?? new List<VideoEntry>())
-                .Where(v => v is not null && v.Meta is not null)
-                .Select(NormalizeVideoEntry)
-                .ToList();
-
-#if !DEBUG
-            videos = videos
-                .Where(v => File.Exists(LibraryPathHelper.ResolveToAbsolute(v.Path)))
-                .ToList();
-            var removed = originalVideoCount - videos.Count;
-            if (removed > 0)
-            {
-                AppLogger.Info($"Removed {removed} entries referencing missing files.");
-            }
-#endif
-
-            AppLogger.Info($"Library normalization complete. Videos: {videos.Count}.");
-            data.Videos = videos;
-
-            return data;
-        }
-
-        private static VideoEntry NormalizeVideoEntry(VideoEntry entry)
-        {
-            var normalizedPath = LibraryPathHelper.NormalizeLibraryPath(entry.Path);
-            var normalizedMeta = NormalizeMeta(entry.Meta);
-            var size = entry.SizeBytes < 0 ? 0 : entry.SizeBytes;
-            var lastModified = entry.LastModifiedUtc;
-            if (lastModified != default && lastModified.Kind != DateTimeKind.Utc)
-            {
-                lastModified = DateTime.SpecifyKind(lastModified, DateTimeKind.Utc);
-            }
-
-            var created = entry.CreatedUtc;
-            if (created != default && created.Kind != DateTimeKind.Utc)
-            {
-                created = DateTime.SpecifyKind(created, DateTimeKind.Utc);
-            }
-
-            if (created == default)
-            {
-                created = lastModified;
-            }
-
-            return entry with
-            {
-                Path = normalizedPath,
-                Meta = normalizedMeta,
-                SizeBytes = size,
-                LastModifiedUtc = lastModified,
-                CreatedUtc = created
-            };
-        }
-
-        private static VideoMeta NormalizeMeta(VideoMeta meta)
-        {
-            var title = string.IsNullOrWhiteSpace(meta.Title) ? "Untitled" : meta.Title.Trim();
-            var actors = (meta.Actors ?? Array.Empty<string>())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Select(name => name.Trim())
-                .ToArray();
-            var tags = (meta.Tags ?? Array.Empty<string>())
-                .Where(tag => !string.IsNullOrWhiteSpace(tag))
-                .Select(tag => tag.Trim())
-                .ToArray();
-            var thumbnail = string.IsNullOrWhiteSpace(meta.Thumbnail)
-                ? string.Empty
-                : LibraryPathHelper.NormalizeLibraryPath(meta.Thumbnail);
-            var description = string.IsNullOrWhiteSpace(meta.Description) ? string.Empty : meta.Description.Trim();
-
-            return meta with
-            {
-                Title = title,
-                Date = meta.Date,
-                Actors = actors,
-                Thumbnail = thumbnail,
-                Tags = tags,
-                Description = description
-            };
-        }
+        private static LibraryData CreateDefaultLibrary() => new() { Version = CurrentVersion };
     }
 }
-
-

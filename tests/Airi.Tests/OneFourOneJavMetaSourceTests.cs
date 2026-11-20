@@ -235,6 +235,31 @@ namespace Airi.Tests
             return new HttpClient(new StubHttpMessageHandler(exception));
         }
 
+        [Fact]
+        public async Task DetailedFetch_DistinguishesEmptyResultFromMissingSessionAndNavigationFailure()
+        {
+            var provider = new CrawlerSessionProvider(); var source = new OneFourOneJavMetaSource(provider);
+            Assert.NotNull((await source.FetchDetailedAsync("ABC123", CancellationToken.None)).Error);
+            var session = new FakeSession { NavigateResult = false }; provider.SetSession(session);
+            var failed = await source.FetchDetailedAsync("ABC123", CancellationToken.None);
+            Assert.Null(failed.Result); Assert.NotNull(failed.Error);
+            session.NavigateResult = true;
+            var empty = await source.FetchDetailedAsync("ABC123", CancellationToken.None);
+            Assert.Null(empty.Result); Assert.Null(empty.Error);
+        }
+
+        [Fact]
+        public async Task DetailedFetch_PartialMetadataPreservesThumbnailTimeoutReason()
+        {
+            var session = new FakeSession { Metadata = new OneFourOneJavCrawler.CrawlerMetadata(new DateTime(2024, 1, 2), [], [], "description"),
+                ThumbnailUrl = "https://example.test/cover.jpg" };
+            var provider = new CrawlerSessionProvider(); provider.SetSession(session);
+            var source = new OneFourOneJavMetaSource(provider, CreateHttpClient(new TaskCanceledException("timeout")));
+            var result = await source.FetchDetailedAsync("ABC123", CancellationToken.None);
+            Assert.NotNull(result.Result); Assert.True(result.IsPartial); Assert.Contains("초과", result.Error);
+            Assert.Equal(new DateOnly(2024, 1, 2), result.Result!.Meta.Date);
+        }
+
         private sealed class FakeSession : IOneFourOneJavCrawlerSession
         {
             private int _activeOperations;

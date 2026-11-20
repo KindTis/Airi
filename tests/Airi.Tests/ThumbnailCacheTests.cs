@@ -31,7 +31,7 @@ namespace Airi.Tests
         [Fact]
         public async Task SaveAsync_PersistsFileWithSanitizedKey()
         {
-            var relativePath = await _cache.SaveAsync(new byte[] { 1, 2, 3 }, "png", "Sample Key/01", CancellationToken.None);
+            var relativePath = await _cache.SaveAsync(ImageBytes(), "png", "Sample Key/01", CancellationToken.None);
 
             var expectedPrefix = $"./{_baseDirectoryName}/cache/Sample_Key_01_";
             Assert.StartsWith(expectedPrefix, relativePath, StringComparison.Ordinal);
@@ -44,9 +44,34 @@ namespace Airi.Tests
         [Fact]
         public async Task SaveAsync_EmptyExtension_UsesJpg()
         {
-            var relativePath = await _cache.SaveAsync(new byte[] { 1 }, string.Empty, "thumb", CancellationToken.None);
+            var relativePath = await _cache.SaveAsync(ImageBytes(), string.Empty, "thumb", CancellationToken.None);
 
             Assert.EndsWith(".jpg", relativePath.ToLowerInvariant());
+        }
+
+        private static byte[] ImageBytes() => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "resources", "noimage.jpg"));
+
+        [Fact]
+        public async Task OwnedCandidates_AreUniqueAndOnlyTheirCreatorCanDiscardThem()
+        {
+            var first = await _cache.SaveAsync(ImageBytes(), ".jpg", "same-key");
+            var second = await _cache.SaveAsync(ImageBytes(), ".jpg", "same-key");
+            Assert.NotEqual(first, second);
+            var other = new ThumbnailCache(_baseDirectory);
+            other.DiscardOwned(first);
+            Assert.True(File.Exists(LibraryPathHelper.ResolveToAbsolute(first)));
+            _cache.DiscardOwned(first);
+            Assert.False(File.Exists(LibraryPathHelper.ResolveToAbsolute(first)));
+            _cache.AcceptOwned(second);
+            _cache.DiscardOwned(second);
+            Assert.True(File.Exists(LibraryPathHelper.ResolveToAbsolute(second)));
+        }
+
+        [Fact]
+        public async Task InvalidCandidate_DoesNotCreateCacheFile()
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => _cache.SaveAsync(new byte[] { 1, 2, 3 }, ".png", "invalid"));
+            Assert.Empty(Directory.GetFiles(Path.Combine(_baseDirectory, "cache")));
         }
 
         public Task InitializeAsync() => Task.CompletedTask;

@@ -13,9 +13,12 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="TestResults\**\*.cs" />
+    <Page Remove="tests\**\*.xaml;TestResults\**\*.xaml;Resources\Gallery*.xaml" />
+    <Page Include="Resources\Gallery.xaml" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="resources\**\*.*">
+    <Content Include="resources\**\*.*" Exclude="resources\Gallery*.xaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

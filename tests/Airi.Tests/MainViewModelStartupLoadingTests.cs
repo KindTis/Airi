@@ -138,8 +138,8 @@ public sealed class MainViewModelStartupLoadingTests
         {
             StartupLibraryState.Publishing,
             StartupLibraryState.Scanning,
-            StartupLibraryState.ApplyingScan,
             StartupLibraryState.SavingScan,
+            StartupLibraryState.ApplyingScan,
             StartupLibraryState.Ready
         }, states.ConvertAll(entry => entry.State));
         var startupStates = states
@@ -625,7 +625,7 @@ public sealed class MainViewModelStartupLoadingTests
     });
 
     [Fact]
-    public Task StartupScan_FirstNewBatchEndsVideoSkeleton() => WpfTestHost.RunAsync(async () =>
+    public Task StartupScan_NewResultsRemainUnpublishedUntilSaveCompletes() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
         fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
@@ -641,10 +641,12 @@ public sealed class MainViewModelStartupLoadingTests
         var initialization = viewModel.InitializeAsync();
         await saveStarted.Task;
         Assert.Equal(StartupLibraryState.SavingScan, viewModel.StartupState);
-        Assert.Single(viewModel.Videos);
-        Assert.False(viewModel.ShowVideoSkeleton);
+        Assert.Empty(viewModel.Videos);
+        Assert.True(viewModel.ShowVideoSkeleton);
         finishSave.TrySetResult();
         await initialization;
+        Assert.Single(viewModel.Videos);
+        Assert.False(viewModel.ShowVideoSkeleton);
     });
 
     [Fact]
@@ -768,6 +770,7 @@ public sealed class MainViewModelStartupLoadingTests
         using var fixture = new Fixture();
         var persisted = CreateLibrary(2);
         fixture.Store.LoadOverride = _ => Task.FromResult(persisted);
+        fixture.Store.SaveOverride = (candidate, _) => { persisted = candidate; return Task.CompletedTask; };
         fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(100));
         using var viewModel = fixture.CreateViewModel();
         var failed = false;
@@ -783,9 +786,9 @@ public sealed class MainViewModelStartupLoadingTests
         await viewModel.InitializeAsync();
 
         Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
-        Assert.Equal(2, viewModel.Videos.Count);
+        Assert.Equal(102, viewModel.Videos.Count);
         Assert.Equal(2, fixture.Store.LoadCount);
-        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.Equal(1, fixture.Store.SaveCount);
         Assert.False(viewModel.IsFetchingMetadata);
     });
 
@@ -831,7 +834,7 @@ public sealed class MainViewModelStartupLoadingTests
         await viewModel.InitializeAsync();
 
         Assert.NotEqual(StartupLibraryState.Ready, viewModel.StartupState);
-        Assert.Equal(0, fixture.Store.SaveCount);
+        Assert.Equal(1, fixture.Store.SaveCount);
         Assert.Equal(1, fixture.Store.LoadCount);
     });
 
@@ -940,7 +943,7 @@ public sealed class MainViewModelStartupLoadingTests
         await viewModel.InitializeAsync();
 
         Assert.Equal(StartupLibraryState.Ready, viewModel.StartupState);
-        Assert.Equal(2, fixture.Store.LoadCount);
+        Assert.Equal(1, fixture.Store.LoadCount);
         Assert.Equal(2, viewModel.Videos.Count);
         Assert.Contains("save failed", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
     });
@@ -957,7 +960,7 @@ public sealed class MainViewModelStartupLoadingTests
         viewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(MainViewModel.StartupState) &&
-                viewModel.StartupState == StartupLibraryState.SavingScan)
+                viewModel.StartupState == StartupLibraryState.Ready)
             {
                 finalizedBeforeReady =
                     viewModel.Actors.Contains("Actor 0") &&
@@ -1025,9 +1028,13 @@ public sealed class MainViewModelStartupLoadingTests
     public Task EditorLease_SaveCancelAndException_ReleaseSameIdentity() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
+        fixture.Store.LoadOverride = _ => Task.FromResult(new LibraryData
+        {
+            Videos = new() { new VideoEntry("./Videos/editor.mp4", new VideoMeta("Before", null,
+                Array.Empty<string>(), "resources/noimage.jpg", Array.Empty<string>(), string.Empty)) }
+        });
         using var viewModel = fixture.CreateViewModel();
-        viewModel.SetStartupState(StartupLibraryState.Publishing);
-        viewModel.SetStartupState(StartupLibraryState.Ready);
+        await viewModel.InitializeAsync();
         Guid? identityAtSave = null;
         fixture.Store.SaveOverride = (_, _) =>
         {
@@ -1035,13 +1042,7 @@ public sealed class MainViewModelStartupLoadingTests
             identityAtSave = viewModel.CurrentMutationLease?.Identity;
             return Task.FromException(new IOException("save failed"));
         };
-        var item = new VideoItem
-        {
-            LibraryPath = "./Videos/editor.mp4",
-            Title = "Before",
-            Actors = Array.Empty<string>(),
-            Tags = Array.Empty<string>()
-        };
+        var item = Assert.Single(viewModel.Videos);
 
         await Assert.ThrowsAsync<IOException>(() => viewModel.ApplyMetadataEditAsync(
             item,
@@ -1053,6 +1054,8 @@ public sealed class MainViewModelStartupLoadingTests
                 string.Empty,
                 "resources/noimage.jpg")));
 
+        Assert.Equal("Before", item.Title);
+        Assert.Equal(0, item.Revision);
         Assert.NotNull(identityAtSave);
         Assert.Null(viewModel.CurrentMutationLease);
         Assert.True(viewModel.CanMutateLibrary);

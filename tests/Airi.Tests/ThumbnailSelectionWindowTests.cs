@@ -161,7 +161,7 @@ public sealed class ThumbnailSelectionWindowTests
                 Colors.Transparent,
                 Assert.IsType<SolidColorBrush>(focusBorder.BorderBrush).Color);
             Assert.Equal(
-                Color.FromRgb(0x3B, 0x82, 0xF6),
+                Color.FromRgb(0xD5, 0xB6, 0x7C),
                 Assert.IsType<SolidColorBrush>(selectionBorder.BorderBrush).Color);
             Assert.Equal("썸네일 후보 2/5, 선택됨", AutomationProperties.GetName(candidate));
             window.Close();
