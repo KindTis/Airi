@@ -11,7 +11,6 @@ using System.Windows.Media;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
-using Airi.Views;
 
 namespace Airi.Tests;
 
@@ -161,7 +160,7 @@ public sealed class MainWindowVideoDeletionTests
         var window = new MainWindow(vm);
         var list = (ListBox)window.FindName("VideoList");
         var confirmations = 0;
-        window.ConfirmVideoDeletionOverride = _ => { confirmations++; return Task.FromResult(false); };
+        window.ConfirmGalleryOperationOverride = _ => { confirmations++; return Task.FromResult(false); };
         try
         {
             await window.HandleVideoDeleteKeyAsync(Key.Delete, ModifierKeys.None, false, new TextBox());
@@ -189,7 +188,7 @@ public sealed class MainWindowVideoDeletionTests
         var finish = new TaskCompletionSource<VideoRecycleResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         f.Recycler.Override = _ => { started.SetResult(); return finish.Task; };
         var window = new MainWindow(vm);
-        window.ConfirmVideoDeletionOverride = _ => Task.FromResult(true);
+        window.ConfirmGalleryOperationOverride = _ => Task.FromResult(true);
         var list = (ListBox)window.FindName("VideoList");
         var task = window.HandleVideoDeleteKeyAsync(Key.Delete, ModifierKeys.None, false, list);
         await started.Task;
@@ -214,7 +213,7 @@ public sealed class MainWindowVideoDeletionTests
         var window = new MainWindow(vm);
         var list = (ListBox)window.FindName("VideoList");
         var confirmations = 0;
-        window.ConfirmVideoDeletionOverride = _ => { confirmations++; return Task.FromResult(false); };
+        window.ConfirmGalleryOperationOverride = _ => { confirmations++; return Task.FromResult(false); };
         try
         {
             WpfTestHost.Show(window);
@@ -240,64 +239,4 @@ public sealed class MainWindowVideoDeletionTests
         finally { window.Close(); }
     });
 
-    [Fact]
-    public Task CloseDuringActualModalConfirmation_CancelsWithoutMovingOrSaving() => WpfTestHost.RunAsync(async () =>
-    {
-        using var f = new VideoDeletionFixture();
-        using var vm = await f.CreateAsync();
-        var item = vm.SelectedVideo!;
-        var window = new MainWindow(vm);
-        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        VideoDeleteConfirmationWindow? dialog = null;
-        window.Closed += (_, _) => closed.TrySetResult();
-        window.VideoDeleteConfirmationFactory = target =>
-        {
-            dialog = new VideoDeleteConfirmationWindow(target.Title, target.FileName);
-            WpfTestHost.ConfigureOffscreen(dialog);
-            dialog.Loaded += (_, _) =>
-            {
-                seen.TrySetResult();
-                dialog.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(window.Close));
-            };
-            return dialog;
-        };
-        try
-        {
-            WpfTestHost.Show(window);
-            await window.InitializationTask;
-            var list = (ListBox)window.FindName("VideoList");
-            await window.HandleVideoDeleteKeyAsync(Key.Delete, ModifierKeys.None, false, list).WaitAsync(TimeSpan.FromSeconds(10));
-            await seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Same(window, dialog!.Owner);
-            Assert.NotEqual(true, dialog.DialogResult);
-            Assert.False(dialog.IsVisible);
-            Assert.True(vm.LifetimeToken.IsCancellationRequested);
-            Assert.Same(item, vm.SelectedVideo);
-            Assert.Contains(item, vm.Videos);
-            Assert.Empty(f.Recycler.Paths);
-            Assert.Equal(f.InitialJson, await System.IO.File.ReadAllTextAsync(f.Store.FilePath));
-        }
-        finally
-        {
-            if (!closed.Task.IsCompleted) window.Close();
-        }
-    });
-
-    [Fact]
-    public Task Dialog_ShowsFullValues_DefaultCancelAndCloseAreFalse() => WpfTestHost.RunAsync(() =>
-    {
-        var title = new string('가', 300);
-        var fileName = new string('a', 220) + ".mp4";
-        var dialog = new VideoDeleteConfirmationWindow(title, fileName);
-        Assert.Equal(title, ((TextBox)dialog.FindName("VideoTitle")).Text);
-        Assert.Equal(fileName, ((TextBox)dialog.FindName("VideoFileName")).Text);
-        var cancel = (Button)dialog.FindName("CancelButton");
-        Assert.True(cancel.IsDefault);
-        Assert.True(cancel.IsCancel);
-        dialog.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(dialog.Close));
-        Assert.NotEqual(true, WpfTestHost.ShowDialog(dialog));
-        return Task.CompletedTask;
-    });
 }

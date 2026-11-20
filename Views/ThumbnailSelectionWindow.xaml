@@ -6,7 +6,6 @@
         Background="{DynamicResource GalleryBackground}" Foreground="{DynamicResource GalleryText}"
         WindowStyle="None" ShowInTaskbar="False"
         PreviewKeyDown="OnWindowPreviewKeyDown">
-    <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Airi;component/Resources/Gallery.xaml"/></ResourceDictionary.MergedDictionaries><Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource GalleryPrimary}"/><Style x:Key="SecondaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"/></ResourceDictionary></Window.Resources>
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -72,15 +71,15 @@
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button x:Name="RegenerateButton" Content="다시 생성"
                     Width="110" Height="34"
-                    Style="{StaticResource PrimaryActionButtonStyle}"
+                    Style="{StaticResource GalleryPrimary}"
                     Click="OnRegenerateClick"/>
             <Button x:Name="CancelButton" Content="취소"
                     Width="110" Height="34" Margin="12,0,0,0"
-                    Style="{StaticResource SecondaryActionButtonStyle}"
+                    Style="{StaticResource {x:Type Button}}"
                     Click="OnCancelClick"/>
             <Button x:Name="ConfirmButton" Content="선택"
                     Width="110" Height="34" Margin="12,0,0,0"
-                    Style="{StaticResource PrimaryActionButtonStyle}"
+                    Style="{StaticResource GalleryPrimary}"
                     IsDefault="True" IsEnabled="False" Click="OnConfirmClick"/>
         </StackPanel>
     </Grid>

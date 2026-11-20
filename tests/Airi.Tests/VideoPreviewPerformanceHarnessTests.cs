@@ -255,42 +255,37 @@ public sealed class VideoPreviewPerformanceHarnessTests
             var container = Assert.IsType<ListBoxItem>(
                 list.ItemContainerGenerator.ContainerFromIndex(0));
             var video = Assert.IsType<VideoItem>(container.DataContext);
-            var tooltip = Assert.IsType<ToolTip>(ToolTipService.GetToolTip(container));
             container.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
             {
                 RoutedEvent = Mouse.MouseEnterEvent,
                 Source = container
             });
-            var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
+            await WaitUntilAsync(() => window.GalleryPreviewStateForTests is not null, TimeSpan.FromSeconds(5));
+            var state = Assert.IsType<TooltipPreviewState>(window.GalleryPreviewStateForTests);
             await PumpUntilAsync(
                 () => probe.HasStartedPlayback,
                 window,
-                viewModel,
-                stressUi: false,
                 TimeSpan.FromSeconds(8),
                 () => DescribeProbe(probe) +
-                      $", tooltipOpen={tooltip.IsOpen}, data={ReferenceEquals(container.DataContext, video)}, " +
-                      $"placement={ReferenceEquals(tooltip.PlacementTarget, container)}, " +
-                      $"content={ReferenceEquals(tooltip.Content, video)}, tag={tooltip.Tag is TooltipPreviewState}");
+                      $", galleryOpen={window.GalleryPopupIsOpenForTests}, data={ReferenceEquals(container.DataContext, video)}, " +
+                      $"inspected={ReferenceEquals(viewModel.InspectedVideo, video)}");
             await PumpUntilAsync(
                 () => probe.HasCompletedSession && probe.LiveProcessCount == 0,
                 window,
-                viewModel,
-                stressUi: true,
                 TimeSpan.FromSeconds(15),
                 () => DescribeProbe(probe) +
                       $", data={ReferenceEquals(container.DataContext, video)}, " +
-                      $"placement={ReferenceEquals(tooltip.PlacementTarget, container)}, " +
-                      $"content={ReferenceEquals(tooltip.Content, video)}, tag={tooltip.Tag is TooltipPreviewState}",
-                () => container.DataContext = video);
+                      $"inspected={ReferenceEquals(viewModel.InspectedVideo, video)}");
 
+            Assert.True(window.GalleryPopupIsOpenForTests);
+            Assert.Same(state, window.GalleryPreviewStateForTests);
             Assert.Equal(TooltipPreviewPhase.Cover, state.Phase);
             Assert.Null(state.PreviewSource);
             Assert.Same(video.ThumbnailSource, state.CoverSource);
 
             var result = probe.Complete(TimeSpan.FromSeconds(10));
             var dpi = VisualTreeHelper.GetDpi(window);
-            await window.CloseVideoTooltipAsync(container, tooltip);
+            await window.CloseGalleryForTestsAsync();
             WpfTestHost.DrainDispatcher(window.Dispatcher);
             var entry = new VideoPreviewPerformanceEntry(
                 mediaProbe.Container,
@@ -396,8 +391,6 @@ public sealed class VideoPreviewPerformanceHarnessTests
                 await PumpUntilAsync(
                     () => probe.HasStartedPlayback,
                     window,
-                    viewModel,
-                    stressUi: false,
                     TimeSpan.FromSeconds(8));
             }
 
@@ -453,31 +446,15 @@ public sealed class VideoPreviewPerformanceHarnessTests
     private static async Task PumpUntilAsync(
         Func<bool> condition,
         MainWindow window,
-        MainViewModel viewModel,
-        bool stressUi,
         TimeSpan timeout,
-        Func<string>? failureDetail = null,
-        Action? maintainSession = null)
+        Func<string>? failureDetail = null)
     {
         var deadline = DateTime.UtcNow + timeout;
-        var iteration = 0;
         while (!condition() && DateTime.UtcNow < deadline)
         {
-            if (stressUi)
-            {
-                var scroll = window.GetVideoScrollViewer();
-                scroll?.ScrollToVerticalOffset(Math.Min(scroll.ScrollableHeight, (iteration % 4) * 12d));
-                if (iteration % 8 == 0)
-                {
-                    viewModel.SearchQuery = iteration % 16 == 0 ? "Preview" : "performance";
-                }
-                maintainSession?.Invoke();
-            }
             window.UpdateLayout();
-            maintainSession?.Invoke();
             WpfTestHost.DrainDispatcher(window.Dispatcher);
             await Task.Delay(20);
-            iteration++;
         }
         Assert.True(
             condition(),

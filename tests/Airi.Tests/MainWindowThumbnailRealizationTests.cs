@@ -116,102 +116,6 @@ public sealed class MainWindowThumbnailRealizationTests
     }
 
     [Fact]
-    public Task TooltipOpen_LoadsDpiSizedSourceWithoutReplacingCardSource() => Run(async fixture =>
-    {
-        await fixture.Window.RegisterThumbnailImageForTestsAsync(fixture.CreateImage(fixture.A));
-        var cardSource = fixture.A.ThumbnailSource;
-        var container = new ListBoxItem { DataContext = fixture.A };
-        var tooltip = new ToolTip { Content = fixture.A };
-
-        await fixture.Window.LoadTooltipCoverAsync(container, tooltip, fixture.A, 1.5d);
-
-        Assert.Equal(new[] { 260, 720 }, fixture.Loader.Widths);
-        Assert.Same(cardSource, fixture.A.ThumbnailSource);
-        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        Assert.Same(fixture.Loader.Sources[^1], state.CoverSource);
-        Assert.Same(fixture.A, tooltip.Content);
-        Assert.Same(container, tooltip.PlacementTarget);
-    });
-
-    [Fact]
-    public Task TooltipOpen_ReusedTooltipReplacesPreviousVideoAndSource() => Run(async fixture =>
-    {
-        var containerA = new ListBoxItem { DataContext = fixture.A };
-        var containerB = new ListBoxItem { DataContext = fixture.B };
-        var tooltip = new ToolTip();
-
-        await fixture.Window.LoadTooltipCoverAsync(containerA, tooltip, fixture.A, 1d);
-        var previousState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        previousState.ShowFrame(8, 8, new VideoPreviewFrame(new byte[8 * 8 * 4], TimeSpan.Zero));
-        await fixture.Window.LoadTooltipCoverAsync(containerB, tooltip, fixture.B, 1d);
-
-        Assert.Equal(new[] { fixture.A.ThumbnailPath, fixture.B.ThumbnailPath }, fixture.Loader.Paths);
-        Assert.Same(fixture.B, tooltip.Content);
-        Assert.Same(containerB, tooltip.PlacementTarget);
-        var currentState = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        Assert.NotSame(previousState, currentState);
-        Assert.Null(currentState.PreviewSource);
-        Assert.Same(fixture.Loader.Sources[^1], currentState.CoverSource);
-    });
-
-    [Fact]
-    public Task TooltipOpen_PreviousDelayedRequestCannotOverwriteCurrentVideo() => Run(async fixture =>
-    {
-        fixture.Loader.DelayNextRequest();
-        var containerA = new ListBoxItem { DataContext = fixture.A };
-        var containerB = new ListBoxItem { DataContext = fixture.B };
-        var tooltip = new ToolTip();
-
-        var loadA = fixture.Window.LoadTooltipCoverAsync(containerA, tooltip, fixture.A, 1d);
-        var loadB = fixture.Window.LoadTooltipCoverAsync(containerB, tooltip, fixture.B, 1d);
-        await Task.WhenAll(loadA, loadB);
-
-        Assert.True(fixture.Loader.CancellationTokens[0].IsCancellationRequested);
-        Assert.Same(fixture.B, tooltip.Content);
-        Assert.Same(containerB, tooltip.PlacementTarget);
-        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        Assert.Same(fixture.Loader.Sources[^1], state.CoverSource);
-    });
-
-    [Fact]
-    public Task TooltipClose_CancelsInFlightLoadAndClearsState() => Run(async fixture =>
-    {
-        fixture.Loader.DelayNextRequest();
-        var container = new ListBoxItem { DataContext = fixture.A };
-        var tooltip = new ToolTip { Content = fixture.A };
-
-        var load = fixture.Window.LoadTooltipCoverAsync(container, tooltip, fixture.A, 1d);
-        var cancellationToken = Assert.Single(fixture.Loader.CancellationTokens);
-        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        Assert.Same(fixture.A.ThumbnailSource, state.CoverSource);
-
-        await fixture.Window.CloseVideoTooltipAsync(container, tooltip);
-
-        Assert.True(cancellationToken.IsCancellationRequested);
-        Assert.Null(tooltip.Tag);
-        await load;
-    });
-
-    [Fact]
-    public Task TooltipClose_FromPreviousContainerDoesNotCloseCurrentVideo() => Run(async fixture =>
-    {
-        var containerA = new ListBoxItem { DataContext = fixture.A };
-        var containerB = new ListBoxItem { DataContext = fixture.B };
-        var tooltip = new ToolTip();
-
-        await fixture.Window.LoadTooltipCoverAsync(containerA, tooltip, fixture.A, 1d);
-        await fixture.Window.LoadTooltipCoverAsync(containerB, tooltip, fixture.B, 1d);
-        tooltip.IsOpen = true;
-        var currentSource = tooltip.Tag;
-
-        await fixture.Window.CloseVideoTooltipAsync(containerA, tooltip);
-
-        Assert.True(tooltip.IsOpen);
-        Assert.Same(fixture.B, tooltip.Content);
-        Assert.Same(currentSource, tooltip.Tag);
-    });
-
-    [Fact]
     public Task DeletionStop_ReusedContainerPreservesNewGalleryAndStopsCapturedPreview() => RunWithPreview(async fixture =>
     {
         fixture.MakeAvailable(fixture.A); var container = await fixture.RealizeAsync(fixture.A);
@@ -226,37 +130,6 @@ public sealed class MainWindowThumbnailRealizationTests
         Assert.True(fixture.Window.GalleryPopupIsOpenForTests); Assert.Same(fixture.B, fixture.ViewModel.InspectedVideo); Assert.Same(newState, fixture.Window.GalleryPreviewStateForTests); Assert.True(oldToken.IsCancellationRequested);
         await fixture.Window.CloseGalleryForTestsAsync();
     }, clientAreaAnimationsEnabledOverride: true);
-    [Fact]
-    public Task TooltipClose_CancelsCoverAndPreviewBeforeCompleting() => RunWithPreview(async fixture =>
-    {
-        fixture.Loader.DelayNextRequest();
-        var container = new ListBoxItem { DataContext = fixture.A };
-        var tooltip = new ToolTip { Content = fixture.A };
-        var cover = fixture.Window.LoadTooltipCoverAsync(container, tooltip, fixture.A, 1d);
-        var state = Assert.IsType<TooltipPreviewState>(tooltip.Tag);
-        var preview = fixture.PreviewController!.RunAsync(
-            new TooltipPreviewSession(
-                state.SessionId,
-                new VideoPreviewRequest(fixture.A.SourcePath, 480, 350, 15, TimeSpan.FromSeconds(10)),
-                true,
-                true,
-                new AlwaysCurrentPreviewSink()),
-            CancellationToken.None);
-        await fixture.PreviewService!.WaitUntilCalledAsync();
-
-        var close = fixture.Window.CloseVideoTooltipAsync(container, tooltip);
-
-        Assert.False(tooltip.IsOpen);
-        Assert.Null(tooltip.Tag);
-        Assert.Null(tooltip.Content);
-        Assert.Null(tooltip.PlacementTarget);
-        await close;
-        await cover;
-        await preview;
-        Assert.True(Assert.Single(fixture.Loader.CancellationTokens).IsCancellationRequested);
-        Assert.True(fixture.PreviewService.PrepareToken.IsCancellationRequested);
-    });
-
     [Fact]
     public Task TooltipPreview_AnimationsDisabledDoesNotCallInjectedService() => RunWithPreview(async fixture =>
     {
@@ -440,31 +313,6 @@ public sealed class MainWindowThumbnailRealizationTests
         Assert.Contains(images, image => image.Source is null && image.Visibility == Visibility.Collapsed);
         await fixture.Window.CloseGalleryForTestsAsync();
     });
-    [Fact]
-    public Task TooltipSink_BackgroundCallbackMarshalsStaleCheckToDispatcher() => Run(async fixture =>
-    {
-        var container = new ListBoxItem { DataContext = fixture.A };
-        var tooltip = new ToolTip { Content = fixture.A, PlacementTarget = container };
-        var state = new TooltipPreviewState(Guid.NewGuid(), fixture.A.ThumbnailSource);
-        tooltip.Tag = state;
-        var sink = new MainWindow.MainWindowTooltipPreviewSink(
-            fixture.Window,
-            container,
-            tooltip,
-            fixture.A,
-            state,
-            TimeProvider.System);
-
-        var callback = await Task.Run(async () =>
-            await sink.SetPhaseAsync(
-                state.SessionId,
-                TooltipPreviewPhase.Preparing,
-                CancellationToken.None));
-
-        Assert.True(callback.Applied);
-        Assert.Equal(TooltipPreviewPhase.Preparing, state.Phase);
-    });
-
     [Fact]
     public Task Loaded_WhenOldRegistrationDiffers_ReleasesOldBeforeRequestingCurrent() => Run(async fixture =>
     {

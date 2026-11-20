@@ -36,6 +36,7 @@ public partial class MainWindow
     private CancellationTokenSource? _galleryThumbnailCancellation;
     private Task _galleryThumbnailTask = Task.CompletedTask;
     private Window? _galleryDialog;
+    internal Func<GalleryOperationConfirmation, Task<bool>>? ConfirmGalleryOperationOverride { get; set; }
     private ListBoxItem? _lastDetailAnchor;
     private bool _galleryPointerPress;
     private double _lastPageOffset;
@@ -173,7 +174,7 @@ public partial class MainWindow
         try { await _galleryPreviewTask; } catch (OperationCanceledException) { } finally { cancellation?.Dispose(); }
     }
     private void CloseGalleryDetail() { GalleryDetail.IsOpen = false; _ = StopGalleryPreviewAsync(); }
-    private async Task StopGalleryOperationPreviewAsync(VideoItem item) { if (ReferenceEquals(ViewModel.InspectedVideo, item)) await StopGalleryPreviewAsync(); await StopDeletedVideoPreviewAsync(item); }
+    private async Task StopGalleryOperationPreviewAsync(VideoItem item) { if (ReferenceEquals(ViewModel.InspectedVideo, item)) await StopGalleryPreviewAsync(); }
     private void OnGalleryPopupOpened(object sender, EventArgs e)
     {
         PositionGalleryPopup();
@@ -315,22 +316,24 @@ public partial class MainWindow
     private Task<bool> ConfirmGalleryOperationAsync(GalleryOperationConfirmation confirmation)
     {
         if (_previewShutdownStarted) return Task.FromResult(false);
-        if (confirmation.Count == 1 && (ConfirmVideoDeletionOverride is not null || VideoDeleteConfirmationFactory is not null))
-        {
-            var item = ViewModel.Videos.FirstOrDefault(v => confirmation.Paths.Count > 0 && v.SourcePath == confirmation.Paths[0]) ?? ViewModel.SelectedVideo;
-            if (item is not null) return ConfirmVideoDeletionAsync(new VideoDeletionTarget(item, item.LibraryPath, item.SourcePath, item.Title, Path.GetFileName(item.SourcePath)));
-        }
+        if (ConfirmGalleryOperationOverride is { } confirm) return confirm(confirmation);
+        return Task.FromResult(ShowGalleryDialog(CreateGalleryOperationDialog(confirmation)) == true);
+    }
+    internal Window CreateGalleryOperationDialog(GalleryOperationConfirmation confirmation)
+    {
         var body = new StackPanel(); body.Children.Add(new TextBlock { Text = $"대상 {confirmation.Count}개", Margin = new Thickness(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap });
         body.Children.Add(new TextBlock { Text = confirmation.Intent == LibraryOperationIntent.Restore ? "영상을 Windows 휴지통에서 원래 경로로 복원합니다." : "영상 파일만 Windows 휴지통으로 이동하며 메타데이터는 앱에서 보존합니다.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
         for (var i = 0; i < Math.Min(5, confirmation.Count); i++) { body.Children.Add(new TextBlock { Text = confirmation.Titles[i], TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) }); if (i < confirmation.Paths.Count) body.Children.Add(new TextBlock { Text = confirmation.Paths[i], Foreground = (Brush)FindResource("GalleryMuted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 7) }); }
         if (confirmation.Count > 5) body.Children.Add(new TextBlock { Text = $"그 외 {confirmation.Count - 5}개", Margin = new Thickness(0, 7, 0, 0) });
         var title = confirmation.Intent == LibraryOperationIntent.Restore ? "영상을 복원할까요?" : "휴지통으로 이동할까요?";
-        return Task.FromResult(ShowGalleryDialog(title, new ScrollViewer { Content = body, MaxHeight = 400, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, true) == true);
+        return CreateGalleryDialog(title, new ScrollViewer { Content = body, MaxHeight = 400, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, true);
     }
-    private bool? ShowGalleryDialog(string title, UIElement body, bool confirmation)
+    private bool? ShowGalleryDialog(string title, UIElement body, bool confirmation) =>
+        ShowGalleryDialog(CreateGalleryDialog(title, body, confirmation));
+
+    internal Window CreateGalleryDialog(string title, UIElement body, bool confirmation)
     {
-        var dialog = new Window { Owner = this, Title = title, WindowStartupLocation = WindowStartupLocation.CenterOwner, SizeToContent = SizeToContent.Height, Width = Math.Min(480, Math.Max(280, ((Content as FrameworkElement)?.ActualWidth ?? ActualWidth) - 32)), MaxHeight = Math.Max(250, ActualHeight - 32), ResizeMode = ResizeMode.NoResize, Background = (Brush)FindResource("GallerySurface"), Foreground = (Brush)FindResource("GalleryText"), FontFamily = FontFamily, FontSize = 12, ShowInTaskbar = false };
-        dialog.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("Resources/Gallery.xaml", UriKind.Relative) });
+        var dialog = new Window { Title = title, WindowStartupLocation = WindowStartupLocation.CenterOwner, SizeToContent = SizeToContent.Height, Width = Math.Min(480, Math.Max(280, ((Content as FrameworkElement)?.ActualWidth ?? ActualWidth) - 32)), MaxHeight = Math.Max(250, ActualHeight - 32), ResizeMode = ResizeMode.NoResize, Background = (Brush)FindResource("GallerySurface"), Foreground = (Brush)FindResource("GalleryText"), FontFamily = FontFamily, FontSize = 12, ShowInTaskbar = false };
         var layout = new StackPanel { Margin = new Thickness(28) }; layout.Children.Add(new TextBlock { Text = title, FontSize = 20, Margin = new Thickness(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap }); layout.Children.Add(body);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 23, 0, 0) };
         var cancel = new Button { Content = confirmation ? "취소" : "닫기", IsCancel = true, IsDefault = true }; cancel.Click += (_, _) => dialog.DialogResult = false; actions.Children.Add(cancel);
@@ -338,6 +341,11 @@ public partial class MainWindow
         layout.Children.Add(actions);
         dialog.WindowStyle = WindowStyle.None; dialog.AllowsTransparency = true; dialog.Background = Brushes.Transparent; dialog.Width += 120; dialog.MaxHeight += 120;
         dialog.Content = new Border { Child = layout, Background = (Brush)FindResource("GallerySurface"), CornerRadius = new CornerRadius(12), Margin = new Thickness(60), Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 60, ShadowDepth = 18, Direction = 270, Opacity = .2 } };
+        return dialog;
+    }
+    private bool? ShowGalleryDialog(Window dialog)
+    {
+        dialog.Owner = this;
         _galleryDialog = dialog;
         dialog.PreviewKeyUp += OnVideoDeleteKeyUp;
         try { return dialog.ShowDialog(); } finally { dialog.PreviewKeyUp -= OnVideoDeleteKeyUp; _galleryDialog = null; }

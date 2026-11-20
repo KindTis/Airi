@@ -17,6 +17,23 @@
   <c:GalleryMetadataFieldLabelConverter x:Key="GalleryFieldLabel"/>
   <c:GalleryListLabelConverter x:Key="GalleryLabel" />
   <c:GalleryFolderLabelConverter x:Key="GalleryFolderLabel" />
+  <Style TargetType="ToolTip">
+    <Setter Property="Foreground" Value="{StaticResource GalleryText}" />
+    <Setter Property="Background" Value="{StaticResource GallerySurface}" />
+    <Setter Property="BorderBrush" Value="{StaticResource GalleryLine}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="MaxWidth" Value="390" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToolTip">
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+            <ContentPresenter />
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
   <Style TargetType="TextBlock">
     <Setter Property="Foreground" Value="{StaticResource GalleryText}" />
     <Setter Property="FontSize" Value="12" />
@@ -44,7 +61,12 @@
       <Setter.Value>
         <ControlTemplate TargetType="Button">
           <Border x:Name="Body" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True">
+              <ContentPresenter.Resources>
+                <!-- 버튼 콘텐츠는 전역 본문 색상 대신 버튼의 Foreground를 상속한다. -->
+                <Style TargetType="TextBlock" />
+              </ContentPresenter.Resources>
+            </ContentPresenter>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
@@ -63,11 +85,16 @@
     <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
   <Style x:Key="GalleryPrimary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-    <Style.Resources><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Foreground" Value="{StaticResource GalleryAccentText}"/></Style></Style.Resources>
     <Setter Property="Background" Value="{StaticResource GalleryAccent}" />
     <Setter Property="BorderBrush" Value="{StaticResource GalleryAccent}" />
     <Setter Property="Foreground" Value="{StaticResource GalleryAccentText}" />
     <Setter Property="FontWeight" Value="SemiBold" />
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{StaticResource GalleryHover}" />
+        <Setter Property="Foreground" Value="{StaticResource GalleryText}" />
+      </Trigger>
+    </Style.Triggers>
   </Style>
   <Style x:Key="GalleryDangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Foreground" Value="{StaticResource GalleryDanger}" />

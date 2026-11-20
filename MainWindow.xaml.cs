@@ -44,7 +44,6 @@ namespace Airi
         private readonly Dictionary<Image, int> _thumbnailRegistrationWidths = new();
         private readonly Dictionary<VideoItem, int> _thumbnailRegistrationCounts = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<VideoItem, int> _thumbnailRequestedWidths = new(ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<ToolTip, CancellationTokenSource> _tooltipCoverRequests = new();
         private readonly TooltipPreviewController? _tooltipPreviewController;
         private readonly bool? _clientAreaAnimationsEnabledOverride;
         private Task _initializationTask = Task.CompletedTask;
@@ -252,98 +251,6 @@ namespace Airi
 
         internal static int CalculateTooltipDecodeWidth(double dpiScaleX) =>
             Math.Clamp((int)Math.Ceiling(480d * dpiScaleX), 64, 960);
-
-        internal async Task LoadTooltipCoverAsync(
-            ListBoxItem container,
-            ToolTip tooltip,
-            VideoItem item,
-            double dpiScaleX)
-        {
-            if (_previewShutdownStarted || ViewModel.IsVideoDeletionTarget(item)) return;
-            CancelTooltipCoverRequest(tooltip);
-            var state = ReferenceEquals(tooltip.Content, item) && tooltip.Tag is TooltipPreviewState currentState
-                ? currentState
-                : new TooltipPreviewState(Guid.NewGuid(), item.ThumbnailSource);
-            tooltip.PlacementTarget = container;
-            tooltip.Content = item;
-            tooltip.Tag = state;
-            if (_thumbnailImageLoader is null)
-            {
-                return;
-            }
-
-            var request = new CancellationTokenSource();
-            _tooltipCoverRequests[tooltip] = request;
-            try
-            {
-                var result = await _thumbnailImageLoader.LoadAsync(
-                    item.ThumbnailPath,
-                    CalculateTooltipDecodeWidth(dpiScaleX),
-                    request.Token);
-                if (!result.IsFallback &&
-                    !request.IsCancellationRequested &&
-                    _tooltipCoverRequests.TryGetValue(tooltip, out var current) &&
-                    ReferenceEquals(current, request) &&
-                    ReferenceEquals(container.DataContext, item) &&
-                    ReferenceEquals(tooltip.PlacementTarget, container) &&
-                    ReferenceEquals(tooltip.Content, item) &&
-                    ReferenceEquals(tooltip.Tag, state))
-                {
-                    state.UpdateCover(result.Source);
-                }
-            }
-            catch (OperationCanceledException) when (request.IsCancellationRequested)
-            {
-            }
-            finally
-            {
-                if (_tooltipCoverRequests.TryGetValue(tooltip, out var current) && ReferenceEquals(current, request))
-                {
-                    _tooltipCoverRequests.Remove(tooltip);
-                }
-                request.Dispose();
-            }
-        }
-
-        internal async Task CloseVideoTooltipAsync(ListBoxItem container, ToolTip tooltip)
-        {
-            if (!ReferenceEquals(tooltip.PlacementTarget, container))
-            {
-                return;
-            }
-
-            var state = tooltip.Tag as TooltipPreviewState;
-            var video = tooltip.Content as VideoItem;
-            var sessionId = state?.SessionId;
-            CancelTooltipCoverRequest(tooltip);
-            state?.SetPhase(TooltipPreviewPhase.Closed);
-            tooltip.IsOpen = false;
-            tooltip.Tag = null;
-            tooltip.Content = null;
-            tooltip.PlacementTarget = null;
-            if (video is not null && _videoTooltips.TryGetValue(video, out var currentTooltip) &&
-                ReferenceEquals(currentTooltip.Tooltip, tooltip) && currentTooltip.SessionId == sessionId)
-            {
-                _videoTooltips.Remove(video);
-            }
-            var stop = _tooltipPreviewController is not null && sessionId is { } id
-                ? _tooltipPreviewController.StopAsync(id) : Task.CompletedTask;
-            if (video is not null) _videoTooltipStops[video] = stop;
-            try { await stop; }
-            finally
-            {
-                if (video is not null && _videoTooltipStops.TryGetValue(video, out var currentStop) && ReferenceEquals(currentStop, stop))
-                    _videoTooltipStops.Remove(video);
-            }
-        }
-
-        private void CancelTooltipCoverRequest(ToolTip tooltip)
-        {
-            if (_tooltipCoverRequests.TryGetValue(tooltip, out var request))
-            {
-                request.Cancel();
-            }
-        }
 
         internal Task RegisterThumbnailImageForTestsAsync(Image image) =>
             image.DataContext is VideoItem item
@@ -693,130 +600,6 @@ namespace Airi
             TryPlayVideo(video);
         }
 
-        private async void OnVideoItemMouseEnter(object sender, MouseEventArgs e)
-        {
-            if (sender is ListBoxItem item &&
-                item.DataContext is VideoItem video &&
-                !_previewShutdownStarted && !ViewModel.IsVideoDeletionTarget(video) &&
-                ToolTipService.GetToolTip(item) is ToolTip tooltip)
-            {
-                var sessionId = Guid.NewGuid();
-                var animationsEnabled =
-                    _clientAreaAnimationsEnabledOverride ??
-                    SystemParameters.ClientAreaAnimation;
-                var previewEligible =
-                    video.Presence == VideoPresenceState.Available &&
-                    !string.IsNullOrWhiteSpace(video.SourcePath) &&
-                    File.Exists(video.SourcePath);
-                var showDelayIndicator =
-                    _tooltipPreviewController is not null &&
-                    animationsEnabled &&
-                    previewEligible;
-                var state = new TooltipPreviewState(
-                    sessionId,
-                    video.ThumbnailSource,
-                    showDelayIndicator);
-                tooltip.PlacementTarget = item;
-                tooltip.Placement = PlacementMode.Relative;
-                tooltip.Content = video;
-                tooltip.Tag = state;
-                _videoTooltips[video] = (item, tooltip, sessionId);
-                UpdateTooltipPosition(item, tooltip, e);
-                tooltip.IsOpen = true;
-
-                var session = new TooltipPreviewSession(
-                    sessionId,
-                    new VideoPreviewRequest(
-                        video.SourcePath,
-                        480,
-                        350,
-                        15,
-                        TimeSpan.FromSeconds(10)),
-                    animationsEnabled,
-                    previewEligible,
-                    new MainWindowTooltipPreviewSink(
-                        this,
-                        item,
-                        tooltip,
-                        video,
-                        state,
-                        _tooltipPreviewController?.Clock ?? TimeProvider.System));
-
-                try
-                {
-                    await Task.WhenAll(
-                        LoadTooltipCoverAsync(item, tooltip, video, VisualTreeHelper.GetDpi(item).DpiScaleX),
-                        _tooltipPreviewController is null
-                            ? Task.CompletedTask
-                            : RunTooltipPreviewSafelyAsync(video, session));
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Error("Unexpected tooltip cover request failure.", ex);
-                }
-            }
-        }
-
-        private async Task RunTooltipPreviewSafelyAsync(
-            VideoItem video,
-            TooltipPreviewSession session)
-        {
-            ArgumentNullException.ThrowIfNull(video);
-            Task? run = null;
-            try
-            {
-                if (_previewShutdownStarted || ViewModel.IsVideoDeletionTarget(video)) return;
-                run = _tooltipPreviewController!.RunAsync(session, CancellationToken.None);
-                _videoPreviewRuns[video] = run;
-                await run;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception)
-            {
-                AppLogger.Error("Unexpected tooltip preview failure.");
-            }
-            finally
-            {
-                if (run is not null && _videoPreviewRuns.TryGetValue(video, out var current) && ReferenceEquals(current, run))
-                    _videoPreviewRuns.Remove(video);
-            }
-        }
-
-        private void OnVideoItemMouseMove(object sender, MouseEventArgs e)
-        {
-            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip && tooltip.IsOpen)
-            {
-                UpdateTooltipPosition(item, tooltip, e);
-            }
-        }
-
-        private async void OnVideoItemMouseLeave(object sender, MouseEventArgs e)
-        {
-            if (sender is ListBoxItem item && ToolTipService.GetToolTip(item) is ToolTip tooltip)
-            {
-                try
-                {
-                    await CloseVideoTooltipAsync(item, tooltip);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception)
-                {
-                    AppLogger.Error("Unexpected tooltip preview close failure.");
-                }
-            }
-        }
-
-        private static void UpdateTooltipPosition(UIElement item, ToolTip tooltip, MouseEventArgs e)
-        {
-            var position = e.GetPosition(item);
-            tooltip.HorizontalOffset = position.X + 5;
-            tooltip.VerticalOffset = position.Y + 5;
-        }
-
         private void OnPlayVideoRequested(VideoItem video)
         {
             if (!Dispatcher.CheckAccess())
@@ -853,90 +636,6 @@ namespace Airi
             var result=_videoLauncher.Play(video.SourcePath);
             if(!result.Succeeded)ShowGalleryMessage("영상을 재생할 수 없습니다",result.Reason??"파일을 확인해 주세요.");
         }
-        internal sealed class MainWindowTooltipPreviewSink : ITooltipPreviewSink
-        {
-            private readonly MainWindow _window;
-            private readonly ListBoxItem _container;
-            private readonly ToolTip _tooltip;
-            private readonly VideoItem _item;
-            private readonly TooltipPreviewState _state;
-            private readonly TimeProvider _timeProvider;
-
-            public MainWindowTooltipPreviewSink(
-                MainWindow window,
-                ListBoxItem container,
-                ToolTip tooltip,
-                VideoItem item,
-                TooltipPreviewState state,
-                TimeProvider timeProvider)
-            {
-                _window = window;
-                _container = container;
-                _tooltip = tooltip;
-                _item = item;
-                _state = state;
-                _timeProvider = timeProvider;
-            }
-
-            public bool IsCurrent(Guid sessionId) =>
-                _window.Dispatcher.CheckAccess()
-                    ? IsCurrentOnDispatcher(sessionId)
-                    : _window.Dispatcher.Invoke(() => IsCurrentOnDispatcher(sessionId));
-
-            private bool IsCurrentOnDispatcher(Guid sessionId) =>
-                _state.SessionId == sessionId &&
-                ReferenceEquals(_container.DataContext, _item) &&
-                ReferenceEquals(_tooltip.PlacementTarget, _container) &&
-                ReferenceEquals(_tooltip.Content, _item) &&
-                ReferenceEquals(_tooltip.Tag, _state);
-
-            public async ValueTask<DispatcherCallbackResult> SetPhaseAsync(
-                Guid sessionId,
-                TooltipPreviewPhase phase,
-                CancellationToken cancellationToken)
-            {
-                if (!IsCurrent(sessionId)) return default;
-                return await _window.Dispatcher.InvokeAsync(
-                    () =>
-                    {
-                        if (!IsCurrent(sessionId)) return default;
-                        var started = _timeProvider.GetTimestamp();
-                        _state.SetPhase(phase);
-                        var completed = _timeProvider.GetTimestamp();
-                        return new DispatcherCallbackResult(
-                            true,
-                            completed,
-                            _timeProvider.GetElapsedTime(started, completed));
-                    },
-                    DispatcherPriority.Render,
-                    cancellationToken);
-            }
-
-            public async ValueTask<FramePresentationResult> ShowFrameAsync(
-                Guid sessionId,
-                int pixelWidth,
-                int pixelHeight,
-                VideoPreviewFrame frame,
-                CancellationToken cancellationToken)
-            {
-                if (!IsCurrent(sessionId)) return default;
-                return await _window.Dispatcher.InvokeAsync(
-                    () =>
-                    {
-                        if (!IsCurrent(sessionId)) return default;
-                        var started = _timeProvider.GetTimestamp();
-                        _state.ShowFrame(pixelWidth, pixelHeight, frame);
-                        var displayed = _timeProvider.GetTimestamp();
-                        return new FramePresentationResult(
-                            true,
-                            displayed,
-                            _timeProvider.GetElapsedTime(started, displayed));
-                    },
-                    DispatcherPriority.Render,
-                    cancellationToken);
-            }
-        }
-
         protected override async void OnClosing(CancelEventArgs e)
         {
             if (ViewModel is null) { base.OnClosing(e); return; }
@@ -947,7 +646,6 @@ namespace Airi
                 _previewShutdownStarted = true;
                 try
                 {
-                    _videoDeleteConfirmation?.Close();
                     CancelGalleryThumbnailWork();
                     if (ViewModel.CancelEditCommand.CanExecute(null)) ViewModel.CancelEditCommand.Execute(null);
                     _galleryDialog?.Close();
@@ -983,11 +681,6 @@ namespace Airi
             DetachPerformanceRendering();
             ViewModel.Videos.CollectionChanged -= OnPerformanceVideosChanged;
             ViewModel.PlayVideoRequested -= OnPlayVideoRequested;
-            foreach (var request in _tooltipCoverRequests.Values.ToArray())
-            {
-                request.Cancel();
-            }
-            _tooltipCoverRequests.Clear();
             foreach (var image in _thumbnailRegistrations.Keys.ToArray())
             {
                 UnregisterThumbnailImage(image);
