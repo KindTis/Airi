@@ -13,11 +13,12 @@ internal sealed record ExistingScanItemSnapshot(
 
 internal sealed record ScanPreparationSeed(
     VideoEntry[] VideoReferences,
-    KeyValuePair<string, VideoItem>[] ItemIdentitiesByNormalizedPath);
+    KeyValuePair<Guid, VideoItem>[] ItemIdentitiesById,
+    LibraryData? Envelope = null);
 
 internal sealed record ScanPreparationSnapshot(
     IReadOnlyList<VideoEntry> Videos,
-    IReadOnlyDictionary<string, ExistingScanItemSnapshot> ExistingByPath);
+    IReadOnlyDictionary<Guid, ExistingScanItemSnapshot> ExistingById);
 
 internal abstract record ScanApplyOperation;
 
