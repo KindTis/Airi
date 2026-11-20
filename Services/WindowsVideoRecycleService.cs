@@ -20,6 +20,14 @@ internal sealed class RecycleOperationState(string absolutePath)
     private string? _recycledPath;
     private int _attributeQueryResult;
     private uint _attributes;
+    private Exception? _receiptFailure;
+    internal string? Receipt { get; private set; }
+
+    internal void CaptureReceipt(Func<string> createReceipt)
+    {
+        try { Receipt = createReceipt(); }
+        catch (Exception ex) { _receiptFailure = ex; }
+    }
 
     internal bool BeforeDelete(string? path, uint flags, int attributeQueryResult, uint attributes)
     {
@@ -49,13 +57,22 @@ internal sealed class RecycleOperationState(string absolutePath)
     internal VideoRecycleResult Complete(int performResult, int abortedQueryResult, bool aborted)
     {
         var result = ClassifyCompletion(performResult, abortedQueryResult, aborted);
+        if (_receiptFailure is not null && !_vetoed)
+            result = result with
+            {
+                Outcome = VideoRecycleOutcome.Unknown,
+                RecycledPath = null,
+                Reason = $"대상 이동은 관측했지만 정확한 복원 영수증을 확보하지 못해 완료를 확정할 수 없습니다. {_receiptFailure.Message}"
+            };
         return result with
         {
             ObservedDestinationPath = !_vetoed && _preCount == 1 && _postCount == 1 && _hasRecycleItem ? _recycledPath : null,
             Diagnostics = $"pre={_preCount}, post={_postCount}, postHRESULT=0x{_postResult:X8}, " +
                 $"performHRESULT=0x{performResult:X8}, abortedQueryHRESULT=0x{abortedQueryResult:X8}, " +
                 $"aborted={aborted}, recycleItem={_hasRecycleItem}, safetyVeto={_vetoed}, " +
-                $"attributesHRESULT=0x{_attributeQueryResult:X8}, attributes=0x{_attributes:X8}"
+                $"attributesHRESULT=0x{_attributeQueryResult:X8}, attributes=0x{_attributes:X8}" +
+                (_receiptFailure is null ? string.Empty :
+                    $", receiptError={_receiptFailure.GetType().FullName}, receiptHRESULT=0x{_receiptFailure.HResult:X8}, receiptMessage={_receiptFailure.Message}")
         };
     }
 
@@ -90,12 +107,12 @@ internal sealed class RecycleOperationState(string absolutePath)
     private static bool IsCancellation(int value) => value is unchecked((int)0x800704C7) or unchecked((int)0x80270000);
 }
 
-public sealed class WindowsVideoRecycleService : IVideoRecycleService
+public sealed partial class WindowsVideoRecycleService : IVideoRecycleService
 {
     public Task<VideoRecycleResult> RecycleAsync(string absolutePath)
     {
         if (string.IsNullOrWhiteSpace(absolutePath) || !Path.IsPathFullyQualified(absolutePath))
-            return Task.FromResult(new VideoRecycleResult(VideoRecycleOutcome.Failed, "유효한 절대 파일 경로가 아닙니다."));
+            return Task.FromResult(new VideoRecycleResult(VideoRecycleOutcome.Failed, "유효한 절대 파일 경로가 아닙니다.") { SideEffectsKnownAbsent = true });
         var completion = new TaskCompletionSource<VideoRecycleResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
@@ -120,13 +137,14 @@ public sealed class WindowsVideoRecycleService : IVideoRecycleService
     private static VideoRecycleResult RecycleOnSta(string path)
     {
         if (!File.Exists(path) || Directory.Exists(path))
-            return new(VideoRecycleOutcome.Failed, "대상 파일이 없거나 일반 파일이 아닙니다.");
+            return Refused("대상 파일이 없거나 일반 파일이 아닙니다.");
         IFileOperation? operation = null;
         IShellItem? item = null;
         var state = new RecycleOperationState(path);
         var started = false;
         try
         {
+            var sourceIdentity = ReadIdentity(path);
             var operationType = Type.GetTypeFromCLSID(new Guid("3AD05575-8857-4850-9277-11B85BDB8E09"), throwOnError: true)!;
             operation = (IFileOperation)Activator.CreateInstance(operationType)!;
             // FOFX_RECYCLEONDELETE | FOF_NO_CONNECTED_ELEMENTS | FOF_SILENT |
@@ -135,17 +153,24 @@ public sealed class WindowsVideoRecycleService : IVideoRecycleService
             Marshal.ThrowExceptionForHR(operation.SetOperationFlags(0x00080000 | 0x2000 | 0x4 | 0x400 | 0x00100000 | 0x4000 | 0x10));
             var iid = typeof(IShellItem).GUID;
             Marshal.ThrowExceptionForHR(SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out item));
-            var sink = new RecycleProgressSink(state);
+            var sink = new RecycleProgressSink(state, path, sourceIdentity);
             Marshal.ThrowExceptionForHR(operation.DeleteItem(item, sink));
             started = true;
             var perform = operation.PerformOperations();
             var query = operation.GetAnyOperationsAborted(out var aborted);
             GC.KeepAlive(sink);
-            return state.Complete(perform, query, aborted);
+            var result = state.Complete(perform, query, aborted);
+            if (result.ObservedDestinationPath is not null) result = result with { Receipt = sink.Receipt };
+            if (result.Outcome != VideoRecycleOutcome.Succeeded) return result;
+            if (sink.Receipt is null || InspectReceipt(path, sink.Receipt) is not
+                { SourceState: VideoFileEvidence.Missing, RecycleState: VideoFileEvidence.MatchesReceipt })
+                return result with { Outcome = VideoRecycleOutcome.Unknown, RecycledPath = null,
+                    Reason = "휴지통 이동의 정확한 복원 영수증을 확인하지 못했습니다." };
+            return result with { Receipt = sink.Receipt, MovementConfirmed = true };
         }
         catch (Exception ex)
         {
-            return new(started ? VideoRecycleOutcome.Unknown : VideoRecycleOutcome.Failed, ex.Message);
+            return new(started ? VideoRecycleOutcome.Unknown : VideoRecycleOutcome.Failed, ex.Message) { SideEffectsKnownAbsent = !started };
         }
         finally
         {
@@ -158,8 +183,9 @@ public sealed class WindowsVideoRecycleService : IVideoRecycleService
     private static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid iid, out IShellItem item);
 
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
-    private sealed class RecycleProgressSink(RecycleOperationState state) : IFileOperationProgressSink
+    private sealed class RecycleProgressSink(RecycleOperationState state, string sourcePath, NativeFileIdentity sourceIdentity) : IFileOperationProgressSink
     {
+        public string? Receipt => state.Receipt;
         private const int Abort = unchecked((int)0x80004004);
         public int StartOperations() => 0;
         public int FinishOperations(int result) => 0;
@@ -175,13 +201,18 @@ public sealed class WindowsVideoRecycleService : IVideoRecycleService
             {
                 var path = GetPath(item);
                 var query = item.GetAttributes(RecycleOperationState.FileSystemAttribute | RecycleOperationState.FolderAttribute, out var attributes);
-                return state.BeforeDelete(path, flags, query, attributes) ? 0 : Abort;
+                return state.BeforeDelete(path, flags, query, attributes) && ReadIdentity(sourcePath) == sourceIdentity ? 0 : AbortUnexpected();
             }
             catch { return AbortUnexpected(); }
         }
         public int PostDeleteItem(uint flags, IShellItem item, int result, IShellItem? created)
         {
-            try { state.AfterDelete(GetPath(item), result, created is not null, TryGetPath(created)); }
+            try
+            {
+                state.AfterDelete(GetPath(item), result, created is not null, TryGetPath(created));
+                if (created is not null && result is 0 or 0x00270008)
+                    state.CaptureReceipt(() => CreateReceipt(sourcePath, sourceIdentity, created));
+            }
             catch { state.Veto(); }
             finally { if (created is not null) Marshal.ReleaseComObject(created); }
             return 0;
