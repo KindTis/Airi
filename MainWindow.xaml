@@ -317,6 +317,19 @@
           <c:GalleryPageScrollHost.List>
             <Grid>
               <ListBox x:Name="VideoList" AutomationProperties.Name="영상 결과" AutomationProperties.HelpText="방향키로 영상을 선택하고 Enter로 상세를 조작합니다." Tag="{Binding ElementName=GalleryHost}" ItemsSource="{Binding FilteredVideos}" SelectedItem="{Binding SelectedVideo,Mode=TwoWay}" MouseDoubleClick="VideoList_MouseDoubleClick" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1,1" VirtualizingPanel.CacheLengthUnit="Page" BorderThickness="0" Background="Transparent" ItemTemplate="{StaticResource GalleryCard}">
+                <ListBox.Template>
+                  <ControlTemplate TargetType="ListBox">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="0">
+                      <ScrollViewer x:Name="PART_ScrollViewer" Focusable="False" Padding="{TemplateBinding Padding}"
+                                    CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                                    HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                    VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                    PanningMode="{TemplateBinding ScrollViewer.PanningMode}">
+                        <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                      </ScrollViewer>
+                    </Border>
+                  </ControlTemplate>
+                </ListBox.Template>
                 <ListBox.ItemContainerStyle>
                   <Style TargetType="ListBoxItem">
                     <Setter Property="Margin" Value="0" />
@@ -343,7 +356,7 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
-                    <vwp:VirtualizingWrapPanel Orientation="Horizontal" SpacingMode="None" StretchItems="False" />
+                    <vwp:VirtualizingWrapPanel Orientation="Horizontal" SpacingMode="None" StretchItems="False" ItemSize="{Binding Tag.Metrics.ItemSize,RelativeSource={RelativeSource AncestorType=ListBox}}" />
                   </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
               </ListBox>

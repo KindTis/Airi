@@ -180,12 +180,16 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
 
 public sealed record GalleryLayoutMetrics(bool Compact, bool Short, int Columns, double HeaderHeight, double CardWidth, double CoverHeight, double CardHeight, double ColumnGap, double RowGap, Thickness GridPadding, double HeadingTop, double HeadingBottom, double SidePadding, double ShelfBottom, double TitleSize, double CardTitleSize, double TitleTop, double MetadataTop)
 {
+    // 지정한 캐시의 무작위 100장 표본에서 가장 흔한 정확 비율.
+    private const double CoverAspectRatio = 400d / 269d;
+
     public double ColumnStride => CardWidth + ColumnGap;
     public double RowStride => CardHeight + RowGap;
+    public Size ItemSize => new(ColumnStride, RowStride);
     public static GalleryLayoutMetrics Calculate(double clientWidth, double clientHeight, double resultWidth, bool scrollbar)
     {
         var compact = clientWidth <= 700; var shortWindow = !compact && clientHeight <= 850;
-        var columns = clientWidth <= 1230 ? 2 : 3;
+        var columns = clientWidth <= 1230 ? 2 : 4;
         var side = compact ? 15 : clientWidth <= 1230 ? 18 : 25;
         var col = clientWidth >= 1700 ? 24 : clientWidth <= 1000 ? 14 : 17;
         var row = clientWidth >= 1700 ? 24 : clientWidth <= 1000 ? 20 : 22;
@@ -195,7 +199,7 @@ public sealed record GalleryLayoutMetrics(bool Compact, bool Short, int Columns,
         // Grid padding remains 25 between 1001 and 1230; the heading uses 18 there.
         var gridSide = compact ? 15 : clientWidth <= 1000 ? 18 : 25;
         var width = Math.Max(1, (resultWidth - (scrollbar ? 10 : 0) - 2 * gridSide - (columns - 1) * col) / columns);
-        var cover = width / (compact ? 1.4 : shortWindow ? 2.15 : 1.9);
+        var cover = width / CoverAspectRatio;
         var titleTop = shortWindow ? 6 : 10; var metaTop = shortWindow ? 3 : 5;
         var cardHeight = cover + titleTop + (compact ? 17.4 : 20.3) + 2 * metaTop + (compact ? 76.8 : 38.4);
         return new(compact, shortWindow, columns, compact ? 66 : shortWindow ? 64 : 76, width, cover, cardHeight, col, row, new Thickness(gridSide, gridTop, gridSide, gridBottom), compact ? 21 : shortWindow ? 15 : 21, compact ? 12 : shortWindow ? 11 : 17, side, compact ? 10 : shortWindow ? 8 : 13, compact || shortWindow ? 22 : 24, compact ? 12 : 14, titleTop, metaTop);
