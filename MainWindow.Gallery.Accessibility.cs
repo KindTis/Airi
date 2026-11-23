@@ -5,6 +5,7 @@ public partial class MainWindow
 {
     private void CloseGalleryReadingForQuery()
     {
+        _gallerySelectionAnchor = null;
         if (ViewModel.IsEditing) return;
         _galleryPopup?.QueryChanged();
     }

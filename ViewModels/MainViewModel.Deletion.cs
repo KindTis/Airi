@@ -73,6 +73,7 @@ public partial class MainViewModel
         if (captured.Length == 0) return;
         var lease = TryBeginLibraryMutation(LibraryMutationOwner.VideoDeletion);
         if (lease is null) return;
+        var checkedTargets = items.Where(item => item.IsChecked).Select(item => item.Id).ToHashSet();
         var successes = new List<Guid>();
         var errors = new List<string>();
         var cancelled = 0;
@@ -200,7 +201,8 @@ public partial class MainViewModel
             if (successes.Count > 0) ShowGalleryToast($"{successes.Count}개 {(intent == LibraryOperationIntent.Recycle ? "휴지통 이동" : "복원")} 완료" + (errors.Count > 0 ? $" · {errors.Count}개 확인 필요" : string.Empty));
             var summary = $"완료 {successes.Count}개 · 취소 {cancelled}개 · 미실행 {notRun}개";
             StatusMessage = errors.Count > 0 ? summary + " · 작업 실패 또는 확인 필요: " + string.Join(" / ", errors) : summary;
-            if (errors.Count == 0 && successes.Count > 0) { ClearGalleryChecked(); InspectedVideo = null; }
+            if (errors.Count == 0 && successes.Count > 0) InspectedVideo = null;
+            CompleteGalleryCheckedWork(checkedTargets, successes.ToHashSet());
         }
         finally
         {

@@ -162,6 +162,7 @@ namespace Airi
 
         private async Task OpenMetadataEditorAsync()
         {
+            if (IsGallerySelectionMode && ViewModel.CheckedCount == 0) return;
             ViewModel.EditCommand.Execute(null);
             await ViewModel.GalleryActionTask;
         }
@@ -584,12 +585,11 @@ namespace Airi
 
         private void VideoList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (sender is not ListBox listBox)
+            if (IsGallerySelectionMode || sender is not ListBox listBox)
             {
                 return;
             }
 
-            if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null) return;
             if (e.OriginalSource is not DependencyObject source ||
                 ItemsControl.ContainerFromElement(listBox, source) is not ListBoxItem { DataContext: VideoItem video })
             {

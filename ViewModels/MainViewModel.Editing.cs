@@ -155,7 +155,6 @@ public partial class MainViewModel
     {
         if (IsSaving || EditorDraft is null) return;
         EndGalleryEdit(accepted: false);
-        ClearGalleryChecked();
         InspectedVideo = null;
     }
     private void EndGalleryEdit(bool accepted)
@@ -194,6 +193,10 @@ public partial class MainViewModel
             if (fields.Length > 0) changes.Add(new(before, proposed with { Revision = checked(current.Revision + 1) }, fields));
         }
         if (changes.Count == 0) return;
+        var checkedTargets = Videos.Where(item => item.IsChecked).Select(item => item.Id).ToHashSet();
+        var completedTargets = draft.Targets
+            .Where(entry => !draft.IsAutomaticProposal || !draft.MetadataUpdatesNeedingAttention.Contains(entry.Id))
+            .Select(entry => entry.Id).ToHashSet();
         var changed = changes.ToDictionary(change => change.Before.Id, change => change.After);
         var candidate = _library.WithVideos(_library.Videos.Select(entry => changed.GetValueOrDefault(entry.Id) ?? entry));
         IsSaving = true; RefreshGalleryCommands();
@@ -205,9 +208,12 @@ public partial class MainViewModel
             foreach (var change in changes) { _webMetadataService.AcceptCandidate(change.After); ApplyMetadataToCollections(change.After); }
             AddGalleryHistory(new GalleryHistoryItem { Summary = draft.IsAutomaticProposal ? "정보 보강" : draft.IsBatch ? "일괄 편집" : "정보 편집",
                 Count = changes.Count, Metadata = changes, EntryIds = changes.Select(change => change.Before.Id).ToArray() });
-            ShowGalleryToast($"{changes.Count}개 영상의 정보를 저장했습니다.");
+            var needsAttention = draft.IsAutomaticProposal ? draft.MetadataUpdatesNeedingAttention.Count : 0;
+            var savedMessage = $"{changes.Count}개 영상의 정보를 저장했습니다.";
+            ShowGalleryToast(needsAttention == 0 ? savedMessage : $"{savedMessage} · {needsAttention}개 확인 필요");
             EndGalleryEdit(accepted: true);
-            ClearGalleryChecked(); InspectedVideo = null;
+            CompleteGalleryCheckedWork(checkedTargets, completedTargets);
+            InspectedVideo = null;
             RequestGalleryQuery(moveToTop: false);
         }
         catch (Exception ex) { draft.Error = $"저장 실패: {ex.Message}"; StatusMessage = draft.Error; }
@@ -219,6 +225,7 @@ public partial class MainViewModel
         await BeginGalleryEditAsync(inspectedOnly);
         var draft = EditorDraft;
         if (draft is null || _galleryEditLease is null) return;
+        draft.MetadataUpdatesNeedingAttention.Clear();
         var candidates = new Dictionary<Guid, VideoEntry>();
         using var fetch = BeginDraftFetch();
         try
@@ -231,6 +238,7 @@ public partial class MainViewModel
                 if (!ReferenceEquals(EditorDraft, draft)) { if (response.Entry is { } stale) _webMetadataService.DiscardCandidate(stale); return; }
                 fetch.Token.ThrowIfCancellationRequested();
                 if (response.Entry is { } updated) { candidates[entry.Id] = updated; _draftProposals.Add(updated); }
+                if (response.Entry is null || response.IsPartial) draft.MetadataUpdatesNeedingAttention.Add(entry.Id);
                 draft.TargetResults.Add(new(entry.Meta.Title, response.Entry is not null ? response.IsPartial ? "부분 후보" : "후보 확보" : response.NoResult ? "결과 없음" : "수집 실패", response.Source, response.Error));
             }
             if (candidates.Count == 0) { draft.Error = "새 정보를 찾지 못했습니다. 변경 사항은 저장되지 않았습니다."; return; }

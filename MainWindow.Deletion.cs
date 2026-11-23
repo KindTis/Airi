@@ -12,7 +12,8 @@ public partial class MainWindow
     internal async Task<bool> HandleVideoDeleteKeyAsync(Key key, ModifierKeys modifiers, bool repeat, DependencyObject? focused)
     {
         if (key != Key.Delete || modifiers != ModifierKeys.None || !IsVideoListFocus(focused)) return false;
-        if (repeat || _videoDeleteKeyHeld || _previewShutdownStarted) return true;
+        if (repeat || _videoDeleteKeyHeld || _previewShutdownStarted ||
+            (IsGallerySelectionMode && ViewModel.CheckedCount == 0)) return true;
         _videoDeleteKeyHeld = true;
         try
         {

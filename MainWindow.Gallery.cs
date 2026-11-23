@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -38,7 +39,12 @@ public partial class MainWindow
     private Window? _galleryDialog;
     internal Func<GalleryOperationConfirmation, Task<bool>>? ConfirmGalleryOperationOverride { get; set; }
     private ListBoxItem? _lastDetailAnchor;
-    private bool _galleryPointerPress;
+    private static readonly DependencyPropertyKey IsGallerySelectionModePropertyKey =
+        DependencyProperty.RegisterReadOnly(nameof(IsGallerySelectionMode), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public static readonly DependencyProperty IsGallerySelectionModeProperty = IsGallerySelectionModePropertyKey.DependencyProperty;
+    public bool IsGallerySelectionMode => (bool)GetValue(IsGallerySelectionModeProperty);
+    private VideoItem? _gallerySelectionPressedItem;
+    private VideoItem? _gallerySelectionAnchor;
     private double _lastPageOffset;
     private bool _galleryImeComposing;
     private bool _galleryWasEditing;
@@ -48,6 +54,7 @@ public partial class MainWindow
         ViewModel.PropertyChanged += OnGalleryPropertyChanged;
         ViewModel.GalleryScrollToTopRequested += OnGalleryScrollToTop;
         ViewModel.GalleryQueryRequested += CloseGalleryReadingForQuery;
+        ViewModel.GalleryCheckedWorkCompleted += OnGalleryCheckedWorkCompleted;
         ViewModel.ConfirmOperationAsync = ConfirmGalleryOperationAsync;
         ViewModel.StopPreviewForOperationAsync = StopGalleryOperationPreviewAsync;
         TextCompositionManager.AddPreviewTextInputStartHandler(this, (_, _) => _galleryImeComposing = true);
@@ -64,6 +71,7 @@ public partial class MainWindow
         PreviewMouseDown += OnGalleryBackgroundMouseDown;
         Deactivated += OnGalleryDeactivated;
         LocationChanged += OnGalleryLocationChanged;
+        SelectionActionsMenu.PlacementTarget = SelectionActionsButton;
         RefreshGalleryState();
     }
     private void OnGalleryPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -76,9 +84,10 @@ public partial class MainWindow
     private void RefreshGalleryState()
     {
         if (ViewModel is null) return;
-        VisibleCheck.IsChecked = ViewModel.AllVisibleChecked; VisibleCheck.IsEnabled = ViewModel.CanToggleVisibleChecked;
         var trash = ViewModel.CurrentGalleryView == GalleryView.Trash;
-        ToolbarRestore.Visibility = trash ? Visibility.Visible : Visibility.Collapsed; ToolbarDelete.Visibility = trash ? Visibility.Collapsed : Visibility.Visible;
+        SelectionRefreshItem.Visibility = SelectionDeleteItem.Visibility = trash ? Visibility.Collapsed : Visibility.Visible;
+        SelectionRestoreItem.Visibility = trash ? Visibility.Visible : Visibility.Collapsed;
+        if (SelectionActionsMenu.IsOpen && ViewModel.CheckedCount == 0) SelectionActionsMenu.IsOpen = false;
         HeadingTitle.Text = ViewModel.CurrentGalleryView switch { GalleryView.Incomplete => "정보 미완성", GalleryView.Missing => "파일 없음", GalleryView.Trash => "휴지통", _ => "라이브러리" };
         foreach (var nav in new[] { NavAll, NavIncomplete, NavMissing, NavTrash }) { var active = nav.Tag?.ToString() == ViewModel.CurrentGalleryView.ToString(); nav.Background = active ? (Brush)FindResource("GalleryTint") : Brushes.Transparent; nav.Foreground = (Brush)FindResource(active ? "GalleryAccent" : "GalleryText"); nav.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal; var label = EnumerateVisualDescendants<TextBlock>(nav).FirstOrDefault(); if (label is not null) { label.Foreground = nav.Foreground; label.FontWeight = nav.FontWeight; } foreach (var icon in EnumerateVisualDescendants<GalleryIcon>(nav)) icon.Foreground = (Brush)FindResource(active ? "GalleryAccent" : "GalleryMuted"); }
         EmptyState.Visibility = ViewModel.ResultCount == 0 && !ViewModel.ShowVideoSkeleton ? Visibility.Visible : Visibility.Collapsed;
@@ -106,13 +115,29 @@ public partial class MainWindow
         SearchInput.FontSize = m.Compact ? 12 : 13; HeaderHistory.Margin = new Thickness(clientWidth <= 1000 ? 12 : 24, 0, 0, 0);
         GalleryHeading.Margin = new Thickness(m.SidePadding, m.HeadingTop, m.SidePadding, m.HeadingBottom); HeadingTitle.FontSize = m.TitleSize; HeadingTitle.LineHeight = m.TitleSize * 1.3;
         FacetShelf.Margin = new Thickness(m.SidePadding, 0, m.SidePadding, m.ShelfBottom);
-        for (var i = 0; i < 3; i++) FacetShelf.ColumnDefinitions[i * 2].Width = m.Compact ? new GridLength(1, GridUnitType.Star) : new GridLength(clientWidth <= 1230 ? 105 : 125);
-        FacetShelf.ColumnDefinitions[1].Width = FacetShelf.ColumnDefinitions[3].Width = new GridLength(m.Compact ? 6 : 9);
-        FacetShelf.ColumnDefinitions[5].Width = m.Compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        var facetWidth = clientWidth <= 1230 ? 105d : 125d;
+        var availableShelf = GalleryHost.ActualWidth - (m.Compact ? 0 : 170) - 2 * m.SidePadding;
+        const double sortWidth = 170, minimumCompactSortWidth = 135, selectionGap = 16, compactFacetGap = 6;
+        var selectionSpace = SelectionModeControl.Width + selectionGap;
+        var wrapFacets = m.Compact || availableShelf < 3 * facetWidth + 27 + sortWidth + selectionSpace;
+        var separateSortRow = wrapFacets && (availableShelf - compactFacetGap) / 2 < minimumCompactSortWidth + selectionSpace;
+        FacetShelf.ColumnDefinitions[0].Width = FacetShelf.ColumnDefinitions[2].Width = wrapFacets ? new GridLength(1, GridUnitType.Star) : new GridLength(facetWidth);
+        FacetShelf.ColumnDefinitions[4].Width = wrapFacets ? new GridLength(0) : new GridLength(facetWidth);
+        FacetShelf.ColumnDefinitions[6].Width = new GridLength(wrapFacets ? 0 : sortWidth);
+        FacetShelf.ColumnDefinitions[1].Width = new GridLength(wrapFacets ? compactFacetGap : 9);
+        FacetShelf.ColumnDefinitions[3].Width = FacetShelf.ColumnDefinitions[5].Width = new GridLength(wrapFacets ? 0 : 9);
+        FacetShelf.ColumnDefinitions[7].Width = wrapFacets ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetRow(GenrePicker, wrapFacets ? 1 : 0); Grid.SetColumn(GenrePicker, wrapFacets ? 0 : 4);
+        var sortRow = separateSortRow ? 2 : wrapFacets ? 1 : 0;
+        var controlsTop = wrapFacets ? compactFacetGap : 0;
+        Grid.SetRow(SortPicker, sortRow);
+        Grid.SetColumn(SortPicker, separateSortRow ? 0 : wrapFacets ? 2 : 6);
+        Grid.SetColumnSpan(SortPicker, separateSortRow ? 3 : 1);
+        Grid.SetRow(SelectionModeControl, sortRow);
+        GenrePicker.Margin = SelectionModeControl.Margin = new Thickness(0, controlsTop, 0, 0);
+        SortPicker.Margin = new Thickness(0, controlsTop, wrapFacets ? selectionSpace : 0, 0);
         ActorPicker.IsCompact = StudioPicker.IsCompact = GenrePicker.IsCompact = m.Compact;
         Chips.Margin = new Thickness(m.SidePadding, 0, m.SidePadding, m.Compact ? 10 : m.Short ? 7 : 8);
-        Toolbar.Margin = new Thickness(m.SidePadding, m.Compact ? 8 : 0, m.SidePadding, m.Compact ? 8 : 5);
-        Grid.SetRow(ToolbarActions, m.Compact ? 1 : 0); Grid.SetColumn(ToolbarActions, m.Compact ? 0 : 1); Grid.SetColumnSpan(ToolbarActions, m.Compact ? 4 : 1); ToolbarActions.Margin = new Thickness(0, m.Compact ? 7 : 0, 0, 0);
         MobileFilter.Visibility = m.Compact ? Visibility.Visible : Visibility.Collapsed;
         DetailSurface.Padding = new Thickness(m.Compact ? 18 : 20); Toast.Margin = new Thickness(16, 0, 16, m.Compact ? 20 : 47);
         GalleryHost.InvalidateMeasure();
@@ -120,19 +145,106 @@ public partial class MainWindow
     private void OnPageMouseWheel(object sender, MouseWheelEventArgs e) { if (!GalleryHost.IsCompact) return; GalleryHost.SetVerticalOffset(GalleryHost.VerticalOffset - e.Delta * .6); e.Handled = true; }
     private void OnGalleryListScroll(object sender, ScrollChangedEventArgs e) { if (e.ViewportWidthChange != 0 || e.ExtentHeightChange != 0) GalleryHost.InvalidateMeasure(); if (e.VerticalChange != 0) { _galleryPopup?.Scroll(); if (GalleryDetail.IsOpen) PositionGalleryPopup(); } }
     private void OnViewClick(object sender, RoutedEventArgs e) { if (sender is Button b) ViewModel.SetViewCommand.Execute(b.Tag); }
-    private void OnVisibleCheckClick(object sender, RoutedEventArgs e) { ViewModel.ToggleVisibleCheckedCommand.Execute(null); RefreshGalleryState(); }
     private void OnMobileFilterClick(object sender, RoutedEventArgs e) { var body = new StackPanel(); foreach (var entry in new[] { ("전체 영상", GalleryView.All), ("정보 미완성", GalleryView.Incomplete), ("파일 없음", GalleryView.Missing), ("휴지통", GalleryView.Trash) }) { var button = new Button { Content = entry.Item1, Margin = new Thickness(0, 4, 0, 4) }; button.Click += (_, _) => { ViewModel.SetViewCommand.Execute(entry.Item2); _galleryDialog?.Close(); }; body.Children.Add(button); } ShowGalleryDialog("라이브러리", body, false); }
-    private void OnCardCheckMouseDown(object sender, MouseButtonEventArgs e) { _galleryPointerPress = true; }
-    private void OnGalleryCardEnter(object sender, MouseEventArgs e) { if (sender is ListBoxItem { DataContext: VideoItem item } anchor && !ViewModel.IsEditing) _galleryPopup?.Hover(item, anchor); }
+    private void OnSelectionModeClick(object sender, RoutedEventArgs e) => SetGallerySelectionMode(!IsGallerySelectionMode);
+
+    private void OnSelectionActionsClick(object sender, RoutedEventArgs e)
+    {
+        if (IsGallerySelectionMode && SelectionActionsButton.IsEnabled)
+            SelectionActionsMenu.IsOpen = true;
+    }
+
+    private void OnGalleryCheckedWorkCompleted() => SetGallerySelectionMode(false, finishedWork: true);
+
+    private void SetGallerySelectionMode(bool active, bool finishedWork = false)
+    {
+        if (ViewModel.IsEditing || (!finishedWork && ViewModel.IsSaving) || active == IsGallerySelectionMode) return;
+
+        _gallerySelectionPressedItem = null;
+        _gallerySelectionAnchor = null;
+        if (!finishedWork) ++_galleryFocusGeneration;
+        SetValue(IsGallerySelectionModePropertyKey, active);
+        AutomationProperties.SetHelpText(VideoList, active
+            ? "카드를 클릭해 선택하고 Shift를 누른 채 클릭해 범위를 추가합니다. 스페이스바로 선택을 전환하고 Esc로 종료합니다."
+            : "방향키로 영상을 선택하고 Enter로 상세를 조작합니다.");
+        if (active)
+        {
+            _galleryPopup?.Close();
+            return;
+        }
+
+        SelectionActionsMenu.IsOpen = false;
+        if (!finishedWork) ViewModel.ClearCheckedCommand.Execute(null);
+    }
+
+    private void OnGalleryCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (IsGallerySelectionMode && e.ClickCount == 1 && sender is ListBoxItem { DataContext: VideoItem item })
+            _gallerySelectionPressedItem = item;
+    }
+    private void OnGalleryCardEnter(object sender, MouseEventArgs e) { if (!IsGallerySelectionMode && !ViewModel.IsEditing && sender is ListBoxItem { DataContext: VideoItem item } anchor) _galleryPopup?.Hover(item, anchor); }
     private void OnGalleryCardLeave(object sender, MouseEventArgs e) => _galleryPopup?.LeaveCard();
-    private void OnGalleryCardFocus(object sender, KeyboardFocusChangedEventArgs e) { if (sender is ListBoxItem { DataContext: VideoItem item } anchor && e.NewFocus == anchor && Mouse.LeftButton != MouseButtonState.Pressed && !_galleryPointerPress) _galleryPopup?.Focus(item, anchor); }
-    private void OnGalleryCardClick(object sender, MouseButtonEventArgs e) { if (sender is not ListBoxItem { DataContext: VideoItem item } anchor) return; if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null) { _galleryPointerPress = false; return; } _galleryPointerPress = false; ViewModel.SelectedVideo = item; _galleryPopup?.Click(item, anchor); }
+    private void OnGalleryCardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!IsGallerySelectionMode && sender is ListBoxItem { DataContext: VideoItem item } anchor &&
+            e.NewFocus == anchor && Mouse.LeftButton != MouseButtonState.Pressed)
+            _galleryPopup?.Focus(item, anchor);
+    }
+
+    private void OnGalleryCardClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: VideoItem item } anchor) return;
+        if (!IsGallerySelectionMode)
+        {
+            ViewModel.SelectedVideo = item;
+            _galleryPopup?.Click(item, anchor);
+            return;
+        }
+
+        var pressedItem = _gallerySelectionPressedItem;
+        _gallerySelectionPressedItem = null;
+        e.Handled = true;
+        if (ReferenceEquals(pressedItem, item))
+            ToggleGalleryCardSelection(item, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+    }
+
+    internal void ToggleGalleryCardSelection(VideoItem item, bool extendRange)
+    {
+        if (!IsGallerySelectionMode || ViewModel.IsEditing || ViewModel.IsSaving) return;
+        if (!extendRange)
+        {
+            item.IsChecked = !item.IsChecked;
+            if (item.IsChecked) _gallerySelectionAnchor = item;
+            else if (ReferenceEquals(_gallerySelectionAnchor, item)) _gallerySelectionAnchor = null;
+            return;
+        }
+
+        var endpoint = VideoList.Items.IndexOf(item);
+        if (endpoint < 0) return;
+        var start = _gallerySelectionAnchor is { IsChecked: true } anchor ? VideoList.Items.IndexOf(anchor) : -1;
+        if (start < 0)
+        {
+            item.IsChecked = true;
+            _gallerySelectionAnchor = item;
+            return;
+        }
+
+        var first = Math.Min(start, endpoint);
+        var count = Math.Abs(endpoint - start) + 1;
+        ViewModel.CheckGalleryRange(Enumerable.Range(first, count).Select(index => (VideoItem)VideoList.Items[index]));
+    }
     private void OnGalleryCardLoaded(object sender, RoutedEventArgs e) { if (sender is ListBoxItem anchor) { anchor.DataContextChanged -= OnGalleryContainerDataContextChanged; anchor.DataContextChanged += OnGalleryContainerDataContextChanged; } }
-    private void OnGalleryContainerDataContextChanged(object sender, DependencyPropertyChangedEventArgs e) { if (sender is ListBoxItem anchor) { _galleryPopup?.Recycled(anchor); if (anchor.IsMouseOver && e.NewValue is VideoItem item) _galleryPopup?.Hover(item, anchor); } }
+    private void OnGalleryContainerDataContextChanged(object sender, DependencyPropertyChangedEventArgs e) { if (sender is ListBoxItem anchor) { _galleryPopup?.Recycled(anchor); if (!IsGallerySelectionMode && !ViewModel.IsEditing && anchor.IsMouseOver && e.NewValue is VideoItem item) _galleryPopup?.Hover(item, anchor); } }
     private void OnGalleryCardUnloaded(object sender, RoutedEventArgs e) { if (sender is ListBoxItem anchor) { anchor.DataContextChanged -= OnGalleryContainerDataContextChanged; _galleryPopup?.Recycled(anchor); } }
     private static T? FindAncestor<T>(DependencyObject? obj) where T : DependencyObject { while (obj is not null) { if (obj is T match) return match; obj = obj is Visual ? VisualTreeHelper.GetParent(obj) : LogicalTreeHelper.GetParent(obj); } return null; }
     private void OnDetailEnter(object sender, MouseEventArgs e) => _galleryPopup?.EnterPanel(); private void OnDetailLeave(object sender, MouseEventArgs e) => _galleryPopup?.LeavePanel();
-    private void OnGalleryBackgroundMouseDown(object sender, MouseButtonEventArgs e) { ++_galleryFocusGeneration; if (ViewModel.IsEditing) return; if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is null) _galleryPopup?.Close(); }
+    private void OnGalleryBackgroundMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        ++_galleryFocusGeneration;
+        if (e.ChangedButton == MouseButton.Left) _gallerySelectionPressedItem = null;
+        if (ViewModel.IsEditing) return;
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is null) _galleryPopup?.Close();
+    }
     private void OnGalleryDeactivated(object? sender, EventArgs e) { if (!ViewModel.IsEditing) _galleryPopup?.Close(); }
     private void OnGalleryLocationChanged(object? sender, EventArgs e) { if (GalleryDetail.IsOpen) PositionGalleryPopup(); }
     private async void OpenGalleryDetail(VideoItem item, ListBoxItem anchor, bool keyboard)
@@ -211,7 +323,7 @@ public partial class MainWindow
             // The recycling slot includes the inter-column gap; only the actual card anchors the panel.
             rect = new Rect(anchor.TranslatePoint(new Point(), clientRoot), new Size(GalleryHost.Metrics.CardWidth, GalleryHost.Metrics.CardHeight));
         }
-        else rect = new Rect(Toolbar.TranslatePoint(new Point(), clientRoot), Toolbar.RenderSize);
+        else rect = new Rect(FacetShelf.TranslatePoint(new Point(), clientRoot), FacetShelf.RenderSize);
         if (!ViewModel.IsEditing && _galleryPopup?.KeyboardOpened == true && (rect.Bottom < 0 || rect.Top > client.Height)) { _galleryPopup.Close(); return; }
         DetailSurface.Measure(new Size(width + DetailSurface.Margin.Left + DetailSurface.Margin.Right, maximumHeight + DetailSurface.Margin.Top + DetailSurface.Margin.Bottom));
         var height = Math.Max(1, DetailSurface.DesiredSize.Height - DetailSurface.Margin.Top - DetailSurface.Margin.Bottom);
@@ -249,11 +361,12 @@ public partial class MainWindow
         ++_galleryFocusGeneration;
         if (_galleryImeComposing || e.Key == Key.ImeProcessed) return true;
         if (e.Key == Key.Escape && GalleryDetail.IsOpen) { e.Handled = true; CloseGalleryWithFocus(); return true; }
+        if (HandleGallerySelectionModeKey(e.Key, Keyboard.Modifiers, e.IsRepeat, Keyboard.FocusedElement as DependencyObject)) { e.Handled = true; return true; }
         var editing = Keyboard.FocusedElement is TextBoxBase or PasswordBox;
         if (!editing && e.Key == Key.OemQuestion && Keyboard.Modifiers == ModifierKeys.None) { e.Handled = true; SearchInput.Focus(); SearchInput.BringIntoView(); return true; }
         if (!editing && IsVideoListFocus(Keyboard.FocusedElement as DependencyObject) && Keyboard.Modifiers == ModifierKeys.None)
         {
-            if (e.Key == Key.E) { e.Handled = true; ViewModel.EditCommand.Execute(null); return true; }
+            if (e.Key == Key.E) { e.Handled = true; if (!IsGallerySelectionMode || ViewModel.CheckedCount > 0) ViewModel.EditCommand.Execute(null); return true; }
             if (e.Key is Key.Enter or Key.Tab && GalleryDetail.IsOpen) { e.Handled = true; FocusGalleryAction(); return true; }
         }
         return false;
@@ -268,6 +381,23 @@ public partial class MainWindow
         else if (e.Key == Key.Delete && !e.IsRepeat && !ViewModel.IsEditing) { e.Handled = true; ViewModel.DeleteInspectedCommand.Execute(null); }
         else if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift && Keyboard.FocusedElement == DetailPlay) { e.Handled = true; RequestGalleryFocusRestore(_galleryFocusBookmark); }
     }
+    internal bool HandleGallerySelectionModeKey(Key key, ModifierKeys modifiers, bool repeat, DependencyObject? focused)
+    {
+        if (!IsGallerySelectionMode || ViewModel.IsEditing || modifiers != ModifierKeys.None) return false;
+        if (key == Key.Escape)
+        {
+            if (!repeat) SetGallerySelectionMode(false);
+            return true;
+        }
+
+        if (key != Key.Space || focused is null ||
+            ItemsControl.ContainerFromElement(VideoList, focused) is not ListBoxItem { DataContext: VideoItem item })
+            return false;
+
+        if (!repeat) ToggleGalleryCardSelection(item, extendRange: false);
+        return true;
+    }
+
     private void RefreshGalleryEditor()
     {
         var wasEditing = _galleryWasEditing; _galleryWasEditing = ViewModel.IsEditing;
@@ -275,6 +405,7 @@ public partial class MainWindow
         SyncGalleryThumbnailLifetime();
         _galleryPopup?.SetEditing(ViewModel.IsEditing, ViewModel.IsChangePreview, ViewModel.IsSaving);
         SearchInput.IsReadOnly = ViewModel.IsEditing;
+        SelectionModeControl.IsEnabled = !ViewModel.IsEditing && !ViewModel.IsSaving;
         SortPicker.IsEnabled = ActorPicker.IsEnabled = StudioPicker.IsEnabled = GenrePicker.IsEnabled = !ViewModel.IsEditing;
         if (ViewModel.IsEditing)
         {
@@ -383,5 +514,5 @@ public partial class MainWindow
         public async ValueTask<DispatcherCallbackResult> SetPhaseAsync(Guid id, TooltipPreviewPhase phase, CancellationToken token) { if (!IsCurrent(id)) return default; return await _window.Dispatcher.InvokeAsync(() => { if (!Current(id)) return default; var start = _clock.GetTimestamp(); _state.SetPhase(phase); var end = _clock.GetTimestamp(); return new DispatcherCallbackResult(true, end, _clock.GetElapsedTime(start, end)); }, DispatcherPriority.Render, token); }
         public async ValueTask<FramePresentationResult> ShowFrameAsync(Guid id, int width, int height, VideoPreviewFrame frame, CancellationToken token) { if (!IsCurrent(id)) return default; return await _window.Dispatcher.InvokeAsync(() => { if (!Current(id)) return default; var start = _clock.GetTimestamp(); _state.ShowFrame(width, height, frame); var end = _clock.GetTimestamp(); return new FramePresentationResult(true, end, _clock.GetElapsedTime(start, end)); }, DispatcherPriority.Render, token); }
     }
-    private async Task StopGallerySurfaceAsync() { CancelGalleryThumbnailWork(); _galleryDialog?.Close(); _galleryPopup?.Dispose(); await StopGalleryPreviewAsync(); try { await _galleryThumbnailTask; } catch (OperationCanceledException) { } ViewModel.PropertyChanged -= OnGalleryPropertyChanged; ViewModel.GalleryScrollToTopRequested -= OnGalleryScrollToTop; ViewModel.GalleryQueryRequested -= CloseGalleryReadingForQuery; GalleryHost.ViewportChanged -= OnGalleryViewportChanged; }
+    private async Task StopGallerySurfaceAsync() { CancelGalleryThumbnailWork(); _galleryDialog?.Close(); _galleryPopup?.Dispose(); await StopGalleryPreviewAsync(); try { await _galleryThumbnailTask; } catch (OperationCanceledException) { } ViewModel.PropertyChanged -= OnGalleryPropertyChanged; ViewModel.GalleryScrollToTopRequested -= OnGalleryScrollToTop; ViewModel.GalleryQueryRequested -= CloseGalleryReadingForQuery; ViewModel.GalleryCheckedWorkCompleted -= OnGalleryCheckedWorkCompleted; GalleryHost.ViewportChanged -= OnGalleryViewportChanged; }
 }

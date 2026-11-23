@@ -22,13 +22,13 @@
       </Style>
       <DataTemplate x:Key="GalleryCard">
         <Grid Width="{Binding Tag.Metrics.ColumnStride,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.RowStride,RelativeSource={RelativeSource AncestorType=ListBox}}">
-          <StackPanel Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" HorizontalAlignment="Left">
+          <StackPanel Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" HorizontalAlignment="Left" Background="Transparent">
             <Grid Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}">
               <Border x:Name="ActiveOutline" BorderThickness="1" CornerRadius="9" Margin="-3" BorderBrush="Transparent" />
               <c:GalleryRoundedBorder Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}" CornerRadius="7" Background="{StaticResource GalleryPanel}">
                 <Image Source="{Binding ThumbnailSource}" Tag="MainCardThumbnail" Loaded="OnThumbnailImageLoaded" Unloaded="OnThumbnailImageUnloaded" DataContextChanged="OnThumbnailImageDataContextChanged" Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}" Stretch="UniformToFill" />
               </c:GalleryRoundedBorder>
-              <CheckBox Style="{StaticResource GalleryCardCheck}" x:Name="CardCheck" IsChecked="{Binding IsChecked,Mode=TwoWay}" Width="19" Height="19" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" PreviewMouseLeftButtonDown="OnCardCheckMouseDown" AutomationProperties.Name="영상 선택" />
+              <CheckBox Style="{StaticResource GalleryCardCheck}" x:Name="CardCheck" IsChecked="{Binding IsChecked,Mode=OneWay}" Width="19" Height="19" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" Focusable="False" IsHitTestVisible="False" Visibility="{Binding IsGallerySelectionMode,RelativeSource={RelativeSource AncestorType=local:MainWindow},Converter={StaticResource GalleryVisibility},FallbackValue=Collapsed}" AutomationProperties.Name="영상 선택" />
               <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,5" Background="{StaticResource GalleryTint}" CornerRadius="5" Visibility="{Binding IsMissing,Converter={StaticResource GalleryVisibility}}">
                 <TextBlock Text="파일 없음" Foreground="{StaticResource GalleryDanger}" />
               </Border>
@@ -60,9 +60,20 @@
           </StackPanel>
         </Grid>
         <DataTemplate.Triggers>
-          <DataTrigger Binding="{Binding IsActive}" Value="True">
+          <MultiDataTrigger>
+            <MultiDataTrigger.Conditions>
+              <Condition Binding="{Binding IsActive}" Value="True"/>
+              <Condition Binding="{Binding IsGallerySelectionMode,RelativeSource={RelativeSource AncestorType=local:MainWindow},FallbackValue=False}" Value="False"/>
+            </MultiDataTrigger.Conditions>
             <Setter TargetName="ActiveOutline" Property="BorderBrush" Value="{StaticResource GalleryAccent}" />
-          </DataTrigger>
+          </MultiDataTrigger>
+          <MultiDataTrigger>
+            <MultiDataTrigger.Conditions>
+              <Condition Binding="{Binding IsChecked}" Value="True"/>
+              <Condition Binding="{Binding IsGallerySelectionMode,RelativeSource={RelativeSource AncestorType=local:MainWindow}}" Value="True"/>
+            </MultiDataTrigger.Conditions>
+            <Setter TargetName="ActiveOutline" Property="BorderBrush" Value="{StaticResource GalleryAccent}" />
+          </MultiDataTrigger>
           <DataTrigger Binding="{Binding Tag.Metrics.Short,RelativeSource={RelativeSource AncestorType=ListBox}}" Value="False">
             <Setter TargetName="CardTitle" Property="Margin" Value="0,10,0,0" />
             <Setter TargetName="DesktopMeta" Property="Margin" Value="0,5,0,0" />
@@ -238,17 +249,132 @@
                 </StackPanel>
               </Grid>
               <Grid x:Name="FacetShelf" Margin="25,0,25,8">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="125" />
-                  <ColumnDefinition Width="9" />
-                  <ColumnDefinition Width="125" />
-                  <ColumnDefinition Width="9" />
-                  <ColumnDefinition Width="125" />
-                  <ColumnDefinition />
+                  <ColumnDefinition Width="125"/><ColumnDefinition Width="9"/>
+                  <ColumnDefinition Width="125"/><ColumnDefinition Width="9"/>
+                  <ColumnDefinition Width="125"/><ColumnDefinition Width="9"/>
+                  <ColumnDefinition Width="170"/><ColumnDefinition/>
                 </Grid.ColumnDefinitions>
-                <v:GalleryFacetPicker x:Name="ActorPicker" Label="배우" Icon="person" Options="{Binding ActorFacets}" />
-                <v:GalleryFacetPicker x:Name="StudioPicker" Grid.Column="2" Label="제작사" Icon="studio" Options="{Binding StudioFacets}" />
-                <v:GalleryFacetPicker x:Name="GenrePicker" AlignRight="True" Grid.Column="4" Label="장르" Icon="tag" Options="{Binding GenreFacets}" />
+                <v:GalleryFacetPicker x:Name="ActorPicker" Label="배우" Icon="person" Options="{Binding ActorFacets}"/>
+                <v:GalleryFacetPicker x:Name="StudioPicker" Grid.Column="2" Label="제작사" Icon="studio" Options="{Binding StudioFacets}"/>
+                <v:GalleryFacetPicker x:Name="GenrePicker" Grid.Column="4" Label="장르" Icon="tag" Options="{Binding GenreFacets}"/>
+                <ComboBox x:Name="SortPicker" Grid.Column="6" Tag="{Binding ElementName=GalleryHost}" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedItem="{Binding SelectedSortOption}" ToolTip="{Binding SelectedSortOption.Label}" AutomationProperties.Name="영상 정렬"/>
+                <Border x:Name="SelectionModeControl" Grid.ColumnSpan="8" HorizontalAlignment="Right" Width="144" MinHeight="37"
+                        BorderThickness="1" CornerRadius="7">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="BorderBrush" Value="{StaticResource GalleryLine}"/>
+                      <Setter Property="Background" Value="{StaticResource GallerySurface}"/>
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsGallerySelectionMode,ElementName=Shell}" Value="True">
+                          <Setter Property="BorderBrush" Value="{StaticResource GalleryAccent}"/>
+                          <Setter Property="Background" Value="{StaticResource GalleryTint}"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="29"/></Grid.ColumnDefinitions>
+                    <Button x:Name="SelectionModeButton" Padding="5,6" Click="OnSelectionModeClick"
+                            AutomationProperties.Name="{Binding Text,ElementName=SelectionModeLabel}">
+                      <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource GalleryQuiet}">
+                          <Setter Property="Grid.ColumnSpan" Value="2"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsGallerySelectionMode,ElementName=Shell}" Value="True">
+                              <Setter Property="Grid.ColumnSpan" Value="1"/>
+                              <Setter Property="Foreground" Value="{StaticResource GalleryAccent}"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                      <StackPanel Orientation="Horizontal">
+                        <c:GalleryIcon x:Name="SelectionModeIcon" Kind="checkbox" Width="16" Height="16" Margin="0,0,6,0"
+                                       VerticalAlignment="Center" Foreground="{StaticResource GalleryMuted}">
+                          <c:GalleryIcon.Style>
+                            <Style TargetType="c:GalleryIcon">
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGallerySelectionMode,ElementName=Shell}" Value="True">
+                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </c:GalleryIcon.Style>
+                        </c:GalleryIcon>
+                        <TextBlock x:Name="SelectionModeLabel" VerticalAlignment="Center"
+                                   Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Text" Value="다중 선택"/>
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGallerySelectionMode,ElementName=Shell}" Value="True">
+                                  <Setter Property="Text" Value="선택 종료"/>
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                        <Border x:Name="SelectionCountBadge" Margin="5,0,0,0" Padding="4,1" MinWidth="19" MaxWidth="52"
+                                VerticalAlignment="Center" Background="{StaticResource GalleryAccent}" CornerRadius="5">
+                          <Border.Style>
+                            <Style TargetType="Border">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                              <Style.Triggers>
+                                <MultiDataTrigger>
+                                  <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsGallerySelectionMode,ElementName=Shell}" Value="True"/>
+                                    <Condition Binding="{Binding CheckedCount,Converter={StaticResource GalleryVisibility}}" Value="Visible"/>
+                                  </MultiDataTrigger.Conditions>
+                                  <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </Border.Style>
+                          <TextBlock x:Name="SelectionCountText" Text="{Binding CheckedCount}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                     Foreground="{StaticResource GalleryAccentText}" TextAlignment="Center"/>
+                        </Border>
+                      </StackPanel>
+                    </Button>
+                    <Border Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{StaticResource GalleryLine}"
+                            Visibility="{Binding IsGallerySelectionMode,ElementName=Shell,Converter={StaticResource GalleryVisibility}}">
+                      <Button x:Name="SelectionActionsButton" Padding="0" Click="OnSelectionActionsClick"
+                              ToolTip="선택한 영상의 일괄 작업" AutomationProperties.Name="선택한 영상의 일괄 작업"
+                              AutomationProperties.HelpText="{Binding CheckedCount,StringFormat='{}선택한 영상 {0}개'}">
+                        <Button.Style>
+                          <Style TargetType="Button" BasedOn="{StaticResource GalleryQuiet}">
+                            <Setter Property="Foreground" Value="{StaticResource GalleryAccent}"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding CheckedCount}" Value="0">
+                                <Setter Property="IsEnabled" Value="False"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Button.Style>
+                        <c:GalleryIcon Kind="chevron" Width="13" Height="13"
+                                       Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        <Button.ContextMenu>
+                          <ContextMenu x:Name="SelectionActionsMenu" Placement="Bottom" MinWidth="170"
+                                       DataContext="{Binding PlacementTarget.DataContext,RelativeSource={RelativeSource Self}}">
+                            <MenuItem x:Name="FilteredSelectionSummary" Focusable="False" IsHitTestVisible="False"
+                                      Foreground="{StaticResource GalleryMuted}"
+                                      Visibility="{Binding HiddenCheckedCount,Converter={StaticResource GalleryVisibility}}">
+                              <MenuItem.Header>
+                                <TextBlock Text="{Binding HiddenCheckedCount,StringFormat='{}필터 밖 영상 {0}개 포함'}"
+                                           Foreground="{StaticResource GalleryMuted}"/>
+                              </MenuItem.Header>
+                            </MenuItem>
+                            <MenuItem x:Name="SelectionRefreshItem" Header="메타데이터 갱신" Command="{Binding FetchMetadataCommand}"/>
+                            <MenuItem x:Name="SelectionDeleteItem" Header="삭제" Command="{Binding DeleteCommand}" Foreground="{StaticResource GalleryDanger}"/>
+                            <MenuItem x:Name="SelectionRestoreItem" Header="복원" Command="{Binding RestoreCommand}" Visibility="Collapsed"/>
+                            <Separator/>
+                            <MenuItem x:Name="SelectionClearItem" Header="선택 해제" Command="{Binding ClearCheckedCommand}"/>
+                          </ContextMenu>
+                        </Button.ContextMenu>
+                      </Button>
+                    </Border>
+                  </Grid>
+                </Border>
               </Grid>
               <WrapPanel x:Name="Chips" Margin="25,0,25,7" MinHeight="26.8">
                 <ItemsControl ItemsSource="{Binding QueryChips}" MaxWidth="{Binding ActualWidth,RelativeSource={RelativeSource AncestorType=WrapPanel}}">
@@ -270,48 +396,14 @@
                 </ItemsControl>
                 <Button x:Name="ClearFilters" Content="전체 해제" Command="{Binding ClearFiltersCommand}" Style="{StaticResource GalleryQuiet}" MinHeight="26" Padding="3,5" Foreground="{StaticResource GalleryMuted}" />
                 <TextBlock x:Name="NoFilters" Text="선택한 필터가 없습니다" Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center" />
+                <Button x:Name="CompactHistory" Style="{StaticResource GalleryQuiet}" MinHeight="28" Padding="8,4" Click="OnHistoryClick" Visibility="Collapsed">
+                  <TextBlock>
+                    <Run Text="변경 내역 " />
+                    <Run Text="{Binding ChangeHistory.Count,Mode=OneWay}" />
+                  </TextBlock>
+                </Button>
               </WrapPanel>
-              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,0,0,1">
-                <Grid x:Name="Toolbar" Margin="25,0,25,5" MinHeight="29">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                  </Grid.RowDefinitions>
-                  <CheckBox x:Name="VisibleCheck" Content="목록 선택" Click="OnVisibleCheckClick" VerticalAlignment="Center" IsThreeState="True" />
-                  <ComboBox x:Name="SortPicker" Grid.Column="3" Width="145" ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label" SelectedItem="{Binding SelectedSortOption}" />
-                  <WrapPanel x:Name="ToolbarActions" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                    <Button Command="{Binding EditCommand}" Style="{StaticResource GalleryToolbarButton}"><StackPanel Orientation="Horizontal"><c:GalleryIcon Kind="edit" Margin="0,0,7,0"/><TextBlock Text="편집"/></StackPanel></Button>
-                    <Button Command="{Binding FetchMetadataCommand}" Style="{StaticResource GalleryToolbarButton}" Margin="4,0,0,0"><StackPanel Orientation="Horizontal"><c:GalleryIcon Kind="refresh" Margin="0,0,7,0"/><TextBlock Text="정보 보강"/></StackPanel></Button>
-                    <Button x:Name="ToolbarDelete" Content="휴지통" Command="{Binding DeleteCommand}" Style="{StaticResource GalleryToolbarButton}" Margin="4,0,0,0" />
-                    <Button x:Name="ToolbarRestore" Content="복원" Command="{Binding RestoreCommand}" Style="{StaticResource GalleryToolbarButton}" Margin="4,0,0,0" Visibility="Collapsed" />
-                    <Button x:Name="CompactHistory" Style="{StaticResource GalleryQuiet}" MinHeight="28" Padding="8,4" Click="OnHistoryClick" Visibility="Collapsed">
-                      <TextBlock>
-                        <Run Text="변경 내역 " />
-                        <Run Text="{Binding ChangeHistory.Count,Mode=OneWay}" />
-                      </TextBlock>
-                    </Button>
-                  </WrapPanel>
-                  <WrapPanel x:Name="CheckedSummary" Grid.Row="2" Grid.ColumnSpan="4" Visibility="{Binding CheckedCount,Converter={StaticResource GalleryVisibility}}" Margin="0,5,0,0">
-                    <TextBlock Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center">
-                      <Run Text="총 " />
-                      <Run Text="{Binding CheckedCount,Mode=OneWay}" />
-                      <Run Text="개 선택 · 현재 결과 " />
-                      <Run Text="{Binding VisibleCheckedCount,Mode=OneWay}" />
-                      <Run Text="개 · 필터 밖 " />
-                      <Run Text="{Binding HiddenCheckedCount,Mode=OneWay}" />
-                      <Run Text="개" />
-                    </TextBlock>
-                    <Button Content="선택 해제" Style="{StaticResource GalleryQuiet}" Command="{Binding ClearCheckedCommand}" Padding="8,3" MinHeight="22" />
-                  </WrapPanel>
-                </Grid>
-              </Border>
+              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,0,0,1"/>
             </StackPanel>
           </c:GalleryPageScrollHost.Prefix>
           <c:GalleryPageScrollHost.List>
@@ -349,9 +441,18 @@
                     <EventSetter Event="MouseEnter" Handler="OnGalleryCardEnter" />
                     <EventSetter Event="MouseLeave" Handler="OnGalleryCardLeave" />
                     <EventSetter Event="GotKeyboardFocus" Handler="OnGalleryCardFocus" />
+                    <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnGalleryCardMouseDown" />
                     <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnGalleryCardClick" />
                     <EventSetter Event="Unloaded" Handler="OnGalleryCardUnloaded" />
                     <Setter Property="AutomationProperties.Name"><Setter.Value><MultiBinding Converter="{StaticResource GalleryDisplayTitle}"><Binding Path="Title"/><Binding Path="SourcePath"/><Binding Path="LibraryPath"/></MultiBinding></Setter.Value></Setter>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsGallerySelectionMode,RelativeSource={RelativeSource AncestorType=local:MainWindow}}" Value="True">
+                        <Setter Property="Cursor" Value="Hand"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding IsChecked}" Value="True">
+                        <Setter Property="AutomationProperties.ItemStatus" Value="일괄 작업 선택됨"/>
+                      </DataTrigger>
+                    </Style.Triggers>
                   </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemsPanel>

@@ -68,6 +68,7 @@ public partial class MainViewModel
     public RelayCommand InspectCommand { get; private set; } = null!;
     public event Action? GalleryScrollToTopRequested;
     public event Action? GalleryQueryRequested;
+    internal event Action? GalleryCheckedWorkCompleted;
     private bool _queryMovesToTop;
 
     private void InitializeGallery()
@@ -82,8 +83,7 @@ public partial class MainViewModel
         {
             if (!GuardGalleryEdit()) return;
             var value = AllVisibleChecked != true;
-            foreach (var item in Videos.Where(item => _galleryResultIds.Contains(item.Id))) item.IsChecked = value;
-            NotifyGallerySelection();
+            SetGalleryChecked(Videos.Where(item => _galleryResultIds.Contains(item.Id)), value);
         }, _ => CanToggleVisibleChecked);
         ClearCheckedCommand = new RelayCommand(_ => { if (GuardGalleryEdit()) ClearGalleryChecked(); });
         ClearFiltersCommand = new RelayCommand(_ => ClearGalleryFilters());
@@ -133,10 +133,32 @@ public partial class MainViewModel
         PropertyChanged?.Invoke(this, new(nameof(SelectedActor)));
         RequestGalleryQuery();
     }
-    private void ClearGalleryChecked()
+    private bool _updatingGalleryChecks;
+
+    private void ClearGalleryChecked() => SetGalleryChecked(Videos, false);
+
+    internal void CheckGalleryRange(IEnumerable<VideoItem> items)
     {
-        foreach (var item in Videos) item.SetCheckedFromOwner(false);
+        if (GuardGalleryEdit()) SetGalleryChecked(items, true);
+    }
+
+    private void SetGalleryChecked(IEnumerable<VideoItem> items, bool value)
+    {
+        _updatingGalleryChecks = true;
+        try
+        {
+            foreach (var item in items) item.SetCheckedFromOwner(value);
+        }
+        finally { _updatingGalleryChecks = false; }
         NotifyGallerySelection();
+    }
+
+    private void CompleteGalleryCheckedWork(IReadOnlySet<Guid> checkedTargets, IReadOnlySet<Guid> completedTargets)
+    {
+        if (checkedTargets.Count == 0 || completedTargets.Count == 0) return;
+        SetGalleryChecked(Videos.Where(item => checkedTargets.Contains(item.Id) && completedTargets.Contains(item.Id)), false);
+        if (checkedTargets.IsSubsetOf(completedTargets) && CheckedCount == 0)
+            GalleryCheckedWorkCompleted?.Invoke();
     }
     private IReadOnlyList<VideoItem> CaptureGalleryTargets(bool inspectedOnly = false)
     {
@@ -160,7 +182,10 @@ public partial class MainViewModel
     }
     private void GalleryItemChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName == nameof(VideoItem.IsChecked)) NotifyGallerySelection();
+        if (args.PropertyName == nameof(VideoItem.IsChecked))
+        {
+            if (!_updatingGalleryChecks) NotifyGallerySelection();
+        }
         else if (args.PropertyName is not (nameof(VideoItem.IsActive) or nameof(VideoItem.ThumbnailSource) or nameof(VideoItem.ThumbnailLoadState)))
         {
             _gallerySnapshotDirty = true;

@@ -71,6 +71,7 @@ public sealed class GalleryEditorDraft : INotifyPropertyChanged, IDisposable
     public bool HasChanges => Changes.Count > 0;
     internal bool IsAutomaticProposal { get; set; }
     internal Dictionary<Guid, VideoEntry>? AutomaticCandidates { get; set; }
+    internal HashSet<Guid> MetadataUpdatesNeedingAttention { get; } = new();
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal Dictionary<Guid, VideoEntry>? BuildCandidates()
