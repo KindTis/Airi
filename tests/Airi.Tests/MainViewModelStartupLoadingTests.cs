@@ -54,7 +54,7 @@ public sealed class MainViewModelStartupLoadingTests
         viewModel.SetStartupState(StartupLibraryState.Publishing);
         viewModel.SetStartupState(StartupLibraryState.Ready);
 
-        var first = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch);
+        var first = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
         var second = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave);
 
         Assert.NotNull(first);
@@ -73,7 +73,7 @@ public sealed class MainViewModelStartupLoadingTests
         viewModel.SetStartupState(StartupLibraryState.Publishing);
         viewModel.SetStartupState(StartupLibraryState.Ready);
         var lease = Assert.IsType<LibraryMutationLease>(
-            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave));
 
         viewModel.ReleaseLibraryMutation(lease with { Identity = Guid.NewGuid() });
         Assert.Equal(lease, viewModel.CurrentMutationLease);
@@ -244,7 +244,7 @@ public sealed class MainViewModelStartupLoadingTests
         var editor = Assert.IsType<LibraryMutationLease>(viewModel.TryBeginMetadataEditorMutation());
         Assert.Equal(LibraryMutationOwner.EditorSave, editor.Owner);
         Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata));
-        Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+        Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave));
         viewModel.EndMetadataEditorMutation(editor);
         Assert.True(viewModel.CanMutateLibrary);
         return Task.CompletedTask;
@@ -280,20 +280,20 @@ public sealed class MainViewModelStartupLoadingTests
     });
 
     [Fact]
-    public Task FetchCommand_RapidDoubleExecute_StartsOneManualLease() => WpfTestHost.RunAsync(() =>
+    public Task EditorMutation_ReentryAcquiresOneLeaseAndDisablesFetch() => WpfTestHost.RunAsync(() =>
     {
         using var fixture = new Fixture();
         using var viewModel = fixture.CreateViewModel();
         viewModel.SetStartupState(StartupLibraryState.Publishing);
         viewModel.SetStartupState(StartupLibraryState.Ready);
 
-        var first = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch);
-        var second = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch);
+        var first = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave);
+        var second = viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave);
 
         Assert.NotNull(first);
         Assert.Null(second);
         Assert.False(viewModel.FetchMetadataCommand.CanExecute(null));
-        Assert.Equal(LibraryMutationOwner.ManualFetch, viewModel.CurrentMutationLease?.Owner);
+        Assert.Equal(LibraryMutationOwner.EditorSave, viewModel.CurrentMutationLease?.Owner);
         return Task.CompletedTask;
     });
 
@@ -708,7 +708,7 @@ public sealed class MainViewModelStartupLoadingTests
         {
             Assert.Equal(StartupLibraryState.SavingScan, fixture.ViewModel!.StartupState);
             Assert.Equal(LibraryMutationOwner.StartupScan, fixture.ViewModel.CurrentMutationLease?.Owner);
-            Assert.Null(fixture.ViewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+            Assert.Null(fixture.ViewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave));
             Assert.Null(fixture.ViewModel.TryBeginMetadataEditorMutation());
             return Task.CompletedTask;
         };
@@ -839,7 +839,7 @@ public sealed class MainViewModelStartupLoadingTests
     });
 
     [Fact]
-    public Task StartupScan_PendingAutoQueueWinsLeaseBeforeManualFetch() => WpfTestHost.RunAsync(async () =>
+    public Task StartupScan_PendingAutoQueueWinsLeaseBeforeEditorSave() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
         fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
@@ -851,7 +851,7 @@ public sealed class MainViewModelStartupLoadingTests
                 viewModel.StartupState == StartupLibraryState.Ready)
             {
                 ownerAtReady = viewModel.CurrentMutationLease?.Owner;
-                Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+                Assert.Null(viewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave));
             }
         };
 
@@ -1015,7 +1015,7 @@ public sealed class MainViewModelStartupLoadingTests
         viewModel.FetchMetadataCommand.CanExecuteChanged += (_, _) => canExecuteChanges++;
 
         var lease = Assert.IsType<LibraryMutationLease>(
-            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch));
+            viewModel.TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata));
         viewModel.ReleaseLibraryMutation(lease);
 
         Assert.True(changes.Count(name => name == nameof(MainViewModel.CanMutateLibrary)) >= 2);
@@ -1062,7 +1062,7 @@ public sealed class MainViewModelStartupLoadingTests
     });
 
     [Fact]
-    public Task AutoQueue_AfterScanSave_PreemptsManualFetch() => WpfTestHost.RunAsync(async () =>
+    public Task AutoQueue_AfterScanSave_DisablesFetch() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();
         fixture.Scanner.ScanOverride = (_, _, _) => Task.FromResult(CreateNewFileScanResult(1));
@@ -1117,8 +1117,6 @@ public sealed class MainViewModelStartupLoadingTests
             ThumbnailPerformanceProbe? probe = null,
             Func<VideoEntry, CancellationToken, VideoItem>? storedMapper = null)
         {
-            var provider = new CrawlerSessionProvider();
-            var source = new OneFourOneJavMetaSource(provider);
             return new MainViewModel(
                 Store,
                 Scanner,
@@ -1127,9 +1125,6 @@ public sealed class MainViewModelStartupLoadingTests
                     new ThumbnailCache(_root),
                     NullTranslationService.Instance,
                     "KO"),
-                provider,
-                source,
-                new NeverCrawlerSessionFactory(),
                 probe ?? ThumbnailPerformanceProbe.Disabled,
                 new TestThumbnailImageLoader(),
                 storedMapper);
@@ -1186,12 +1181,6 @@ public sealed class MainViewModelStartupLoadingTests
                 Array.Empty<VideoEntry>(),
                 Array.Empty<UpdatedFile>()));
         }
-    }
-
-    private sealed class NeverCrawlerSessionFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Crawler is not used by startup tests.");
     }
 
     private static LibraryData CreateLibrary(int count) => new()

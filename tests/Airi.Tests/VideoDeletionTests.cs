@@ -22,7 +22,7 @@ public sealed class VideoDeletionTests
         item.Presence = VideoPresenceState.Missing;
         await vm.DeleteSelectedVideoAsync(_ => throw new Exception("confirm"), _ => Task.CompletedTask);
         item.Presence = VideoPresenceState.Available;
-        var lease = vm.TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch)!;
+        var lease = vm.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave)!;
         await vm.DeleteSelectedVideoAsync(_ => throw new Exception("confirm"), _ => Task.CompletedTask);
         vm.ReleaseLibraryMutation(lease);
         Assert.Empty(f.Recycler.Paths);
@@ -427,64 +427,6 @@ public sealed class VideoDeletionTests
     });
 
     [Fact]
-    public Task ActualCrawlerPreparation_IsReusedByToolbarAndExplicitRefreshBeforeFetching() => WpfTestHost.RunAsync(async () =>
-    {
-        using var f = new VideoDeletionFixture(); var session = new TestCrawlerSession(); var factory = new TestCrawlerFactory(session);
-        using var vm = await f.CreateAsync(useActualCrawler: true, crawlerFactory: factory);
-        vm.FetchMetadataCommand.Execute(null); await vm.GalleryActionTask;
-        Assert.Equal(1, factory.Starts); Assert.Equal(1, session.Navigations);
-        Assert.True(vm.IsChangePreview); Assert.Equal("141Jav", Assert.Single(vm.EditorDraft!.TargetResults).Source);
-        vm.CancelEditCommand.Execute(null); await vm.BeginGalleryEditAsync();
-        vm.RefreshDraftMetadataCommand.Execute(null); await vm.GalleryActionTask;
-        Assert.Equal(1, factory.Starts); Assert.Equal(2, session.Navigations);
-        Assert.Equal("141Jav", vm.EditorDraft!.ProposalSource); Assert.True(vm.EditorDraft.IsProposalPartial);
-        Assert.Equal("141Jav", vm.EditorDraft.Fields.Single(field => field.Field == MetadataField.Date).ProposalSource);
-        Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
-    });
-
-    [Fact]
-    public Task CrawlerPreparationCancellation_StopsBeforeFetchAndSavesNothing() => WpfTestHost.RunAsync(async () =>
-    {
-        using var f = new VideoDeletionFixture(); var session = new TestCrawlerSession(); var factory = new TestCrawlerFactory(session)
-        { StartOverride = async token => { await Task.Delay(Timeout.Infinite, token); throw new InvalidOperationException("unreachable"); } };
-        using var vm = await f.CreateAsync(useActualCrawler: true, crawlerFactory: factory);
-        vm.FetchMetadataCommand.Execute(null); await factory.Started.Task;
-        vm.CancelEditCommand.Execute(null); await vm.GalleryActionTask;
-        Assert.Equal(1, factory.Starts); Assert.Equal(0, session.Navigations); Assert.False(vm.IsEditing);
-        Assert.False(vm.IsCrawlerRunning); Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
-    });
-
-    [Fact]
-    public Task CrawlerPreparationFailure_PreservesDraftReasonAndDoesNotFetchOrSave() => WpfTestHost.RunAsync(async () =>
-    {
-        using var f = new VideoDeletionFixture(); var session = new TestCrawlerSession(); var factory = new TestCrawlerFactory(session)
-        { StartOverride = _ => Task.FromException<OneFourOneJavCrawlerStartResult>(new IOException("factory failure")) };
-        using var vm = await f.CreateAsync(useActualCrawler: true, crawlerFactory: factory);
-        await vm.BeginGalleryEditAsync(); vm.RefreshDraftMetadataCommand.Execute(null); await vm.GalleryActionTask;
-        Assert.Equal(0, session.Navigations); Assert.Contains("factory failure", vm.EditorDraft!.Error);
-        Assert.Equal("수집 준비 실패", Assert.Single(vm.EditorDraft.TargetResults).Outcome);
-        Assert.Equal("141Jav", vm.EditorDraft.ProposalSource); Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
-    });
-
-    [Theory]
-    [InlineData("timeout", "수집 실패")]
-    [InlineData("failure", "수집 실패")]
-    [InlineData("empty", "결과 없음")]
-    public Task ExplicitRefresh_RetainsSourceAndFailureTimeoutOrNoResult(string mode, string expected) => WpfTestHost.RunAsync(async () =>
-    {
-        using var f = new VideoDeletionFixture(); var session = new TestCrawlerSession();
-        if (mode == "timeout") session.NavigationError = new TaskCanceledException("provider timeout");
-        if (mode == "failure") session.NavigationError = new IOException("provider failure");
-        if (mode == "empty") session.Metadata = null;
-        using var vm = await f.CreateAsync(useActualCrawler: true, crawlerFactory: new TestCrawlerFactory(session));
-        await vm.BeginGalleryEditAsync(); vm.RefreshDraftMetadataCommand.Execute(null); await vm.GalleryActionTask;
-        var draft = vm.EditorDraft!; var result = Assert.Single(draft.TargetResults);
-        Assert.Equal("141Jav", draft.ProposalSource); Assert.Equal("141Jav", result.Source); Assert.Equal(expected, result.Outcome);
-        if (mode != "empty") { Assert.NotNull(result.Reason); Assert.Equal(result.Reason, draft.ProposalReason); Assert.NotNull(draft.Error); }
-        Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
-    });
-
-    [Fact]
     public Task BatchRestoreCancellation_StopsRemainingCallsAndDoesNotCountStillTrashedAsRestored() => WpfTestHost.RunAsync(async () =>
     {
         using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync();
@@ -550,48 +492,21 @@ public sealed class VideoDeletionTests
         Assert.Equal(id, reopened.Videos.Single(video => video.Id == id).Id); Assert.Single(f.Recycler.Paths);
     });
 
-    private sealed class TestCrawlerSession : IOneFourOneJavCrawlerSession
-    {
-        public bool Prepared { get; set; }
-        public int Navigations { get; private set; }
-        public Exception? NavigationError { get; set; }
-        public OneFourOneJavCrawler.CrawlerMetadata? Metadata { get; set; } = new(new DateTime(2024, 1, 2), ["source tag"], ["source actor"], "source description");
-        public Task<bool> NavigateToAsync(string url, CancellationToken cancellationToken = default)
-        {
-            Assert.True(Prepared); Navigations++;
-            return NavigationError is null ? Task.FromResult(true) : Task.FromException<bool>(NavigationError);
-        }
-        public Task<OneFourOneJavCrawler.CrawlerMetadata?> TryGetMetadataAsync(CancellationToken cancellationToken = default) => Task.FromResult(Metadata);
-        public Task<string?> TryGetThumbnailUrlAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
-    }
-    private sealed class TestCrawlerFactory(TestCrawlerSession session) : IOneFourOneJavCrawlerSessionFactory
-    {
-        public int Starts { get; private set; }
-        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Func<CancellationToken, Task<OneFourOneJavCrawlerStartResult>>? StartOverride { get; init; }
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default)
-        {
-            Starts++; Started.TrySetResult();
-            if (StartOverride is not null) return StartOverride(cancellationToken);
-            session.Prepared = true;
-            return Task.FromResult(new OneFourOneJavCrawlerStartResult(new TestCrawlerHandle(session), session, "prepared"));
-        }
-    }
-    private sealed class TestCrawlerHandle(TestCrawlerSession session) : IOneFourOneJavCrawlerSessionHandle
-    {
-        private bool _disposed;
-        public IOneFourOneJavCrawlerSession Session => session;
-        public bool IsBrowserOpen() => !_disposed;
-        public void Dispose() => _disposed = true;
-    }
-
     private sealed class DelayedSource : IWebVideoMetaSource
     {
+        public VideoMetadataSourceKind Kind => VideoMetadataSourceKind.LibreDmm;
         public string Name => "Delayed test source";
+        public string Host => "fixture.invalid";
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource<WebVideoMetaResult?> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public bool CanHandle(string query) => true;
-        public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) { Started.TrySetResult(); return Release.Task; }
+        public TaskCompletionSource<WebVideoMetaResult> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls { get; private set; }
+        public Task<WebVideoMetaResult> FetchAsync(MetadataProductCode code, bool includeThumbnail,
+            ISet<string> blockedHosts, CancellationToken cancellationToken)
+        {
+            Calls++;
+            Started.TrySetResult();
+            return Release.Task;
+        }
     }
 
 }
@@ -618,13 +533,13 @@ internal sealed class VideoDeletionFixture : IDisposable
     }
 
     internal async Task<MainViewModel> CreateAsync(Func<string, bool>? deletionFileProbe = null,
-        IEnumerable<IWebVideoMetaSource>? metadataSources = null, bool duplicatePath = false,
-        bool useActualCrawler = false, IOneFourOneJavCrawlerSessionFactory? crawlerFactory = null)
+        IEnumerable<IWebVideoMetaSource>? metadataSources = null, bool duplicatePath = false, int legacyTrashCount = 0)
     {
         var library = new LibraryData();
         for (var i = 0; i < 3; i++)
         {
-            var path = Path.Combine(Root, $"video-{i}.mp4");
+            var fileName = metadataSources is null ? $"video-{i}.mp4" : $"ABP-{i + 100}.mp4";
+            var path = Path.Combine(Root, fileName);
             await File.WriteAllBytesAsync(path, new byte[] { 1, 2, (byte)i });
             library.Videos.Add(new VideoEntry(LibraryPathHelper.NormalizeLibraryPath(path),
                 new VideoMeta($"Title {i}", null, new[] { $"Actor {i}" }, ThumbnailPath, Array.Empty<string>(), "preserved description")));
@@ -633,11 +548,10 @@ internal sealed class VideoDeletionFixture : IDisposable
         await File.WriteAllTextAsync(ThumbnailPath, "test thumbnail");
         if (duplicatePath) library.Videos[1] = library.Videos[1] with { Path = library.Videos[0].Path };
         await Store.SaveAsync(library);
-        var provider = new CrawlerSessionProvider(); var crawlerSource = new OneFourOneJavMetaSource(provider);
-        var sources = useActualCrawler ? new IWebVideoMetaSource[] { crawlerSource } : metadataSources ?? Array.Empty<IWebVideoMetaSource>();
+        var sources = metadataSources ?? Array.Empty<IWebVideoMetaSource>();
         var vm = new MainViewModel(Store, new Scanner(library), new WebMetadataService(sources,
-            new ThumbnailCache(Root), NullTranslationService.Instance, "KO"), provider, crawlerSource,
-            crawlerFactory ?? new NoCrawler(), ThumbnailPerformanceProbe.Disabled, new TestThumbnailImageLoader(),
+            new ThumbnailCache(Root), NullTranslationService.Instance, "KO"),
+            ThumbnailPerformanceProbe.Disabled, new TestThumbnailImageLoader(),
             recycleService: Recycler, deletionFileProbe: deletionFileProbe);
         await vm.InitializeAsync();
         InitialJson = await File.ReadAllTextAsync(Store.FilePath);
@@ -650,10 +564,10 @@ internal sealed class VideoDeletionFixture : IDisposable
 
     internal async Task<MainViewModel> ReopenAsync()
     {
-        var library = await Store.LoadAsync(); var provider = new CrawlerSessionProvider();
+        var library = await Store.LoadAsync();
         var vm = new MainViewModel(Store, new Scanner(library), new WebMetadataService(Array.Empty<IWebVideoMetaSource>(),
-            new ThumbnailCache(Root), NullTranslationService.Instance, "KO"), provider, new OneFourOneJavMetaSource(provider),
-            new NoCrawler(), ThumbnailPerformanceProbe.Disabled, new TestThumbnailImageLoader(), recycleService: Recycler);
+            new ThumbnailCache(Root), NullTranslationService.Instance, "KO"),
+            ThumbnailPerformanceProbe.Disabled, new TestThumbnailImageLoader(), recycleService: Recycler);
         await vm.InitializeAsync(); await WaitForQueryAsync(vm); return vm;
     }
 
@@ -702,11 +616,5 @@ internal sealed class VideoDeletionFixture : IDisposable
                 .DistinctBy(v => LibraryPathHelper.NormalizeLibraryPath(v.Path), StringComparer.OrdinalIgnoreCase).Select(v => new FileSnapshot(v.Path,
                 LibraryPathHelper.ResolveToAbsolute(v.Path), v.SizeBytes, v.LastModifiedUtc, v.CreatedUtc)).ToArray(),
                 Array.Empty<FileSnapshot>(), Array.Empty<VideoEntry>(), Array.Empty<UpdatedFile>()));
-    }
-
-    private sealed class NoCrawler : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Deletion tests do not use a crawler.");
     }
 }

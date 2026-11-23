@@ -132,7 +132,6 @@ public sealed class MainWindowStartupTests
 
         public MainViewModel CreateViewModel()
         {
-            var provider = new CrawlerSessionProvider();
             return new MainViewModel(
                 Store,
                 new EmptyScanner(),
@@ -141,9 +140,6 @@ public sealed class MainWindowStartupTests
                     new ThumbnailCache(_root),
                     NullTranslationService.Instance,
                     "KO"),
-                provider,
-                new OneFourOneJavMetaSource(provider),
-                new NeverCrawlerSessionFactory(),
                 new TestThumbnailImageLoader());
         }
 
@@ -184,9 +180,4 @@ public sealed class MainWindowStartupTests
                 Array.Empty<UpdatedFile>()));
     }
 
-    private sealed class NeverCrawlerSessionFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Crawler is not used by startup window tests.");
-    }
 }

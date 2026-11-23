@@ -22,6 +22,8 @@ public record VideoMeta(
     public string? Studio { get; init; }
     public IReadOnlyList<string> Genres { get; init; } = Array.Empty<string>();
     public string? RawDate { get; init; }
+    public IReadOnlyList<ActorName> ActorNames { get; init; } = Array.Empty<ActorName>();
+    public KoreanMetadata? Korean { get; init; }
     public IReadOnlyList<MetadataField> ManualFieldLocks { get; init; } = Array.Empty<MetadataField>();
     [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalData { get; init; }
     [JsonIgnore] public bool DateNeedsReview => !string.IsNullOrWhiteSpace(RawDate) && Date is null;
@@ -35,6 +37,7 @@ public record VideoEntry(
     DateTime CreatedUtc = default)
 {
     public Guid Id { get; init; } = Guid.NewGuid();
+    public string? ProductCode { get; init; }
     public long Revision { get; init; }
     public LibraryFilePresence Presence { get; init; } = LibraryFilePresence.Checking;
     public DateTime? PresenceProbedAtUtc { get; init; }

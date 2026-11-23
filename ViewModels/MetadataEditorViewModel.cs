@@ -157,6 +157,16 @@ namespace Airi.ViewModels
         public void AcceptChanges() => _thumbnailCache.AcceptOwned(ThumbnailPath);
         public void Dispose() => _thumbnailCache.DiscardOwned(ThumbnailPath);
 
+        internal void UseCachedThumbnail(string path)
+        {
+            if (ThumbnailPath == path) return;
+            var absolutePath = LibraryPathHelper.ResolveToAbsolute(path);
+            _thumbnailCache.DiscardOwned(ThumbnailPath);
+            ThumbnailPath = path;
+            ThumbnailPreviewUri = File.Exists(absolutePath) ? new Uri(absolutePath).AbsoluteUri : _fallbackThumbnailPreviewUri;
+            ThumbnailDisplayName = BuildDisplayName(path);
+        }
+
         public void ResetThumbnail()
         {
             _thumbnailCache.DiscardOwned(ThumbnailPath);

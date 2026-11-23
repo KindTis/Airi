@@ -560,7 +560,7 @@ public sealed class MainWindowThumbnailRealizationTests
                 var list=fixture.Window.GetVideoListForTests();var anchor=(ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(active);
                 fixture.Window.OpenGalleryForTests(active,anchor);
                 if(captureState=="batch"){foreach(var item in list.Items.Cast<VideoItem>().Take(2))item.IsChecked=true;fixture.ViewModel.EditCommand.Execute(null);await fixture.ViewModel.GalleryActionTask;}
-                else if(captureState is "edit" or "preview"){fixture.ViewModel.EditInspectedCommand.Execute(null);await fixture.ViewModel.GalleryActionTask;}
+                else if(captureState is "edit" or "preview"){fixture.ViewModel.EditCommand.Execute(null);await fixture.ViewModel.GalleryActionTask;}
                 if(captureState=="preview"){fixture.ViewModel.EditorDraft!.Fields.First(field=>field.Field==Airi.Domain.MetadataField.Title).Value+=" 수정";fixture.ViewModel.PreviewChangesCommand.Execute(null);}
                 fixture.Window.UpdateLayout();WpfTestHost.DrainDispatcher(fixture.Window.Dispatcher);
             }
@@ -689,10 +689,8 @@ public sealed class MainWindowThumbnailRealizationTests
             Loader = new RecordingLoader();
             Probe = ThumbnailPerformanceProbe.CreateEnabled();
             Probe.BeginMeasurementPhase(ThumbnailMeasurementPhase.Cold);
-            var provider = new CrawlerSessionProvider();
-            var source = new OneFourOneJavMetaSource(provider);
             var metadata = new WebMetadataService(
-                new IWebVideoMetaSource[] { new NoopMetaSource() },
+                Array.Empty<IWebVideoMetaSource>(),
                 new ThumbnailCache(_root),
                 NullTranslationService.Instance,
                 "KO");
@@ -701,9 +699,6 @@ public sealed class MainWindowThumbnailRealizationTests
                 Store,
                 useStoredScanner ? new StoredFixtureScanner(Store) : new LibraryScanner(new FileSystemScanner()),
                 metadata,
-                provider,
-                source,
-                new NoopCrawlerFactory(),
                 Probe,
                 Loader);
             if (enablePreview)
@@ -910,18 +905,5 @@ public sealed class MainWindowThumbnailRealizationTests
             var stored = await store.LoadAsync(token);
             return new LibraryScanResult(stored.Videos.Where(entry=>File.Exists(entry.Path)).Select(entry => new FileSnapshot(entry.Path, entry.Path, entry.SizeBytes, entry.LastModifiedUtc, entry.CreatedUtc)).ToArray(), Array.Empty<FileSnapshot>(), stored.Videos.Where(entry=>!File.Exists(entry.Path)).ToArray(), Array.Empty<UpdatedFile>());
         }
-    }
-    private sealed class NoopMetaSource : IWebVideoMetaSource
-    {
-        public string Name => "Noop";
-        public bool CanHandle(string query) => false;
-        public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) =>
-            Task.FromResult<WebVideoMetaResult?>(null);
-    }
-
-    private sealed class NoopCrawlerFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            Task.FromException<OneFourOneJavCrawlerStartResult>(new InvalidOperationException("Not used."));
     }
 }

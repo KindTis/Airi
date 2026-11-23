@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,206 +8,281 @@ using Airi.Domain;
 using Airi.Infrastructure;
 using Airi.Web;
 
-namespace Airi.Services
+namespace Airi.Services;
+
+public enum MetadataLookupOutcome
 {
-    public sealed record MetadataEnrichmentResult(VideoEntry? Entry, string? Source, string? Error, bool NoResult)
+    Unidentified,
+    NotFound,
+    Failed,
+    Partial,
+    Found,
+    Unchanged
+}
+
+public sealed record MetadataEnrichmentResult(
+    MetadataLookupOutcome Status,
+    VideoEntry? Entry,
+    string? Source,
+    string? Detail,
+    IReadOnlyDictionary<MetadataField, string> FieldSources);
+
+public sealed class WebMetadataService
+{
+    private static readonly MetadataField[] Fields = Enum.GetValues<MetadataField>();
+    private static readonly VideoMetadataSourceKind[] GeneralOrder =
+    [
+        VideoMetadataSourceKind.LibreDmm,
+        VideoMetadataSourceKind.JavBus,
+        VideoMetadataSourceKind.JavBusUncensored
+    ];
+    private static readonly VideoMetadataSourceKind[] UncensoredOrder =
+    [
+        VideoMetadataSourceKind.LibreDmm,
+        VideoMetadataSourceKind.JavBusUncensored,
+        VideoMetadataSourceKind.JavBus
+    ];
+
+    private readonly IReadOnlyList<IWebVideoMetaSource> _sources;
+    private readonly ThumbnailCache _thumbnailCache;
+    private readonly ITextTranslationService _translationService;
+    private readonly string _translationTargetLanguageCode;
+    private readonly MetadataLocalization _localization;
+
+    public WebMetadataService(
+        IEnumerable<IWebVideoMetaSource> sources,
+        ThumbnailCache thumbnailCache,
+        ITextTranslationService? translationService = null,
+        string translationTargetLanguageCode = "KO")
     {
-        public bool IsPartial { get; init; }
+        _sources = sources?.ToArray() ?? throw new ArgumentNullException(nameof(sources));
+        _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
+        _translationService = translationService ?? NullTranslationService.Instance;
+        _translationTargetLanguageCode = translationTargetLanguageCode ?? string.Empty;
+        _localization = new MetadataLocalization(_translationService, _translationTargetLanguageCode);
     }
 
-    public sealed class WebMetadataService
+    public async Task<MetadataEnrichmentResult> FetchEnrichmentAsync(
+        VideoEntry entry, CancellationToken token)
     {
-        private readonly IReadOnlyList<IWebVideoMetaSource> _sources;
-        private readonly ThumbnailCache _thumbnailCache;
-        private readonly ITextTranslationService _translationService;
-        private readonly string _translationTargetLanguageCode;
+        ArgumentNullException.ThrowIfNull(entry);
+        token.ThrowIfCancellationRequested();
 
-        public WebMetadataService(
-            IEnumerable<IWebVideoMetaSource> sources,
-            ThumbnailCache thumbnailCache,
-            ITextTranslationService? translationService = null,
-            string translationTargetLanguageCode = "KO")
+        var targets = Fields.Except(entry.Meta.ManualFieldLocks).ToHashSet();
+        var fieldSources = new Dictionary<MetadataField, string>();
+        var attempts = new List<string>();
+        var details = new List<string>();
+        if (targets.Count == 0)
+            return Finish(MetadataLookupOutcome.Unchanged, "갱신할 수 있는 필드가 없습니다.");
+        if (MetadataProductCode.FromEntry(entry) is not { } code)
+            return Finish(MetadataLookupOutcome.Unidentified, "지원하는 품번 하나를 식별하지 못했습니다.");
+
+        var meta = entry.Meta;
+        var matched = false;
+        var failed = false;
+        var blockedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? ownedThumbnail = null;
+        var sameThumbnail = false;
+
+        bool NeedsField(MetadataField field) => targets.Contains(field) && !fieldSources.ContainsKey(field);
+        bool NeedsFallback() => targets.Any(field => field != MetadataField.Description && NeedsField(field));
+
+        try
         {
-            _sources = sources?.ToList() ?? throw new ArgumentNullException(nameof(sources));
-            _thumbnailCache = thumbnailCache ?? throw new ArgumentNullException(nameof(thumbnailCache));
-            _translationService = translationService ?? NullTranslationService.Instance;
-            _translationTargetLanguageCode = translationTargetLanguageCode ?? string.Empty;
-        }
-
-        public bool RequiresCrawlerSession => _sources.Any(source => source is OneFourOneJavMetaSource);
-
-        public async Task<VideoEntry?> EnrichAsync(VideoEntry entry, string query, CancellationToken cancellationToken) =>
-            (await FetchEnrichmentAsync(entry, query, cancellationToken).ConfigureAwait(false)).Entry;
-
-        public async Task<MetadataEnrichmentResult> FetchEnrichmentAsync(VideoEntry entry, string query, CancellationToken cancellationToken)
-        {
-            if (entry is null)
+            foreach (var kind in code.IsUncensored ? UncensoredOrder : GeneralOrder)
             {
-                throw new ArgumentNullException(nameof(entry));
-            }
+                token.ThrowIfCancellationRequested();
+                if (kind != VideoMetadataSourceKind.LibreDmm && !NeedsFallback()) break;
 
-            var normalizedQuery = NormalizeQuery(query);
-            if (string.IsNullOrWhiteSpace(normalizedQuery))
-            {
-                AppLogger.Info("Metadata enrichment skipped: query is empty after normalization.");
-                return new(null, null, "검색어가 없습니다.", true);
-            }
-            var failures = new List<string>();
-            var handledSources = new List<string>();
-            foreach (var source in _sources)
-            {
-                if (!source.CanHandle(normalizedQuery))
+                var source = _sources.FirstOrDefault(source => source.Kind == kind);
+                if (source is null) continue;
+                if (blockedHosts.Contains(source.Host))
                 {
+                    failed = true;
+                    details.Add($"{source.Name}: 호스트 접근 제한으로 건너뜀");
+                    AppLogger.Info($"Metadata lookup via {source.Name}: host blocked.");
                     continue;
                 }
 
-                handledSources.Add(source.Name);
-                string? ownedThumbnail = null;
-                try
+                attempts.Add(source.Name);
+                var includeThumbnail = NeedsField(MetadataField.Thumbnail);
+                var result = await FetchSourceAsync(source, code, includeThumbnail, blockedHosts, token).ConfigureAwait(false);
+                failed |= result.Failed;
+                if (!string.IsNullOrWhiteSpace(result.Detail))
+                    details.Add($"{source.Name}: {result.Detail}");
+                if (result.Meta is not { } incoming) continue;
+
+                matched = true;
+                var genres = CleanList(incoming.Genres);
+                var tags = CleanList(incoming.Tags);
+                bool AcceptField(MetadataField field, bool hasValue) =>
+                    hasValue && NeedsField(field) && fieldSources.TryAdd(field, source.Name);
+
+                var actors = CleanList(incoming.Actors);
+                var acceptActors = AcceptField(MetadataField.Actors, actors.Length > 0);
+                var actorNames = acceptActors ? actors.Select(name => incoming.ActorNames.FirstOrDefault(actor => actor.OriginalName == name)
+                    ?? meta.ActorNames.FirstOrDefault(actor => actor.OriginalName == name)).OfType<ActorName>().ToArray() : meta.ActorNames;
+                var acceptDate = AcceptField(MetadataField.Date, incoming.Date.HasValue);
+                meta = meta with
                 {
-                    AppLogger.Info($"Requesting metadata from {source.Name} for '{normalizedQuery}'.");
-                    string? sourceWarning = null;
-                    var sourcePartial = false;
-                    WebVideoMetaResult? result;
-                    if (source is OneFourOneJavMetaSource crawler)
-                    {
-                        var detailed = await crawler.FetchDetailedAsync(normalizedQuery, cancellationToken).ConfigureAwait(false);
-                        result = detailed.Result; sourceWarning = detailed.Error; sourcePartial = detailed.IsPartial;
-                    }
-                    else result = await source.FetchAsync(normalizedQuery, cancellationToken).ConfigureAwait(false);
-                    if (result is null)
-                    {
-                        if (sourceWarning is not null) failures.Add($"{source.Name}: {sourceWarning}");
-                        continue;
-                    }
+                    Title = AcceptField(MetadataField.Title, !string.IsNullOrWhiteSpace(incoming.Title)) ? incoming.Title : meta.Title,
+                    Date = acceptDate ? incoming.Date : meta.Date,
+                    RawDate = acceptDate ? null : meta.RawDate,
+                    Actors = acceptActors ? actors : meta.Actors,
+                    ActorNames = actorNames,
+                    Genres = AcceptField(MetadataField.Genres, genres.Length > 0) ? genres : meta.Genres,
+                    Tags = AcceptField(MetadataField.Tags, tags.Length > 0 || genres.Length > 0) ? (tags.Length == 0 ? genres : tags) : meta.Tags,
+                    Description = AcceptField(MetadataField.Description, !string.IsNullOrWhiteSpace(incoming.Description)) ? incoming.Description : meta.Description,
+                    Studio = AcceptField(MetadataField.Studio, !string.IsNullOrWhiteSpace(incoming.Studio)) ? incoming.Studio : meta.Studio
+                };
 
-                    var meta = MergeMeta(entry.Meta, result.Meta);
-                    var thumbnail = entry.Meta.Thumbnail;
-
-                    if (CanFill(entry.Meta, MetadataField.Thumbnail) && result.ThumbnailBytes is { Length: > 0 })
-                    {
-                        thumbnail = ownedThumbnail = await _thumbnailCache.SaveAsync(
-                            result.ThumbnailBytes,
-                            result.ThumbnailExtension ?? ".jpg",
-                            query,
-                            cancellationToken).ConfigureAwait(false);
-                    }
-
-                    meta = meta with { Thumbnail = string.IsNullOrWhiteSpace(thumbnail) ? meta.Thumbnail : thumbnail };
-                    if (CanFill(entry.Meta, MetadataField.Description) && !string.IsNullOrWhiteSpace(meta.Description))
-                        meta = await TranslateDescriptionAsync(meta, cancellationToken).ConfigureAwait(false);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    AppLogger.Info($"Metadata enrichment succeeded via {source.Name} for '{normalizedQuery}'.");
-                    return new(entry with { Meta = meta }, source.Name, sourceWarning, false)
-                    { IsPartial = sourcePartial || GalleryQueryEngine.IsIncomplete(meta) };
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                if (includeThumbnail && result.ThumbnailBytes is { Length: > 0 } bytes)
                 {
-                    if (ownedThumbnail is not null) _thumbnailCache.DiscardOwned(ownedThumbnail);
-                    AppLogger.Info($"Metadata enrichment cancelled for '{query}'.");
-                    throw;
+                    token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        ownedThumbnail = await _thumbnailCache.SaveAsync(
+                            bytes, result.ThumbnailExtension ?? ".jpg", code.Value, token).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        failed = true;
+                        details.Add($"{source.Name}: 표지 이미지를 사용할 수 없습니다.");
+                        AppLogger.Info($"Metadata cover via {source.Name}: unusable ({ex.GetType().Name}).");
+                    }
+
+                    if (ownedThumbnail is not null)
+                    {
+                        meta = meta with { Thumbnail = ownedThumbnail };
+                        fieldSources.Add(MetadataField.Thumbnail, source.Name);
+                        sameThumbnail = await CoverMatchesAsync(entry.Meta.Thumbnail, bytes, token).ConfigureAwait(false);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    if (ownedThumbnail is not null) _thumbnailCache.DiscardOwned(ownedThumbnail);
-                    failures.Add($"{source.Name}: {(ex is OperationCanceledException ? "시간 초과" : ex.Message)}");
-                    AppLogger.Error($"Metadata enrichment failed via {source.Name} for '{query}'.", ex);
-                }
+
+                if (kind != VideoMetadataSourceKind.LibreDmm) break;
             }
 
-            AppLogger.Info($"No metadata providers returned results for '{normalizedQuery}'.");
-            return new(null, handledSources.Count > 0 ? string.Join(", ", handledSources) : null,
-                failures.Count > 0 ? string.Join(" / ", failures) : null, failures.Count == 0);
+            token.ThrowIfCancellationRequested();
+            var hasMissingFields = NeedsFallback();
+            if (fieldSources.Count > 0) meta = await _localization.TranslateAsync(entry.Meta, meta, fieldSources, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+
+            if (sameThumbnail && ownedThumbnail is not null)
+            {
+                _thumbnailCache.DiscardOwned(ownedThumbnail);
+                ownedThumbnail = null;
+                meta = meta with { Thumbnail = entry.Meta.Thumbnail };
+            }
+
+            if (fieldSources.Count > 0)
+            {
+                return hasMissingFields
+                    ? Finish(MetadataLookupOutcome.Partial, "보완할 필드가 남았습니다.", entry with { Meta = meta, ProductCode = code.Value })
+                    : Finish(MetadataLookupOutcome.Found, null, entry with { Meta = meta, ProductCode = code.Value });
+            }
+            if (failed) return Finish(MetadataLookupOutcome.Failed, "조회 중 오류가 발생했습니다.");
+            if (matched) return Finish(MetadataLookupOutcome.Unchanged, "동일 작품 상세에 채택할 새 값이 없습니다.");
+            return Finish(MetadataLookupOutcome.NotFound, attempts.Count == 0
+                ? "조회할 공급자가 없습니다."
+                : "동일한 품번의 상세를 확인하지 못했습니다.");
+        }
+        catch
+        {
+            if (ownedThumbnail is not null) _thumbnailCache.DiscardOwned(ownedThumbnail);
+            if (token.IsCancellationRequested) AppLogger.Info($"Metadata lookup cancelled for {entry.Id:D}.");
+            throw;
         }
 
-        public async Task<WebVideoMetaResult> TranslateResultDescriptionAsync(WebVideoMetaResult result, CancellationToken cancellationToken)
+        MetadataEnrichmentResult Finish(MetadataLookupOutcome status, string? reason, VideoEntry? candidate = null)
         {
-            var meta = await TranslateDescriptionAsync(result.Meta, cancellationToken).ConfigureAwait(false);
-            return result with { Meta = meta };
+            if (reason is not null) details.Insert(0, reason);
+            IEnumerable<string> sources = candidate is null ? attempts : fieldSources.Values;
+            var sourceNames = sources.Distinct().ToArray();
+            var detail = details.Count > 0 ? string.Join(" / ", details) : null;
+            var trace = string.Join(", ", fieldSources.Select(item => $"{item.Key}={item.Value}"));
+            AppLogger.Info($"Metadata lookup for {entry.Id:D}: {status}, sources=[{string.Join(", ", attempts)}], fields=[{trace}], reason={detail ?? "none"}.");
+            return new(status, candidate, sourceNames.Length > 0 ? string.Join(", ", sourceNames) : null, detail, fieldSources);
         }
+    }
 
-        private async Task<VideoMeta> TranslateDescriptionAsync(VideoMeta meta, CancellationToken cancellationToken)
+    private static async Task<WebVideoMetaResult> FetchSourceAsync(IWebVideoMetaSource source,
+        MetadataProductCode code, bool includeThumbnail, ISet<string> blockedHosts, CancellationToken token)
+    {
+        try
         {
-            if (!_translationService.IsEnabled || string.IsNullOrWhiteSpace(_translationTargetLanguageCode))
-            {
-                AppLogger.Info("Description translation skipped: translation service disabled or target not set.");
-                return meta;
-            }
+            var result = await source.FetchAsync(code, includeThumbnail, blockedHosts, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            var outcome = result.Failed ? "failed" : result.Meta is null ? "no matching detail" : "matching detail";
+            AppLogger.Info($"Metadata lookup via {source.Name}: {outcome}.");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            token.ThrowIfCancellationRequested();
+            AppLogger.Info($"Metadata lookup via {source.Name}: failure ({ex.GetType().Name}).");
+            return new(null, Detail: ex is OperationCanceledException or TimeoutException
+                ? "요청 시간 초과"
+                : "공급자 응답을 확인하지 못했습니다.", Failed: true);
+        }
+    }
 
-            if (string.IsNullOrWhiteSpace(meta.Description))
-            {
-                AppLogger.Info("Description translation skipped: description is empty.");
-                return meta;
-            }
-
-            AppLogger.Info($"Translating description to {_translationTargetLanguageCode} (length {meta.Description.Length}).");
-
-            try
-            {
-                var translated = await _translationService.TranslateAsync(meta.Description, null, _translationTargetLanguageCode, cancellationToken).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(translated) && !string.Equals(translated, meta.Description, StringComparison.Ordinal))
-                {
-                    AppLogger.Info("Description translation succeeded.");
-                    return meta with { Description = translated };
-                }
-
-                AppLogger.Info("Description translation returned original content.");
-            }
-            catch (OperationCanceledException)
-            {
-                AppLogger.Info("Description translation cancelled.");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error($"Description translation failed for target '{_translationTargetLanguageCode}'.", ex);
-            }
-
+    public async Task<VideoMeta> TranslateDescriptionAsync(VideoMeta meta, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!_translationService.IsEnabled ||
+            string.IsNullOrWhiteSpace(_translationTargetLanguageCode) ||
+            string.IsNullOrWhiteSpace(meta.Description))
+        {
             return meta;
         }
 
-        private static string NormalizeQuery(string value)
+        try
         {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return string.Empty;
-            }
-
-            return LibraryPathHelper.NormalizeCode(value);
+            var translated = await _translationService.TranslateAsync(
+                meta.Description, null, _translationTargetLanguageCode, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            return string.IsNullOrWhiteSpace(translated) || TextEquals(translated, meta.Description)
+                ? meta
+                : meta with { Description = translated };
         }
-
-        public void AcceptCandidate(VideoEntry candidate) => _thumbnailCache.AcceptOwned(candidate.Meta.Thumbnail);
-        public void DiscardCandidate(VideoEntry candidate) => _thumbnailCache.DiscardOwned(candidate.Meta.Thumbnail);
-
-        public static bool CanFill(VideoMeta original, MetadataField field)
+        catch (Exception ex)
         {
-            if (original.ManualFieldLocks.Contains(field)) return false;
-            return field switch
-            {
-                MetadataField.Title => string.IsNullOrWhiteSpace(original.Title),
-                MetadataField.Date => original.Date is null && string.IsNullOrWhiteSpace(original.RawDate),
-                MetadataField.Actors => original.Actors.Count == 0,
-                MetadataField.Tags => original.Tags.Count == 0,
-                MetadataField.Thumbnail => string.IsNullOrWhiteSpace(original.Thumbnail),
-                MetadataField.Description => string.IsNullOrWhiteSpace(original.Description),
-                MetadataField.Studio => string.IsNullOrWhiteSpace(original.Studio),
-                MetadataField.Genres => original.Genres.Count == 0,
-                _ => false
-            };
+            token.ThrowIfCancellationRequested();
+            AppLogger.Info($"Metadata description translation kept original ({ex.GetType().Name}).");
+            return meta;
         }
-
-        public static VideoMeta MergeMeta(VideoMeta original, VideoMeta incoming) => original with
-        {
-            Title = CanFill(original, MetadataField.Title) && !string.IsNullOrWhiteSpace(incoming.Title) ? incoming.Title : original.Title,
-            Date = CanFill(original, MetadataField.Date) ? incoming.Date : original.Date,
-            RawDate = CanFill(original, MetadataField.Date) && incoming.Date.HasValue ? null : original.RawDate,
-            Actors = CanFill(original, MetadataField.Actors) && incoming.Actors.Count > 0 ? incoming.Actors : original.Actors,
-            Tags = CanFill(original, MetadataField.Tags) && incoming.Tags.Count > 0 ? incoming.Tags : original.Tags,
-            Thumbnail = CanFill(original, MetadataField.Thumbnail) && !string.IsNullOrWhiteSpace(incoming.Thumbnail) ? incoming.Thumbnail : original.Thumbnail,
-            Description = CanFill(original, MetadataField.Description) && !string.IsNullOrWhiteSpace(incoming.Description) ? incoming.Description : original.Description,
-            Studio = CanFill(original, MetadataField.Studio) && !string.IsNullOrWhiteSpace(incoming.Studio) ? incoming.Studio : original.Studio,
-            Genres = CanFill(original, MetadataField.Genres) && incoming.Genres.Count > 0 ? incoming.Genres : original.Genres
-        };
     }
+
+    private static string[] CleanList(IReadOnlyList<string> values) => values
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value.Trim())
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
+    private static bool TextEquals(string? left, string? right) =>
+        string.Equals(left?.Trim(), right?.Trim(), StringComparison.Ordinal);
+
+    private static async Task<bool> CoverMatchesAsync(string current, byte[] bytes, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(current)) return false;
+        try
+        {
+            var path = LibraryPathHelper.ResolveToAbsolute(current);
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                bufferSize: 4096, FileOptions.Asynchronous);
+            if (stream.Length != bytes.Length) return false;
+            var currentBytes = new byte[bytes.Length];
+            await stream.ReadExactlyAsync(currentBytes, token).ConfigureAwait(false);
+            return currentBytes.AsSpan().SequenceEqual(bytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    public void AcceptCandidate(VideoEntry candidate) => _thumbnailCache.AcceptOwned(candidate.Meta.Thumbnail);
+    public void DiscardCandidate(VideoEntry candidate) => _thumbnailCache.DiscardOwned(candidate.Meta.Thumbnail);
+
 }

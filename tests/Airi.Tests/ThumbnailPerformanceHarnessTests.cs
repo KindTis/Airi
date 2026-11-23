@@ -803,10 +803,8 @@ public sealed class ThumbnailPerformanceHarnessTests
         ThumbnailPerformanceProbe probe,
         IThumbnailImageLoader? thumbnailLoader = null)
     {
-        var provider = new CrawlerSessionProvider();
-        var source = new OneFourOneJavMetaSource(provider);
         var metadata = new WebMetadataService(
-            new IWebVideoMetaSource[] { new NoopMetaSource() },
+            Array.Empty<IWebVideoMetaSource>(),
             new ThumbnailCache(root),
             NullTranslationService.Instance,
             "KO");
@@ -814,9 +812,6 @@ public sealed class ThumbnailPerformanceHarnessTests
             store,
             new LibraryScanner(new FileSystemScanner()),
             metadata,
-            provider,
-            source,
-            new NoopCrawlerFactory(),
             probe,
             thumbnailLoader ?? CreateHarnessThumbnailLoader(probe));
     }
@@ -848,10 +843,8 @@ public sealed class ThumbnailPerformanceHarnessTests
 
         var probe = ThumbnailPerformanceProbe.CreateEnabled();
         var loader = new DeterministicThumbnailLoader();
-        var provider = new CrawlerSessionProvider();
-        var source = new OneFourOneJavMetaSource(provider);
         var metadata = new WebMetadataService(
-            new IWebVideoMetaSource[] { new NoopMetaSource() },
+            Array.Empty<IWebVideoMetaSource>(),
             new ThumbnailCache(root),
             NullTranslationService.Instance,
             "KO");
@@ -859,9 +852,6 @@ public sealed class ThumbnailPerformanceHarnessTests
             store,
             new NoopLibraryScanner(),
             metadata,
-            provider,
-            source,
-            new NoopCrawlerFactory(),
             probe,
             loader);
         var window = new MainWindow(viewModel, probe)
@@ -1013,20 +1003,6 @@ public sealed class ThumbnailPerformanceHarnessTests
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream));
-    }
-
-    private sealed class NoopMetaSource : IWebVideoMetaSource
-    {
-        public string Name => "Noop";
-        public bool CanHandle(string query) => false;
-        public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) =>
-            Task.FromResult<WebVideoMetaResult?>(null);
-    }
-
-    private sealed class NoopCrawlerFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            Task.FromException<OneFourOneJavCrawlerStartResult>(new InvalidOperationException("Crawler is disabled in performance tests."));
     }
 
     private sealed class NoopLibraryScanner : ILibraryScanner

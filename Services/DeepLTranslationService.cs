@@ -1,5 +1,8 @@
 using System;
 using System.Reflection;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using DeepL;
@@ -70,18 +73,22 @@ namespace Airi.Services
 
                 return result.Text?.Trim();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 AppLogger.Info("DeepL translation cancelled by caller.");
                 throw;
             }
+            catch (OperationCanceledException)
+            {
+                AppLogger.Info("DeepL translation timed out.");
+            }
             catch (DeepLException ex)
             {
-                AppLogger.Error("DeepL translation failed.", ex);
+                AppLogger.Error($"DeepL translation failed ({ex.GetType().Name}).");
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Unexpected error while translating with DeepL.", ex);
+                AppLogger.Error($"Unexpected error while translating with DeepL ({ex.GetType().Name}).");
             }
 
             AppLogger.Info("DeepL translation returning original text due to previous errors.");
@@ -91,6 +98,33 @@ namespace Airi.Services
         public void Dispose()
         {
             _client.Dispose();
+        }
+
+        public async Task<IReadOnlyList<string?>> TranslateBatchAsync(IReadOnlyList<string> texts, string? sourceLanguageCode,
+            string targetLanguageCode, bool protectMarkup, CancellationToken cancellationToken)
+        {
+            if (texts.Count == 1 && !protectMarkup)
+                return [await TranslateAsync(texts[0], sourceLanguageCode, targetLanguageCode, cancellationToken).ConfigureAwait(false)];
+
+            var options = new TextTranslateOptions { PreserveFormatting = true };
+            if (protectMarkup)
+            {
+                options.TagHandling = "xml";
+                options.IgnoreTags.Add("keep");
+            }
+            try
+            {
+                var results = (await _client.TranslateTextAsync(texts, sourceLanguageCode, targetLanguageCode, options, cancellationToken)
+                    .ConfigureAwait(false)).ToArray();
+                AppLogger.Info($"DeepL metadata batch: count={results.Length}, billed={results.Sum(result => result.BilledCharacters)}.");
+                return results.Select(result => result.Text?.Trim()).ToArray();
+            }
+            catch (Exception error) when (error is DeepLException or OperationCanceledException or HttpRequestException)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                AppLogger.Error($"DeepL metadata batch failed ({error.GetType().Name}).");
+                return new string?[texts.Count];
+            }
         }
     }
 }

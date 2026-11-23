@@ -28,12 +28,13 @@ public partial class MainWindow
     {
         if (_galleryThumbnailOwner is { } owner && !ReferenceEquals(owner, ViewModel.EditorDraft)) CancelGalleryThumbnailWork();
         var idle = _galleryThumbnailTask.IsCompleted;
-        ThumbnailTools.IsEnabled = idle && !ViewModel.IsSaving;
+        ThumbnailTools.IsEnabled = idle && !ViewModel.IsSaving && !ViewModel.IsFetchingDraft;
         EditorPreview.IsEnabled = idle;
+        EditorApply.IsEnabled = idle;
     }
     private Task RunGalleryThumbnailWorkAsync(GalleryEditorDraft draft, Func<long, CancellationToken, Task> operation)
     {
-        if (!_galleryThumbnailTask.IsCompleted || !ReferenceEquals(ViewModel.EditorDraft, draft) || ViewModel.IsSaving) return Task.CompletedTask;
+        if (!_galleryThumbnailTask.IsCompleted || !ReferenceEquals(ViewModel.EditorDraft, draft) || ViewModel.IsSaving || ViewModel.IsFetchingDraft) return Task.CompletedTask;
         var cancellation = _galleryThumbnailCancellation = new CancellationTokenSource();
         _galleryThumbnailOwner = draft;
         var generation = ++_galleryThumbnailGeneration;
@@ -65,6 +66,7 @@ public partial class MainWindow
         if (!IsGalleryThumbnailCurrent(draft, generation)) return;
         await draft.ThumbnailEditor.UpdateThumbnailFromBytesAsync(bytes, Path.GetExtension(path), Path.GetFileName(path), token);
         token.ThrowIfCancellationRequested();
+        if (IsGalleryThumbnailCurrent(draft, generation)) draft.SyncThumbnail();
     }
     private async Task GenerateGalleryThumbnailAsync(GalleryEditorDraft draft, VideoItem item, long generation, CancellationToken token)
     {

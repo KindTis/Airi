@@ -20,7 +20,7 @@ public sealed record LibrarySnapshot(IReadOnlyList<GalleryEntrySnapshot> Entries
 public sealed record GalleryQuery(GalleryView View, string Search,
     IReadOnlyList<GalleryFacetValue> Actors, IReadOnlyList<GalleryFacetValue> Studios,
     IReadOnlyList<GalleryFacetValue> Genres, string SortField, ListSortDirection SortDirection);
-public sealed record GalleryFacetCount(GalleryFacetValue Value, int Count);
+public sealed record GalleryFacetCount(GalleryFacetValue Value, int Count, string? DisplayLabel = null);
 public sealed record GalleryQueryResult(IReadOnlyList<Guid> Ids,
     IReadOnlyList<GalleryFacetCount> Actors, IReadOnlyList<GalleryFacetCount> Studios,
     IReadOnlyList<GalleryFacetCount> Genres, int NormalCount, int IncompleteCount,
@@ -38,6 +38,8 @@ public static class GalleryQueryEngine
         var actorCounts = new Dictionary<GalleryFacetValue, int>();
         var studioCounts = new Dictionary<GalleryFacetValue, int>();
         var genreCounts = new Dictionary<GalleryFacetValue, int>();
+        var actorLabels = new Dictionary<GalleryFacetValue, string>();
+        var genreLabels = new Dictionary<GalleryFacetValue, string>();
         var normalCount = 0;
         var incompleteCount = 0;
         var missingCount = 0;
@@ -53,13 +55,15 @@ public static class GalleryQueryEngine
             foreach (var value in values) counts[value]++;
         }
         static IReadOnlyList<GalleryFacetCount> Finish(List<GalleryFacetValue> known, Dictionary<GalleryFacetValue, int> counts,
-            IReadOnlyList<GalleryFacetValue> selected)
+            IReadOnlyList<GalleryFacetValue> selected, IReadOnlyDictionary<GalleryFacetValue, string>? labels = null, bool actorFacet = false)
         {
             Register(selected, known, counts);
             Register(new[] { GalleryFacetValue.Unspecified }, known, counts);
+            string? Display(GalleryFacetValue value) => labels?.GetValueOrDefault(value)
+                ?? (actorFacet && !value.IsUnspecified ? new ActorName(value.Value ?? string.Empty).DisplayName : null);
             return known.OrderBy(value => value.IsUnspecified ? 1 : 0)
-                .ThenBy(value => value.Label, StringComparer.CurrentCultureIgnoreCase)
-                .Select(value => new GalleryFacetCount(value, counts[value])).ToArray();
+                .ThenBy(value => Display(value) ?? value.Label, StringComparer.CurrentCultureIgnoreCase)
+                .Select(value => new GalleryFacetCount(value, counts[value], Display(value))).ToArray();
         }
 
         foreach (var item in snapshot.Entries)
@@ -84,6 +88,13 @@ public static class GalleryQueryEngine
                 GalleryView.Missing => !item.IsTrash && item.Presence == VideoPresenceState.Missing,
                 _ => !item.IsTrash
             };
+            foreach (var actor in MetadataDisplay.Actors(item.Entry.Meta))
+            {
+                var key = new GalleryFacetValue(actor.OriginalName);
+                if (!actorLabels.TryAdd(key, actor.DisplayName) && actor.KoreanName is not null) actorLabels[key] = actor.DisplayName;
+            }
+            if (item.Entry.Meta.Korean?.Genres is { } localizedGenres)
+                foreach (var (original, korean) in localizedGenres) genreLabels.TryAdd(new GalleryFacetValue(original), korean);
             if (!inView) continue;
 
             var actors = Values(item.Entry.Meta, GalleryFacet.Actors).Distinct().ToArray();
@@ -93,7 +104,7 @@ public static class GalleryQueryEngine
             Register(studios, studioKnown, studioCounts);
             Register(genres, genreKnown, genreCounts);
 
-            var matchesSearch = Search(item.Entry.Meta, search);
+            var matchesSearch = Search(item.Entry, search);
             var matchesActors = MatchesFacet(actors, query.Actors);
             var matchesStudio = MatchesFacet(studios, query.Studios);
             var matchesGenres = MatchesFacet(genres, query.Genres);
@@ -108,8 +119,8 @@ public static class GalleryQueryEngine
         Array.Sort(sortedResults, (left, right) => Compare(left.Entry, right.Entry, query));
         token.ThrowIfCancellationRequested();
         return new GalleryQueryResult(sortedResults.Select(item => item.Entry.Id).ToArray(),
-            Finish(actorKnown, actorCounts, query.Actors), Finish(studioKnown, studioCounts, query.Studios),
-            Finish(genreKnown, genreCounts, query.Genres), normalCount, incompleteCount, missingCount,
+            Finish(actorKnown, actorCounts, query.Actors, actorLabels, actorFacet: true), Finish(studioKnown, studioCounts, query.Studios),
+            Finish(genreKnown, genreCounts, query.Genres, genreLabels), normalCount, incompleteCount, missingCount,
             trashIds.Count, attentionIds.Count);
     }
 
@@ -131,10 +142,16 @@ public static class GalleryQueryEngine
     private static bool MatchesFacet(IReadOnlyList<GalleryFacetValue> values, IReadOnlyList<GalleryFacetValue> selected) =>
         selected.Count == 0 || values.Any(value => selected.Contains(value));
     private static string Normalize(string? value) => (value ?? string.Empty).Normalize(NormalizationForm.FormC);
-    private static bool Search(VideoMeta meta, string search) => search.Length == 0 ||
-        (search == "미지정" && (IsIncomplete(meta) || meta.Tags.Count == 0)) ||
-        new[] { meta.Title, meta.Studio }.Concat(meta.Actors).Concat(meta.Tags).Concat(meta.Genres)
-            .Any(value => Normalize(value).Contains(search, StringComparison.OrdinalIgnoreCase));
+    private static bool Search(VideoEntry entry, string search)
+    {
+        var meta = entry.Meta;
+        return search.Length == 0 || (search == "미지정" && (IsIncomplete(meta) || meta.Tags.Count == 0)) ||
+            new[] { entry.ProductCode, meta.Title, meta.Korean?.Title, meta.Studio }
+                .Concat(meta.Actors).Concat(meta.ActorNames.Select(actor => actor.KoreanName))
+                .Concat(meta.Tags).Concat(meta.Korean?.Tags?.Values ?? Array.Empty<string>())
+                .Concat(meta.Genres).Concat(meta.Korean?.Genres?.Values ?? Array.Empty<string>())
+                .Any(value => Normalize(value).Contains(search, StringComparison.OrdinalIgnoreCase));
+    }
     private static int Compare(VideoEntry left, VideoEntry right, GalleryQuery query)
     {
         var direction = query.SortDirection == ListSortDirection.Descending ? -1 : 1;
@@ -146,7 +163,7 @@ public static class GalleryQueryEngine
             order = Nullable.Compare(left.Meta.Date, right.Meta.Date);
         }
         else if (query.SortField == "CreatedUtc") order = left.CreatedUtc.CompareTo(right.CreatedUtc);
-        else order = StringComparer.CurrentCultureIgnoreCase.Compare(left.Meta.Title, right.Meta.Title);
+        else order = StringComparer.CurrentCultureIgnoreCase.Compare(left.Meta.Korean?.Title ?? left.Meta.Title, right.Meta.Korean?.Title ?? right.Meta.Title);
         if (order != 0) return order * direction;
         order = StringComparer.CurrentCultureIgnoreCase.Compare(left.Meta.Title, right.Meta.Title);
         return order != 0 ? order : left.Id.CompareTo(right.Id);

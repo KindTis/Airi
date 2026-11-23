@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Windows;
@@ -35,7 +34,6 @@ namespace Airi
             bool SourceMatchesCurrentItem,
             ThumbnailLoadState LoadState);
 
-        private readonly HttpClient _httpClient = new();
         private readonly ITextTranslationService _translationService;
         private readonly ThumbnailPerformanceProbe _performanceProbe;
         private readonly IThumbnailImageLoader? _thumbnailImageLoader;
@@ -87,11 +85,8 @@ namespace Airi
             var libraryStore = new LibraryStore();
             var libraryScanner = new LibraryScanner(new FileSystemScanner());
             var thumbnailCache = new ThumbnailCache();
-            var crawlerSessionProvider = new CrawlerSessionProvider();
-            var oneFourOneJavCrawler = new OneFourOneJavCrawler();
-            var oneFourOneJavSource = new OneFourOneJavMetaSource(crawlerSessionProvider, _httpClient);
-            var crawlerSessionFactory = new OneFourOneJavCrawlerSessionFactory(oneFourOneJavCrawler);
-            var metadataSources = new IWebVideoMetaSource[] { oneFourOneJavSource, new NanoJavMetaSource(_httpClient) };
+            var metadataSources = MetadataSourceConfiguration.Load(
+                Path.Combine(AppContext.BaseDirectory, MetadataSourceConfiguration.FileName));
             var webMetadataService = new WebMetadataService(
                 metadataSources,
                 thumbnailCache,
@@ -102,9 +97,6 @@ namespace Airi
                 libraryStore,
                 libraryScanner,
                 webMetadataService,
-                crawlerSessionProvider,
-                oneFourOneJavSource,
-                crawlerSessionFactory,
                 thumbnailImageLoader);
             WireViewModelEvents();
         }
@@ -151,7 +143,7 @@ namespace Airi
                         await HandleVideoDeleteKeyAsync(e.Key, Keyboard.Modifiers, e.IsRepeat, focused);
                     }
                 }
-                else if (e.Key == Key.F1 && !e.IsRepeat)
+                else if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None && !e.IsRepeat)
                 {
                     e.Handled = true;
                     await OpenMetadataEditorAsync();
@@ -162,8 +154,10 @@ namespace Airi
 
         private async Task OpenMetadataEditorAsync()
         {
-            if (IsGallerySelectionMode && ViewModel.CheckedCount == 0) return;
-            ViewModel.EditCommand.Execute(null);
+            if (ViewModel.IsEditing || (IsGallerySelectionMode && ViewModel.CheckedCount == 0)) return;
+            var focused = Keyboard.FocusedElement as DependencyObject;
+            var focusedCard = focused is null ? null : ItemsControl.ContainerFromElement(VideoList, focused) as ListBoxItem;
+            ViewModel.EditCommand.Execute(focusedCard?.DataContext as VideoItem);
             await ViewModel.GalleryActionTask;
         }
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -639,16 +633,18 @@ namespace Airi
         protected override async void OnClosing(CancelEventArgs e)
         {
             if (ViewModel is null) { base.OnClosing(e); return; }
-            if (!_previewShutdownComplete && (_tooltipPreviewController is not null || !ViewModel.VideoDeletionTask.IsCompleted || !ViewModel.GalleryActionTask.IsCompleted || !_galleryThumbnailTask.IsCompleted || ViewModel.IsEditing || ViewModel.IsFetchingDraft))
+            if (!_previewShutdownComplete && (_tooltipPreviewController is not null || !ViewModel.VideoDeletionTask.IsCompleted || !ViewModel.GalleryActionTask.IsCompleted || !_galleryThumbnailTask.IsCompleted || ViewModel.IsEditing || ViewModel.IsFetchingDraft || ViewModel.IsFetchingMetadata))
             {
                 e.Cancel = true;
                 if (_previewShutdownStarted) return;
                 _previewShutdownStarted = true;
                 try
                 {
+                    var automaticMetadataStop = ViewModel.StopMetadataForShutdownAsync();
                     CancelGalleryThumbnailWork();
                     if (ViewModel.CancelEditCommand.CanExecute(null)) ViewModel.CancelEditCommand.Execute(null);
                     _galleryDialog?.Close();
+                    await automaticMetadataStop;
                     await ViewModel.VideoDeletionTask;
                     await ViewModel.GalleryActionTask;
                     await StopGallerySurfaceAsync();
@@ -693,7 +689,6 @@ namespace Airi
                 throw new InvalidOperationException("Thumbnail registrations remained after window close cleanup.");
             }
             ViewModel.Dispose();
-            _httpClient.Dispose();
             if (_translationService is IDisposable disposableTranslation)
             {
                 disposableTranslation.Dispose();

@@ -12,16 +12,18 @@ public sealed class GalleryFacetOption : INotifyPropertyChanged
     private readonly Action<GalleryFacetOption, bool> _change;
     private bool _isSelected;
     public GalleryFacetOption(GalleryFacetValue value, int count, bool selected, Action<GalleryFacetOption, bool> change)
-    { Key = value; Count = count; _isSelected = selected; _change = change; }
+    { Key = value; Label = value.Label; Count = count; _isSelected = selected; _change = change; }
     public GalleryFacetValue Key { get; }
     public string? Value => Key.Value;
     public bool IsUnspecified => Key.IsUnspecified;
-    public string Label => Key.Label;
+    public string Label { get; private set; }
     public int Count { get; private set; }
     public bool IsSelected { get => _isSelected; set { if (_isSelected != value) _change(this, value); } }
-    internal void Update(int count, bool selected)
+    internal void Update(int count, bool selected, string? displayLabel)
     {
         if (Count != count) { Count = count; PropertyChanged?.Invoke(this, new(nameof(Count))); }
+        var label = displayLabel ?? Key.Label;
+        if (Label != label) { Label = label; PropertyChanged?.Invoke(this, new(nameof(Label))); }
         if (_isSelected != selected) SetSelected(selected);
     }
     internal void SetSelected(bool value) { _isSelected = value; PropertyChanged?.Invoke(this, new(nameof(IsSelected))); }

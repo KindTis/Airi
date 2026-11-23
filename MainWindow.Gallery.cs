@@ -377,7 +377,7 @@ public partial class MainWindow
         if (_galleryImeComposing || e.Key == Key.ImeProcessed) return;
         if (e.Key == Key.Escape) { e.Handled = true; CloseGalleryWithFocus(); return; }
         if (Keyboard.FocusedElement is TextBoxBase) return;
-        if ((e.Key is Key.E or Key.F1) && !ViewModel.IsEditing) { e.Handled = true; ViewModel.EditInspectedCommand.Execute(null); }
+        if ((e.Key is Key.E or Key.F1) && !ViewModel.IsEditing) { e.Handled = true; ViewModel.EditCommand.Execute(null); }
         else if (e.Key == Key.Delete && !e.IsRepeat && !ViewModel.IsEditing) { e.Handled = true; ViewModel.DeleteInspectedCommand.Execute(null); }
         else if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift && Keyboard.FocusedElement == DetailPlay) { e.Handled = true; RequestGalleryFocusRestore(_galleryFocusBookmark); }
     }
@@ -433,9 +433,9 @@ public partial class MainWindow
         }
     }
     private void OnDetailPlayClick(object sender, RoutedEventArgs e) { if (ViewModel.InspectedVideo is { } item) TryPlayVideo(item); }
-    private void OnDetailFetchClick(object sender, RoutedEventArgs e) => ViewModel.FetchInspectedMetadataCommand.Execute(null);
+    private void OnDetailFetchClick(object sender, RoutedEventArgs e) => ViewModel.FetchMetadataCommand.Execute(null);
     private void OnLibraryFolderClick(object sender, RoutedEventArgs e) { if (sender is Button { DataContext: string path }) { var result = _videoLauncher.OpenFolder(LibraryPathHelper.ResolveToAbsolute(path)); if (!result.Succeeded) ShowGalleryMessage("폴더를 열 수 없습니다", result.Reason ?? "경로를 확인해 주세요."); } }
-    private void OnDetailEditClick(object sender, RoutedEventArgs e) => ViewModel.EditInspectedCommand.Execute(null);
+    private void OnDetailEditClick(object sender, RoutedEventArgs e) => ViewModel.EditCommand.Execute(null);
     private void OnDetailDeleteClick(object sender, RoutedEventArgs e) => ViewModel.DeleteInspectedCommand.Execute(null);
     private void OnDetailRestoreClick(object sender, RoutedEventArgs e) => ViewModel.RestoreInspectedCommand.Execute(null);
     private void OnDetailReinspectClick(object sender, RoutedEventArgs e) => ViewModel.ReinspectInspectedCommand.Execute(null);

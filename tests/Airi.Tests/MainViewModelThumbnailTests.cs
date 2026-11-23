@@ -181,21 +181,38 @@ public sealed class MainViewModelThumbnailTests
     });
 
     [Fact]
-    public Task ApplyMetadataToCollections_Replace_CleansOldRuntimeAndSelection() => Run(async fixture =>
+    public Task CommitMetadata_UpdatingCoverPreservesCardAndIgnoresPreviousImage() => Run(async fixture =>
     {
-        var old = fixture.CreateItem("replace-old.jpg", "./Videos/replace.mp4");
-        fixture.Seed(old);
-        fixture.ViewModel.SelectedVideo = old;
-        var request = fixture.ViewModel.RequestThumbnailAsync(old, 200);
-        var updated = new VideoEntry(
-            old.LibraryPath,
-            new VideoMeta("Updated", null, Array.Empty<string>(), "replace-new.jpg", Array.Empty<string>(), string.Empty));
-        fixture.InvokeApplyMetadata(updated);
+        var item = fixture.CreateItem("replace-old.jpg", "./Videos/replace.mp4");
+        var before = fixture.Seed(item);
+        fixture.ViewModel.SelectedVideo = item;
+        fixture.ViewModel.SetStartupState(StartupLibraryState.Publishing);
+        fixture.ViewModel.SetStartupState(StartupLibraryState.Ready);
+        var lease = Assert.IsType<LibraryMutationLease>(fixture.ViewModel.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave));
+        var request = fixture.ViewModel.RequestThumbnailAsync(item, 200);
+        var updated = before with { Meta = before.Meta with { Title = "Updated", Thumbnail = "replace-new.jpg" } };
+        await fixture.ViewModel.CommitEntryCandidateAsync(before, updated, lease);
+        fixture.ViewModel.ReleaseLibraryMutation(lease);
+
+        Assert.Equal(2, fixture.Loader.Calls.Count);
+        Assert.True(fixture.Loader.Calls[0].Token.IsCancellationRequested);
+        Assert.Equal("replace-new.jpg", fixture.Loader.Calls[1].Path);
         fixture.Loader.Complete(0, fixture.DecodedA, false);
         await request;
-        Assert.False(fixture.ViewModel.GetThumbnailRuntimeDiagnostics(old).Exists);
-        Assert.NotSame(old, fixture.ViewModel.SelectedVideo);
-        Assert.Equal("Updated", fixture.ViewModel.SelectedVideo!.Title);
+        Assert.Same(fixture.Loader.FallbackSource, item.ThumbnailSource);
+        var newImage = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        item.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(item.ThumbnailSource) && ReferenceEquals(fixture.DecodedB, item.ThumbnailSource))
+                newImage.TrySetResult();
+        };
+        fixture.Loader.Complete(1, fixture.DecodedB, false);
+        await newImage.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(fixture.DecodedB, item.ThumbnailSource);
+        Assert.Same(item, Assert.Single(fixture.ViewModel.Videos));
+        Assert.Same(item, fixture.ViewModel.SelectedVideo);
+        Assert.Equal("Updated", item.Title);
+        Assert.Equal(before.Revision + 1, item.Revision);
     });
 
     [Fact]
@@ -297,10 +314,8 @@ public sealed class MainViewModelThumbnailTests
             FallbackFile = Path.Combine(_root, "fallback.jpg");
             File.WriteAllBytes(FallbackFile, new byte[] { 1 });
 
-            var provider = new CrawlerSessionProvider();
-            var source = new OneFourOneJavMetaSource(provider);
             var metadata = new WebMetadataService(
-                new IWebVideoMetaSource[] { new NoopMetaSource() },
+                Array.Empty<IWebVideoMetaSource>(),
                 new ThumbnailCache(_root),
                 NullTranslationService.Instance,
                 "KO");
@@ -308,9 +323,6 @@ public sealed class MainViewModelThumbnailTests
                 new LibraryStore(Path.Combine(_root, "videos.json")),
                 new LibraryScanner(new FileSystemScanner()),
                 metadata,
-                provider,
-                source,
-                new NoopCrawlerFactory(),
                 Probe,
                 Loader);
         }
@@ -335,24 +347,20 @@ public sealed class MainViewModelThumbnailTests
             return item;
         }
 
-        public void Seed(VideoItem item)
+        public VideoEntry Seed(VideoItem item)
         {
             ViewModel.Videos.Add(item);
+            var entry = new VideoEntry(item.LibraryPath,
+                new VideoMeta(item.Title, null, Array.Empty<string>(), item.ThumbnailPath, Array.Empty<string>(), string.Empty))
+            { Id = item.Id };
             var library = new LibraryData
             {
-                Videos = new List<VideoEntry>
-                {
-                    new(item.LibraryPath,
-                        new VideoMeta(item.Title, null, Array.Empty<string>(), item.ThumbnailPath, Array.Empty<string>(), string.Empty))
-                }
+                Videos = [entry]
             };
             typeof(MainViewModel).GetField("_library", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(ViewModel, library);
             typeof(MainViewModel).GetMethod("RegisterVideo", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(ViewModel, new object[] { item });
+            return entry;
         }
-
-        public void InvokeApplyMetadata(VideoEntry entry) =>
-            typeof(MainViewModel).GetMethod("ApplyMetadataToCollections", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(ViewModel, new object[] { entry });
 
         public void Dispose()
         {
@@ -407,17 +415,4 @@ public sealed class MainViewModelThumbnailTests
             TaskCompletionSource<ThumbnailImageResult> Completion);
     }
 
-    private sealed class NoopMetaSource : IWebVideoMetaSource
-    {
-        public string Name => "Noop";
-        public bool CanHandle(string query) => false;
-        public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) =>
-            Task.FromResult<WebVideoMetaResult?>(null);
-    }
-
-    private sealed class NoopCrawlerFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            Task.FromException<OneFourOneJavCrawlerStartResult>(new InvalidOperationException("Not used."));
-    }
 }

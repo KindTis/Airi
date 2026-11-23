@@ -43,6 +43,18 @@ namespace Airi
         private ThumbnailLoadState _thumbnailLoadState;
 
         public string LibraryPath { get; init; } = string.Empty;
+        private string? _productCode;
+        public string? ProductCode { get => _productCode; internal set => SetField(ref _productCode, value); }
+        private IReadOnlyList<string>? _displayActors;
+        public IReadOnlyList<string> DisplayActors
+        {
+            get => _displayActors ?? Actors;
+            internal set
+            {
+                if (SetField(ref _displayActors, value)) OnPropertyChanged(nameof(ActorsLabel));
+            }
+        }
+        internal IReadOnlyList<string>? GenreFilterValues { get; set; }
         public Guid Id { get; internal set; } = Guid.NewGuid();
         private long _revision;
         private string? _studio;
@@ -127,6 +139,8 @@ namespace Airi
                 var sanitized = value ?? Array.Empty<string>();
                 if (SetField(ref _actors, sanitized))
                 {
+                    _displayActors = null;
+                    OnPropertyChanged(nameof(DisplayActors));
                     OnPropertyChanged(nameof(ActorsLabel));
                 }
             }
@@ -219,7 +233,7 @@ namespace Airi
 
         public bool IsMissing => Presence == VideoPresenceState.Missing;
 
-        public string ActorsLabel => Actors.Count == 0 ? string.Empty : string.Join(", ", Actors);
+        public string ActorsLabel => DisplayActors.Count == 0 ? string.Empty : string.Join(", ", DisplayActors);
         public string TagsLabel => Tags.Count == 0 ? string.Empty : string.Join(", ", Tags);
         public string ReleaseLabel => ReleaseDate?.ToString("yyyy-MM-dd") ?? (!string.IsNullOrWhiteSpace(RawDate) ? RawDate + " (확인 필요)" : "미지정");
         public string CreatedLabel => _lastModifiedUtc == default

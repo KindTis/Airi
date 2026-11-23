@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Airi.Domain;
+using Airi.Web;
 
 namespace Airi.Services;
 
@@ -15,6 +16,7 @@ internal sealed class PreservedVideoEntryConverter : JsonConverter<VideoEntry>
     {
         public Guid Id { get; init; } = Guid.NewGuid();
         public long Revision { get; init; }
+        public string? ProductCode { get; init; }
         public LibraryFilePresence Presence { get; init; }
         public DateTime? PresenceProbedAtUtc { get; init; }
         [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalData { get; init; }
@@ -28,9 +30,11 @@ internal sealed class PreservedVideoEntryConverter : JsonConverter<VideoEntry>
         var payload = JsonSerializer.Deserialize<Payload>(ref reader, options) ?? throw new JsonException("Entry cannot be null.");
         try
         {
-            return new VideoEntry(payload.Path, payload.Meta, payload.SizeBytes, Parse(payload.LastModifiedUtc), Parse(payload.CreatedUtc))
+            var entry = new VideoEntry(payload.Path, payload.Meta, payload.SizeBytes, Parse(payload.LastModifiedUtc), Parse(payload.CreatedUtc))
             { Id = payload.Id, Revision = payload.Revision, Presence = payload.Presence, PresenceProbedAtUtc = payload.PresenceProbedAtUtc,
+                ProductCode = payload.ProductCode,
                 OriginalLastModifiedText = payload.LastModifiedUtc, OriginalCreatedText = payload.CreatedUtc, AdditionalData = payload.AdditionalData };
+            return entry.ProductCode is null ? entry with { ProductCode = MetadataProductCode.FromEntry(entry)?.Value } : entry;
         }
         catch (FormatException ex) { throw new JsonException("Invalid file timestamp. The original library is preserved.", ex); }
     }
@@ -38,5 +42,6 @@ internal sealed class PreservedVideoEntryConverter : JsonConverter<VideoEntry>
         JsonSerializer.Serialize(writer, new Payload(value.Path, value.Meta, value.SizeBytes,
             Text(value.LastModifiedUtc, value.OriginalLastModifiedText), Text(value.CreatedUtc, value.OriginalCreatedText))
         { Id = value.Id, Revision = value.Revision, Presence = value.Presence, PresenceProbedAtUtc = value.PresenceProbedAtUtc,
+            ProductCode = value.ProductCode ?? MetadataProductCode.FromEntry(value)?.Value,
             AdditionalData = value.AdditionalData }, options);
 }

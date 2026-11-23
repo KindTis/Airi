@@ -152,21 +152,15 @@ namespace Airi.Tests
                 var libraryScanner = new LibraryScanner(new FileSystemScanner());
                 var thumbnailCache = new ThumbnailCache(_root);
                 var metadataService = new WebMetadataService(
-                    new IWebVideoMetaSource[] { new StubMetaSource() },
+                    Array.Empty<IWebVideoMetaSource>(),
                     thumbnailCache,
                     NullTranslationService.Instance,
                     "KO");
-                var crawlerSessionProvider = new CrawlerSessionProvider();
-                var oneFourOneJavSource = new OneFourOneJavMetaSource(crawlerSessionProvider);
-                var crawlerSessionFactory = new StubCrawlerSessionFactory();
 
                 return new MainViewModel(
                     libraryStore,
                     libraryScanner,
                     metadataService,
-                    crawlerSessionProvider,
-                    oneFourOneJavSource,
-                    crawlerSessionFactory,
                     new TestThumbnailImageLoader());
             }
 
@@ -179,24 +173,5 @@ namespace Airi.Tests
             }
         }
 
-        private sealed class StubMetaSource : IWebVideoMetaSource
-        {
-            public string Name => "Stub";
-
-            public bool CanHandle(string query) => false;
-
-            public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken)
-            {
-                return Task.FromResult<WebVideoMetaResult?>(null);
-            }
-        }
-
-        private sealed class StubCrawlerSessionFactory : IOneFourOneJavCrawlerSessionFactory
-        {
-            public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default)
-            {
-                throw new InvalidOperationException("This test fixture does not start crawler sessions.");
-            }
-        }
     }
 }

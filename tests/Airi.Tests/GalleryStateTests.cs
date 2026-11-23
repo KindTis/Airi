@@ -8,6 +8,29 @@ namespace Airi.Tests;
 
 public sealed class GalleryStateTests
 {
+    [Fact]
+    public void LocalizedActorFacet_DisplaysKoreanAndMatchesEitherNameAndProductCode()
+    {
+        var entry = Entry("作品名", ["一二三ゆぅり"], "Studio", ["拘束"]) with { ProductCode = "ARAN-117" };
+        entry = entry with
+        {
+            Meta = entry.Meta with
+            {
+                ActorNames = [new ActorName("一二三ゆぅり", "うたかねゆぅり", "우타카네 유우리")],
+                Korean = new KoreanMetadata { Title = "작품명", Genres = new Dictionary<string, string> { ["拘束"] = "구속" } }
+            }
+        };
+        var key = new GalleryFacetValue("一二三ゆぅり");
+        foreach (var text in new[] { "一二三ゆぅり", "우타카네 유우리", "ARAN-117", "구속" })
+        {
+            var result = GalleryQueryEngine.Evaluate(Snapshot(entry), Query(search: text, actors: [key]));
+            Assert.Equal(entry.Id, Assert.Single(result.Ids));
+            Assert.Equal("우타카네 유우리", Assert.Single(result.Actors, facet => facet.Value == key).DisplayLabel);
+        }
+        var empty = GalleryQueryEngine.Evaluate(Snapshot(), Query(actors: [key]));
+        Assert.Equal("한글명 미지정", Assert.Single(empty.Actors, facet => facet.Value == key).DisplayLabel);
+    }
+
     private static VideoEntry Entry(string title, string[] actors, string? studio, string[] genres, DateOnly? date = null) =>
         new("./" + title + ".mp4", new VideoMeta(title, date ?? new DateOnly(2024, 1, 2), actors, "cover.jpg", new[] { "tag" }, "description")
         { Studio = studio, Genres = genres });
@@ -102,12 +125,38 @@ public sealed class GalleryStateTests
         draft.Fields.Single(field => field.Field == MetadataField.Actors).Value = "ignored";
         var studio = draft.Fields.Single(field => field.Field == MetadataField.Studio); studio.IsApplied = true;
         var tags = draft.Fields.Single(field => field.Field == MetadataField.Tags); tags.IsApplied = true; tags.Value = "new，new, other";
+        var unchangedDate = draft.Fields.Single(field => field.Field == MetadataField.Date);
+        unchangedDate.IsApplied = true;
+        unchangedDate.Value = "2024-01-02";
         var result = draft.BuildCandidates()!;
         Assert.Equal(a.Meta.Actors, result[a.Id].Meta.Actors);
         Assert.Null(result[a.Id].Meta.Studio);
         Assert.Equal(new[] { " old ", " old ", "new", "other" }, result[a.Id].Meta.Tags);
         Assert.Contains(MetadataField.Studio, result[a.Id].Meta.ManualFieldLocks);
+        Assert.DoesNotContain(MetadataField.Date, result[a.Id].Meta.ManualFieldLocks);
         Assert.Equal(a.Meta.Title, result[a.Id].Meta.Title);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SingleDraft_GeneratedDescriptionAndThumbnailKeepOnlyExistingLocks(bool protectGeneratedFields)
+    {
+        MetadataField[] existingLocks = protectGeneratedFields ? [MetadataField.Description, MetadataField.Thumbnail] : [];
+        var entry = Entry("title", [], null, []);
+        entry = entry with { Meta = entry.Meta with { ManualFieldLocks = existingLocks } };
+        using var draft = new GalleryEditorDraft(new[] { entry }, new VideoItem());
+        var description = draft.Fields.Single(field => field.Field == MetadataField.Description);
+        description.Value = "Typed description";
+        Assert.True(description.IsLocked);
+
+        description.SetGeneratedValue("Translated description");
+        draft.ThumbnailEditor.UseCachedThumbnail("./generated-cover.jpg");
+        var candidate = draft.BuildCandidates()![entry.Id];
+
+        Assert.Equal("Translated description", candidate.Meta.Description);
+        Assert.Equal("./generated-cover.jpg", candidate.Meta.Thumbnail);
+        Assert.Equal(existingLocks.OrderBy(field => field), candidate.Meta.ManualFieldLocks);
     }
 
     [Fact]

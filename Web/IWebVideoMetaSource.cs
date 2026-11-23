@@ -7,7 +7,19 @@ namespace Airi.Web
     public interface IWebVideoMetaSource
     {
         string Name { get; }
-        bool CanHandle(string query);
-        Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken);
+        VideoMetadataSourceKind Kind { get; }
+        string Host { get; }
+        Task<WebVideoMetaResult> FetchAsync(
+            MetadataProductCode code,
+            bool includeThumbnail,
+            ISet<string> blockedHosts,
+            CancellationToken cancellationToken);
+    }
+
+    public enum VideoMetadataSourceKind
+    {
+        LibreDmm,
+        JavBus,
+        JavBusUncensored
     }
 }

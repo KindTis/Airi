@@ -631,7 +631,7 @@
                   <Button Content="초기화" Click="OnResetGalleryThumbnailClick" Style="{StaticResource GalleryToolbarButton}" />
                 </WrapPanel>
                 <Button Content="설명 번역" Command="{Binding TranslateDraftDescriptionCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" />
-                <Button Content="정보 새로고침" Command="{Binding RefreshDraftMetadataCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" />
+                <Button Content="정보 새로고침" Command="{Binding FetchMetadataCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" />
               </StackPanel>
               <ItemsControl ItemsSource="{Binding EditorDraft.TargetResults}">
                 <ItemsControl.ItemTemplate>

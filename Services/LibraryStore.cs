@@ -113,10 +113,7 @@ namespace Airi.Services
                 }
 
                 // Do not normalize legacy values: whitespace, duplicates, paths and file times are authored data.
-                var migrated = data.WithVideos(data.Videos.Select(entry => entry with
-                {
-                    Meta = entry.Meta with { ManualFieldLocks = LegacyLocks(entry.Meta) }
-                }));
+                var migrated = data.WithVideos(data.Videos);
                 migrated.Version = CurrentVersion;
                 migrated.AdditionalData?.Remove("Targets");
                 migrated.AdditionalData?.Remove("LastScanUtc");
@@ -216,21 +213,6 @@ namespace Airi.Services
             }
         }
 
-        private static IReadOnlyList<MetadataField> LegacyLocks(VideoMeta meta)
-        {
-            var fields = new List<MetadataField>(meta.ManualFieldLocks);
-            void Add(MetadataField field, bool nonempty) { if (nonempty && !fields.Contains(field)) fields.Add(field); }
-            Add(MetadataField.Title, !string.IsNullOrWhiteSpace(meta.Title));
-            Add(MetadataField.Date, meta.Date.HasValue || !string.IsNullOrWhiteSpace(meta.RawDate));
-            Add(MetadataField.Actors, meta.Actors.Any(value => !string.IsNullOrWhiteSpace(value)));
-            Add(MetadataField.Thumbnail, !string.IsNullOrWhiteSpace(meta.Thumbnail));
-            Add(MetadataField.Tags, meta.Tags.Any(value => !string.IsNullOrWhiteSpace(value)));
-            Add(MetadataField.Description, !string.IsNullOrWhiteSpace(meta.Description));
-            Add(MetadataField.Studio, !string.IsNullOrWhiteSpace(meta.Studio));
-            Add(MetadataField.Genres, meta.Genres.Any(value => !string.IsNullOrWhiteSpace(value)));
-            return fields;
-        }
-
         private async Task SaveCoreAsync(LibraryData library, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -327,6 +309,7 @@ namespace Airi.Services
 
             options.Converters.Add(new PreservedVideoEntryConverter());
             options.Converters.Add(new PreservedVideoMetaConverter());
+            options.Converters.Add(new ActorNameConverter());
             options.Converters.Add(new DateOnlyJsonConverter());
             options.Converters.Add(new JsonStringEnumConverter());
             return options;

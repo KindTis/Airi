@@ -35,7 +35,6 @@ namespace Airi.ViewModels
     {
         StartupScan,
         AutoMetadata,
-        ManualFetch,
         EditorSave,
         VideoDeletion
     }
@@ -96,9 +95,6 @@ namespace Airi.ViewModels
         private readonly ILibraryScanner _libraryScanner;
         private readonly WebMetadataService _webMetadataService;
         private readonly Dispatcher _dispatcher;
-        private readonly CrawlerSessionProvider _crawlerSessionProvider;
-        private readonly OneFourOneJavMetaSource _oneFourOneJavSource;
-        private readonly IOneFourOneJavCrawlerSessionFactory _crawlerSessionFactory;
         private readonly ThumbnailPerformanceProbe _performanceProbe;
         private readonly IThumbnailImageLoader _thumbnailImageLoader;
         private readonly Func<VideoEntry, CancellationToken, VideoItem>? _storedVideoMapper;
@@ -120,12 +116,7 @@ namespace Airi.ViewModels
         private bool _isInitialized;
         private readonly SemaphoreSlim _initializationGate = new(1, 1);
         private readonly CancellationTokenSource _lifetimeCts = new();
-        private readonly SemaphoreSlim _crawlerStartGate = new(1, 1);
-        private readonly object _crawlerStateLock = new();
-        private IOneFourOneJavCrawlerSessionHandle? _crawlerHandle;
-        private IOneFourOneJavCrawlerSession? _crawlerSession;
-        private Task? _crawlerMonitorTask;
-        private int _crawlerMonitorGeneration;
+        private readonly CancellationTokenSource _metadataShutdown = new();
         public enum SortField
         {
             Title,
@@ -141,7 +132,6 @@ namespace Airi.ViewModels
         private string _selectedActor = AllActorsLabel;
         private string _statusMessage = string.Empty;
         private VideoItem? _selectedVideo;
-        private bool _isCrawlerRunning;
         private StartupLibraryState _startupState = StartupLibraryState.Loading;
         private LibraryMutationLease? _mutationLease;
         private SortOption _selectedSortOption;
@@ -181,9 +171,8 @@ namespace Airi.ViewModels
         internal Task SettingsSaveTask => _settingsSaveTask;
 
         public RelayCommand RandomPlayCommand { get; }
-        public RelayCommand FetchMetadataCommand { get; private set; }
+        public RelayCommand FetchMetadataCommand { get; private set; } = null!;
         public RelayCommand ClearSearchCommand { get; }
-        public RelayCommand StartCrawlerCommand { get; }
 
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -193,17 +182,11 @@ namespace Airi.ViewModels
             ILibraryStore libraryStore,
             ILibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
-            CrawlerSessionProvider crawlerSessionProvider,
-            OneFourOneJavMetaSource oneFourOneJavSource,
-            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
             IThumbnailImageLoader thumbnailImageLoader)
             : this(
                 libraryStore,
                 libraryScanner,
                 webMetadataService,
-                crawlerSessionProvider,
-                oneFourOneJavSource,
-                crawlerSessionFactory,
                 ThumbnailPerformanceProbe.Disabled,
                 thumbnailImageLoader)
         {
@@ -213,9 +196,6 @@ namespace Airi.ViewModels
             ILibraryStore libraryStore,
             ILibraryScanner libraryScanner,
             WebMetadataService webMetadataService,
-            CrawlerSessionProvider crawlerSessionProvider,
-            OneFourOneJavMetaSource oneFourOneJavSource,
-            IOneFourOneJavCrawlerSessionFactory crawlerSessionFactory,
             ThumbnailPerformanceProbe performanceProbe,
             IThumbnailImageLoader thumbnailImageLoader,
             Func<VideoEntry, CancellationToken, VideoItem>? storedVideoMapper = null,
@@ -229,9 +209,6 @@ namespace Airi.ViewModels
             _settingsStore = settingsStore ?? new SettingsStore(_libraryStore.FilePath);
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));
-            _crawlerSessionProvider = crawlerSessionProvider ?? throw new ArgumentNullException(nameof(crawlerSessionProvider));
-            _oneFourOneJavSource = oneFourOneJavSource ?? throw new ArgumentNullException(nameof(oneFourOneJavSource));
-            _crawlerSessionFactory = crawlerSessionFactory ?? throw new ArgumentNullException(nameof(crawlerSessionFactory));
             _performanceProbe = performanceProbe ?? throw new ArgumentNullException(nameof(performanceProbe));
             _thumbnailImageLoader = thumbnailImageLoader ?? throw new ArgumentNullException(nameof(thumbnailImageLoader));
             _storedVideoMapper = storedVideoMapper;
@@ -262,14 +239,9 @@ namespace Airi.ViewModels
             RandomPlayCommand = new RelayCommand(
                 _ => PlayRandomVideo(),
                 _ => FilteredVideos.Cast<VideoItem>().Any(v => v.Presence == VideoPresenceState.Available && !v.IsInRecycleBin && !IsVideoDeletionTarget(v)));
-            FetchMetadataCommand = new RelayCommand(
-                async _ => await FetchMissingMetadataWithCrawlerAsync().ConfigureAwait(false),
-                _ => CanMutateLibrary);
             ClearSearchCommand = new RelayCommand(_ => ClearSearch());
-            StartCrawlerCommand = new RelayCommand(async _ => await StartCrawlerAsync(CancellationToken.None).ConfigureAwait(false), _ => !IsCrawlerRunning);
 
             InitializeGallery();
-            FetchMetadataCommand = new RelayCommand(_ => StartGalleryAction(() => EnrichGalleryTargetsAsync()), _ => !IsEditing && CanMutateLibrary);
             var defaultSort = SortOptions.First(option => option.Field == SortField.ReleaseDate && option.Direction == ListSortDirection.Descending);
             _selectedSortOption = defaultSort;
             ApplySort(defaultSort.Field, defaultSort.Direction, updateStatus: false);
@@ -297,7 +269,8 @@ namespace Airi.ViewModels
             {
                 var normalized = string.IsNullOrWhiteSpace(value) ? AllActorsLabel : value;
 
-                if (Actors is not null && !Actors.Any(actor => actor.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
+                if (Actors is not null && !Actors.Any(actor => actor.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+                    && !ActorFacets.Any(option => string.Equals(option.Key.Value, normalized, StringComparison.OrdinalIgnoreCase)))
                 {
                     normalized = AllActorsLabel;
                 }
@@ -306,7 +279,12 @@ namespace Airi.ViewModels
                 if (SetProperty(ref _selectedActor, normalized))
                 {
                     _actorFilters.Clear();
-                    if (normalized != AllActorsLabel) _actorFilters.Add(new(normalized));
+                    if (normalized != AllActorsLabel)
+                    {
+                        foreach (var option in ActorFacets.Where(option => string.Equals(option.Label, normalized, StringComparison.OrdinalIgnoreCase)))
+                            _actorFilters.Add(option.Key);
+                        if (_actorFilters.Count == 0) _actorFilters.Add(new(normalized));
+                    }
                     RequestGalleryQuery();
                 }
             }
@@ -347,9 +325,7 @@ namespace Airi.ViewModels
             StartupLibraryState.ApplyingScan or
             StartupLibraryState.SavingScan;
 
-        public bool IsFetchingMetadata => _mutationLease?.Owner is
-            LibraryMutationOwner.AutoMetadata or
-            LibraryMutationOwner.ManualFetch;
+        public bool IsFetchingMetadata => _mutationLease?.Owner == LibraryMutationOwner.AutoMetadata;
 
         public bool CanMutateLibrary =>
             !_disposed && StartupState == StartupLibraryState.Ready && _mutationLease is null;
@@ -358,18 +334,6 @@ namespace Airi.ViewModels
 
         internal CancellationToken LifetimeToken => _lifetimeCts.Token;
         internal LibraryMutationLease? CurrentMutationLease => _mutationLease;
-
-        public bool IsCrawlerRunning
-        {
-            get => _isCrawlerRunning;
-            private set
-            {
-                if (SetProperty(ref _isCrawlerRunning, value))
-                {
-                    StartCrawlerCommand?.RaiseCanExecuteChanged();
-                }
-            }
-        }
 
         public bool IsInitialLoading
         {
@@ -1091,7 +1055,6 @@ namespace Airi.ViewModels
                     return;
                 }
 
-                LibraryMutationLease? autoMetadataLease = null;
                 if (!await TryInvokeLifetimeBoundDispatcherBatchAsync("StartupTerminal", 0, () =>
                 {
                     EnsureCurrentLease(startupLease);
@@ -1102,12 +1065,11 @@ namespace Airi.ViewModels
                     IsInitialLoading = false;
                     IsActorListLoading = false;
                     ReleaseLibraryMutation(startupLease);
-                    if (HasPendingMetadata())
-                    {
-                        autoMetadataLease = TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata);
-                    }
+                    var autoMetadataLease = !_metadataShutdown.IsCancellationRequested && HasPendingMetadata()
+                        ? TryBeginLibraryMutation(LibraryMutationOwner.AutoMetadata) : null;
                     SetStartupState(StartupLibraryState.Ready);
                     StatusMessage = $"Scan complete: {plan.AddedCount} added, {plan.MissingCount} missing, {plan.UpdatedCount} updated.";
+                    if (autoMetadataLease is not null) StartMetadataProcessing(autoMetadataLease);
                 }).ConfigureAwait(false))
                 {
                     return;
@@ -1115,10 +1077,6 @@ namespace Airi.ViewModels
 
                 AppLogger.Info(
                     $"Scan apply summary: {plan.AddedCount} added, {plan.MissingCount} missing, {plan.UpdatedCount} updated.");
-                if (autoMetadataLease is not null)
-                {
-                    StartMetadataProcessing(autoMetadataLease);
-                }
                 _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
             }
             catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
@@ -1208,377 +1166,6 @@ namespace Airi.ViewModels
                 _performanceProbe.TryMark(StartupTimingMarker.StartupTerminal);
             }
         }
-
-        private async Task FetchMissingMetadataWithCrawlerAsync()
-        {
-            LibraryMutationLease? lease = null;
-            await _dispatcher.InvokeAsync(() =>
-            {
-                if (IsFetchingMetadata)
-                {
-                    StatusMessage = "Metadata fetch already in progress.";
-                    return;
-                }
-                if (!CanMutateLibrary)
-                {
-                    StatusMessage = "Library is busy. Try again when startup work completes.";
-                    return;
-                }
-                lease = TryBeginLibraryMutation(LibraryMutationOwner.ManualFetch);
-            });
-            if (lease is null)
-            {
-                return;
-            }
-
-            var missing = Videos.Where(IsMetadataIncomplete).ToList();
-            if (missing.Count == 0)
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = "No videos require crawler metadata.";
-                    ReleaseLibraryMutation(lease);
-                });
-                return;
-            }
-
-            await _dispatcher.InvokeAsync(() =>
-            {
-                StatusMessage = $"Crawler metadata fetch starting for {missing.Count} videos.";
-            });
-
-            AppLogger.Info($"[Crawler] Starting metadata fetch for {missing.Count} videos with missing metadata.");
-
-            var preserveStatusMessage = false;
-            try
-            {
-                if (!await EnsureCrawlerReadyAsync(_lifetimeCts.Token).ConfigureAwait(false))
-                {
-                    preserveStatusMessage = true;
-                    return;
-                }
-
-                var total = missing.Count;
-                var index = 0;
-
-                foreach (var video in missing)
-                {
-                    index++;
-                    var normalizedPath = LibraryPathHelper.NormalizeLibraryPath(video.LibraryPath);
-                    var entry = _library.Videos.SingleOrDefault(entry => entry.Id == video.Id);
-                    if (entry is null)
-                    {
-                        AppLogger.Info($"[Crawler] Skipping {video.LibraryPath}; no library entry found.");
-                        continue;
-                    }
-
-                    var query = BuildCrawlerQuery(video, entry);
-                    if (string.IsNullOrWhiteSpace(query))
-                    {
-                        AppLogger.Info($"[Crawler] Skipping {video.LibraryPath}; unable to build crawler query.");
-                        await _dispatcher.InvokeAsync(() =>
-                        {
-                            StatusMessage = $"[{index}/{total}] Skipped {video.Title}: query unavailable.";
-                        });
-                        continue;
-                    }
-
-                    var displayName = string.IsNullOrWhiteSpace(video.Title)
-                        ? Path.GetFileName(video.LibraryPath)
-                        : video.Title;
-
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        StatusMessage = $"[{index}/{total}] Fetching metadata for {displayName}...";
-                    });
-
-                    var updatedEntry = await _webMetadataService.EnrichAsync(
-                        entry,
-                        query,
-                        _lifetimeCts.Token).ConfigureAwait(false);
-                    if (updatedEntry is null)
-                    {
-                        await _dispatcher.InvokeAsync(() =>
-                        {
-                            StatusMessage = $"[{index}/{total}] No new metadata for {displayName}.";
-                        });
-                        continue;
-                    }
-
-                    await CommitEntryCandidateAsync(entry, updatedEntry, lease).ConfigureAwait(false);
-                    await _dispatcher.InvokeAsync(() => StatusMessage = $"[{index}/{total}] Metadata updated for {displayName}.");
-                }
-            }
-            finally
-            {
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    ReleaseLibraryMutation(lease);
-                    if (!preserveStatusMessage)
-                    {
-                        StatusMessage = BuildLibrarySummary();
-                    }
-                });
-
-                AppLogger.Info("[Crawler] Metadata fetch completed.");
-            }
-        }
-
-        private async Task<bool> EnsureCrawlerReadyAsync(CancellationToken cancellationToken = default)
-        {
-            var (handle, session) = GetCrawlerState();
-            if (handle is not null && session is not null && handle.IsBrowserOpen())
-            {
-                return true;
-            }
-
-            if (handle is not null)
-            {
-                DisposeCrawler();
-                await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
-            }
-
-            return await StartCrawlerAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        private static string BuildCrawlerQuery(VideoItem video, VideoEntry entry)
-        {
-            if (!string.IsNullOrWhiteSpace(video?.Title))
-            {
-                var normalized = LibraryPathHelper.NormalizeCode(video.Title);
-                if (!string.IsNullOrWhiteSpace(normalized))
-                {
-                    return normalized;
-                }
-            }
-
-            var fallbackSource = string.IsNullOrWhiteSpace(entry.Path)
-                ? video?.LibraryPath ?? string.Empty
-                : entry.Path;
-
-            var fileStem = Path.GetFileNameWithoutExtension(fallbackSource);
-            return LibraryPathHelper.NormalizeCode(fileStem);
-        }
-
-        private async Task<bool> StartCrawlerAsync(CancellationToken cancellationToken = default)
-        {
-            await _crawlerStartGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                var (handle, session) = GetCrawlerState();
-                if (handle is not null && session is not null && handle.IsBrowserOpen())
-                {
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        StatusMessage = "Crawler already running. Close the browser window to start a new session.";
-                    });
-                    return true;
-                }
-
-                if (handle is not null)
-                {
-                    DisposeCrawler();
-                    await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
-                }
-
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    IsCrawlerRunning = true;
-                    StatusMessage = "Crawler starting...";
-                });
-
-                AppLogger.Info("Starting Selenium crawler.");
-
-                try
-                {
-                    var result = await _crawlerSessionFactory.StartAsync(cancellationToken).ConfigureAwait(false);
-                    if (cancellationToken.IsCancellationRequested) { result.Handle.Dispose(); cancellationToken.ThrowIfCancellationRequested(); }
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        SetCrawlerState(result.Handle, result.Session);
-                        IsCrawlerRunning = true;
-                        StatusMessage = result.Summary;
-                    });
-
-                    StartCrawlerMonitor(result.Handle);
-                    return true;
-                }
-                catch (OperationCanceledException)
-                {
-                    DisposeCrawler();
-                    await _dispatcher.InvokeAsync(() => IsCrawlerRunning = false);
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    DisposeCrawler();
-
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        StatusMessage = $"Crawler failed: {ex.Message}";
-                        IsCrawlerRunning = false;
-                    });
-
-                    AppLogger.Error("Crawler failed while using Selenium.", ex);
-                    return false;
-                }
-            }
-            finally
-            {
-                _crawlerStartGate.Release();
-            }
-        }
-
-
-        public async Task<WebVideoMetaResult?> TryFetchOneFourOneJavMetadataAsync(string query, CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return null;
-            }
-
-            try
-            {
-                if (!await EnsureCrawlerReadyAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    return null;
-                }
-
-                var result = await _oneFourOneJavSource.FetchAsync(query, cancellationToken).ConfigureAwait(false);
-                return result is null
-                    ? null
-                    : await _webMetadataService.TranslateResultDescriptionAsync(result, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error($"[141Jav] Failed to fetch crawler metadata for '{query}'.", ex);
-                await _dispatcher.InvokeAsync(() =>
-                {
-                    StatusMessage = $"Crawler metadata fetch failed: {ex.Message}";
-                });
-                return null;
-            }
-        }
-
-        private void StartCrawlerMonitor(IOneFourOneJavCrawlerSessionHandle monitoredHandle)
-        {
-            var generation = Interlocked.Increment(ref _crawlerMonitorGeneration);
-
-            _crawlerMonitorTask = Task.Run(async () =>
-            {
-                try
-                {
-                    while (true)
-                    {
-                        if (!IsCurrentCrawlerHandle(monitoredHandle))
-                        {
-                            break;
-                        }
-
-                        try
-                        {
-                            if (!monitoredHandle.IsBrowserOpen())
-                            {
-                                break;
-                            }
-                        }
-                        catch (Exception)
-                        {
-                            break;
-                        }
-
-                        await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-                    }
-                }
-                finally
-                {
-                    var disposedCurrent = DisposeCrawlerIfCurrent(monitoredHandle);
-
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        if (disposedCurrent)
-                        {
-                            IsCrawlerRunning = false;
-                            StatusMessage = BuildLibrarySummary();
-                        }
-                    });
-
-                    if (Volatile.Read(ref _crawlerMonitorGeneration) == generation)
-                    {
-                        _crawlerMonitorTask = null;
-                    }
-                }
-            });
-        }
-
-        private void DisposeCrawler()
-        {
-            DisposeCrawlerIfCurrent(null);
-        }
-
-        private (IOneFourOneJavCrawlerSessionHandle? Handle, IOneFourOneJavCrawlerSession? Session) GetCrawlerState()
-        {
-            lock (_crawlerStateLock)
-            {
-                return (_crawlerHandle, _crawlerSession);
-            }
-        }
-
-        private void SetCrawlerState(
-            IOneFourOneJavCrawlerSessionHandle handle,
-            IOneFourOneJavCrawlerSession session)
-        {
-            lock (_crawlerStateLock)
-            {
-                _crawlerHandle = handle;
-                _crawlerSession = session;
-                _crawlerSessionProvider.SetSession(session);
-            }
-        }
-
-        private bool IsCurrentCrawlerHandle(IOneFourOneJavCrawlerSessionHandle handle)
-        {
-            lock (_crawlerStateLock)
-            {
-                return ReferenceEquals(_crawlerHandle, handle);
-            }
-        }
-
-        private bool DisposeCrawlerIfCurrent(IOneFourOneJavCrawlerSessionHandle? expectedHandle)
-        {
-            IOneFourOneJavCrawlerSessionHandle? handle;
-            lock (_crawlerStateLock)
-            {
-                handle = _crawlerHandle;
-                if (expectedHandle is not null && !ReferenceEquals(handle, expectedHandle))
-                {
-                    return false;
-                }
-
-                _crawlerSessionProvider.SetSession(null);
-                _crawlerSession = null;
-                _crawlerHandle = null;
-            }
-
-            if (handle is not null)
-            {
-                try
-                {
-                    handle.Dispose();
-                }
-                catch (Exception)
-                {
-                    // ignored: driver process already gone or already disposed.
-                }
-            }
-
-            return true;
-        }
-
 
         internal ScanPreparationSeed CaptureScanPreparationSeed(LibraryMutationLease startupLease)
         {
@@ -1727,29 +1314,23 @@ namespace Airi.ViewModels
             }
         }
 
-        private async Task ProcessMetadataQueueAsync(LibraryMutationLease lease)
+        private async Task ProcessMetadataQueueAsync(LibraryMutationLease lease, CancellationToken token)
         {
-            bool hasItems;
-            lock (_metadataQueueLock)
-            {
-                hasItems = _pendingMetadata.Count > 0;
-            }
-
-            if (!hasItems)
-            {
-                return;
-            }
-
             if (lease.Owner != LibraryMutationOwner.AutoMetadata)
             {
                 throw new InvalidOperationException("Metadata queue processing requires an AutoMetadata lease.");
             }
-            await _dispatcher.InvokeAsync(() => EnsureCurrentLease(lease));
 
             try
             {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    EnsureCurrentLease(lease);
+                });
                 while (true)
                 {
+                    token.ThrowIfCancellationRequested();
                     string normalizedPath;
                     lock (_metadataQueueLock)
                     {
@@ -1762,58 +1343,48 @@ namespace Airi.ViewModels
                         _metadataScheduled.Remove(normalizedPath);
                     }
 
-                    await ProcessMetadataForPathAsync(normalizedPath, lease).ConfigureAwait(false);
+                    await ProcessMetadataForPathAsync(normalizedPath, lease, token).ConfigureAwait(false);
                 }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
             }
             finally
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
                     ReleaseLibraryMutation(lease);
-                    StatusMessage = BuildLibrarySummary();
+                    if (!_disposed) StatusMessage = BuildLibrarySummary();
                 });
             }
         }
 
-        private async Task ProcessMetadataForPathAsync(string normalizedPath, LibraryMutationLease lease)
+        private async Task ProcessMetadataForPathAsync(string normalizedPath, LibraryMutationLease lease, CancellationToken token)
         {
             VideoEntry[] entries = await _dispatcher.InvokeAsync(() => _library.Videos.Where(entry =>
                 LibraryPathHelper.NormalizeLibraryPath(entry.Path).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)).ToArray());
-            foreach (var entry in entries) await ProcessMetadataForEntryAsync(entry, normalizedPath, lease).ConfigureAwait(false);
+            foreach (var entry in entries) await ProcessMetadataForEntryAsync(entry, normalizedPath, lease, token).ConfigureAwait(false);
         }
 
-        private async Task ProcessMetadataForEntryAsync(VideoEntry entry, string normalizedPath, LibraryMutationLease lease)
+        private async Task ProcessMetadataForEntryAsync(VideoEntry entry, string normalizedPath, LibraryMutationLease lease, CancellationToken token)
         {
             var displayName = Path.GetFileName(LibraryPathHelper.ResolveToAbsolute(normalizedPath));
 
             await _dispatcher.InvokeAsync(() =>
             {
-                StatusMessage = $"Fetching metadata for {displayName}...";
+                StatusMessage = $"{displayName} · 메타데이터 갱신 중…";
             });
-
-            var query = string.IsNullOrWhiteSpace(entry.Meta.Title)
-                ? Path.GetFileNameWithoutExtension(normalizedPath)
-                : entry.Meta.Title;
 
             try
             {
-                var updatedEntry = await _webMetadataService.EnrichAsync(
-                    entry,
-                    query,
-                    _lifetimeCts.Token).ConfigureAwait(false);
-                if (updatedEntry is null)
+                var result = await _webMetadataService.FetchEnrichmentAsync(entry, token).ConfigureAwait(false);
+                if (result.Entry is { } updatedEntry)
                 {
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        StatusMessage = $"No metadata found for {displayName}.";
-                    });
-                    return;
+                    await CommitEntryCandidateAsync(entry, updatedEntry, lease, token).ConfigureAwait(false);
                 }
-
-                await CommitEntryCandidateAsync(entry, updatedEntry, lease).ConfigureAwait(false);
-                await _dispatcher.InvokeAsync(() => StatusMessage = $"Metadata updated for {displayName}.");
+                await _dispatcher.InvokeAsync(() => StatusMessage = $"{displayName} · {MetadataOutcomeLabel(result.Status)}");
             }
-            catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 throw;
             }
@@ -1830,14 +1401,17 @@ namespace Airi.ViewModels
                 var oldThumbnail = existing.ThumbnailPath;
                 var realizedWidth = GetRealizedThumbnailWidth(existing);
                 existing.Revision = updatedEntry.Revision;
-                existing.Title = updatedEntry.Meta.Title;
+                existing.Title = updatedEntry.Meta.Korean?.Title ?? updatedEntry.Meta.Title;
+                existing.ProductCode = updatedEntry.ProductCode;
                 existing.ReleaseDate = updatedEntry.Meta.Date;
                 existing.RawDate = updatedEntry.Meta.RawDate;
                 existing.Actors = updatedEntry.Meta.Actors;
-                existing.Tags = updatedEntry.Meta.Tags;
-                existing.Description = updatedEntry.Meta.Description;
+                existing.GenreFilterValues = updatedEntry.Meta.Genres;
+                existing.DisplayActors = MetadataDisplay.Actors(updatedEntry.Meta).Select(actor => actor.DisplayName).ToArray();
+                existing.Tags = updatedEntry.Meta.Tags.Select(tag => KoreanMetadata.Label(updatedEntry.Meta.Korean?.Tags, tag)).ToArray();
+                existing.Description = updatedEntry.Meta.Korean?.Description ?? updatedEntry.Meta.Description;
                 existing.Studio = updatedEntry.Meta.Studio;
-                existing.Genres = updatedEntry.Meta.Genres;
+                existing.Genres = updatedEntry.Meta.Genres.Select(genre => KoreanMetadata.Label(updatedEntry.Meta.Korean?.Genres, genre)).ToArray();
                 existing.ThumbnailPath = updatedEntry.Meta.Thumbnail;
                 existing.ThumbnailUri = ResolveThumbnailPath(updatedEntry.Meta.Thumbnail);
                 if (!StringComparer.OrdinalIgnoreCase.Equals(oldThumbnail, existing.ThumbnailPath))
@@ -1901,14 +1475,23 @@ namespace Airi.ViewModels
 
         private void StartMetadataProcessing(LibraryMutationLease lease)
         {
-            lock (_metadataQueueLock)
+            _dispatcher.VerifyAccess();
+            var token = _metadataShutdown.Token;
+            if (token.IsCancellationRequested)
             {
-                if (_metadataProcessingTask is not null && !_metadataProcessingTask.IsCompleted)
-                {
-                    throw new InvalidOperationException("Metadata processing is already active.");
-                }
-                _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync(lease));
+                ReleaseLibraryMutation(lease);
+                return;
             }
+            if (!_metadataProcessingTask.IsCompleted)
+                throw new InvalidOperationException("Metadata processing is already active.");
+            _metadataProcessingTask = Task.Run(() => ProcessMetadataQueueAsync(lease, token));
+        }
+
+        internal Task StopMetadataForShutdownAsync()
+        {
+            _dispatcher.VerifyAccess();
+            _metadataShutdown.Cancel();
+            return _metadataProcessingTask;
         }
 
         private void ApplyLoadedSort(SortSettings sort)
@@ -2011,7 +1594,9 @@ namespace Airi.ViewModels
                 Description = result.Description?.Trim() ?? string.Empty,
                 Thumbnail = result.ThumbnailPath ?? string.Empty
             };
-            var changed = Enum.GetValues<MetadataField>().Where(field => !MetadataValuesEqual(entry.Meta, updatedMeta, field));
+            var changed = Enum.GetValues<MetadataField>().Where(field => !MetadataValuesEqual(entry.Meta, updatedMeta, field)).ToArray();
+            var authored = updatedMeta with { Korean = null, ActorNames = Array.Empty<ActorName>() };
+            foreach (var field in changed) updatedMeta = GalleryMetadataFields.CopyField(updatedMeta, authored, field);
             updatedMeta = updatedMeta with { ManualFieldLocks = entry.Meta.ManualFieldLocks.Concat(changed).Distinct().ToArray() };
             await CommitEntryCandidateAsync(entry, entry with { Meta = updatedMeta }, lease).ConfigureAwait(false);
             await _dispatcher.InvokeAsync(() => StatusMessage = $"'{updatedMeta.Title}' 정보를 저장했습니다.");
@@ -2030,24 +1615,31 @@ namespace Airi.ViewModels
             _ => false
         };
 
-        internal async Task CommitEntryCandidateAsync(VideoEntry before, VideoEntry proposal, LibraryMutationLease lease)
+        internal async Task CommitEntryCandidateAsync(VideoEntry before, VideoEntry proposal, LibraryMutationLease lease,
+            CancellationToken cancellationToken = default)
         {
-            LibraryData? candidate = null;
-            var confirmed = proposal with { Id = before.Id, Revision = checked(before.Revision + 1) };
-            await _dispatcher.InvokeAsync(() =>
-            {
-                EnsureCurrentLease(lease);
-                var current = _library.Videos.SingleOrDefault(entry => entry.Id == before.Id);
-                if (current is null || current.Revision != before.Revision)
-                    throw new InvalidOperationException("대상 정보가 변경되었습니다. 미리보기를 다시 확인해 주세요.");
-                candidate = _library.WithVideos(_library.Videos.Select(entry => entry.Id == before.Id ? confirmed : entry));
-            });
-            _lifetimeCts.Token.ThrowIfCancellationRequested();
+            LibraryData candidate;
+            VideoEntry confirmed;
             try
             {
-                await _libraryStore.SaveAsync(candidate!, CancellationToken.None).ConfigureAwait(false);
+                confirmed = proposal with { Id = before.Id, Revision = checked(before.Revision + 1) };
+                candidate = await _dispatcher.InvokeAsync(() =>
+                {
+                    EnsureCurrentLease(lease);
+                    var current = _library.Videos.SingleOrDefault(entry => entry.Id == before.Id);
+                    if (current is null || current.Revision != before.Revision)
+                        throw new InvalidOperationException("대상 정보가 변경되었습니다. 미리보기를 다시 확인해 주세요.");
+                    return _library.WithVideos(_library.Videos.Select(entry => entry.Id == before.Id ? confirmed : entry));
+                });
+                _lifetimeCts.Token.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+                await _libraryStore.SaveAsync(candidate, CancellationToken.None).ConfigureAwait(false);
             }
-            catch { _webMetadataService.DiscardCandidate(proposal); throw; }
+            catch
+            {
+                _webMetadataService.DiscardCandidate(proposal);
+                throw;
+            }
             _webMetadataService.AcceptCandidate(proposal);
             await _dispatcher.InvokeAsync(() =>
             {
@@ -2079,7 +1671,7 @@ namespace Airi.ViewModels
         {
             RandomPlayCommand.RaiseCanExecuteChanged();
 
-            if (!updateMessage || IsScanning || IsFetchingMetadata || IsCrawlerRunning)
+            if (!updateMessage || IsScanning || IsFetchingMetadata)
             {
                 return;
             }
@@ -2160,15 +1752,18 @@ namespace Airi.ViewModels
             {
                 LibraryPath = libraryPath,
                 Id = entry.Id,
+                ProductCode = entry.ProductCode,
                 Revision = entry.Revision,
                 Studio = entry.Meta.Studio,
-                Genres = entry.Meta.Genres,
+                Genres = entry.Meta.Genres.Select(genre => KoreanMetadata.Label(entry.Meta.Korean?.Genres, genre)).ToArray(),
+                GenreFilterValues = entry.Meta.Genres,
                 RawDate = entry.Meta.RawDate,
-                Title = entry.Meta.Title,
+                Title = entry.Meta.Korean?.Title ?? entry.Meta.Title,
                 ReleaseDate = entry.Meta.Date,
                 Actors = entry.Meta.Actors,
-                Tags = entry.Meta.Tags,
-                Description = entry.Meta.Description,
+                DisplayActors = MetadataDisplay.Actors(entry.Meta).Select(actor => actor.DisplayName).ToArray(),
+                Tags = entry.Meta.Tags.Select(tag => KoreanMetadata.Label(entry.Meta.Korean?.Tags, tag)).ToArray(),
+                Description = entry.Meta.Korean?.Description ?? entry.Meta.Description,
                 ThumbnailUri = ResolveThumbnailPath(entry.Meta.Thumbnail),
                 ThumbnailPath = entry.Meta.Thumbnail
             };
@@ -2196,8 +1791,11 @@ namespace Airi.ViewModels
             _toastTimer?.Stop();
             _draftFetchCts?.Cancel();
             _editorDraft?.Dispose();
+            ReleaseDraftProposals();
+            _editorDraft = null;
             _galleryQueryCancellation?.Cancel();
             _galleryQueryCompletion.TrySetCanceled();
+            _metadataShutdown.Cancel();
             _lifetimeCts.Cancel();
             _mutationLease = null;
             RaiseMutationStateChanged();
@@ -2213,7 +1811,6 @@ namespace Airi.ViewModels
             {
                 RemoveThumbnailRuntimeState(item);
             }
-            DisposeCrawler();
         }
 
         private async Task LoadAndApplyThumbnailAsync(
@@ -2442,8 +2039,10 @@ namespace Airi.ViewModels
                 Array.Empty<string>(),
                 string.Empty);
 
-            return new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc, snapshot.CreatedUtc)
+            var entry = new VideoEntry(snapshot.LibraryPath, meta, snapshot.SizeBytes, snapshot.LastWriteUtc, snapshot.CreatedUtc)
             { Presence = LibraryFilePresence.Available, PresenceProbedAtUtc = DateTime.UtcNow };
+            var code = MetadataProductCode.FromEntry(entry)?.Value;
+            return code is null ? entry : entry with { ProductCode = code, Meta = meta with { Title = string.Empty } };
         }
 
         private string ResolveThumbnailPath(string? path)

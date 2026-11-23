@@ -332,6 +332,33 @@ public sealed class LibraryStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SaveAsync_RoundTripsProductCodeAndLocalizedNamesWithLegacyActorStrings()
+    {
+        var old = """
+        {"Version":1,"Videos":[{"Path":"./videos/ARAN-117.mp4","Meta":{"Title":"作品名","Actors":["一二三ゆぅり"],"Thumbnail":"","Tags":[],"Description":"説明"}}]}
+        """;
+        await File.WriteAllTextAsync(_libraryPath, old);
+        var store = CreateStore();
+        var library = await store.LoadAsync();
+        var entry = Assert.Single(library.Videos);
+        Assert.Equal("ARAN-117", entry.ProductCode);
+        Assert.Equal("一二三ゆぅり", Assert.Single(entry.Meta.Actors));
+        Assert.Empty(entry.Meta.ActorNames);
+
+        var actor = new ActorName("一二三ゆぅり", "うたかねゆぅり", "우타카네 유우리");
+        entry = entry with { Meta = entry.Meta with { ActorNames = [actor], Korean = new KoreanMetadata { Title = "작품명", Description = "설명" } } };
+        await store.SaveAsync(library.WithVideos([entry]));
+        using var json = JsonDocument.Parse(await File.ReadAllTextAsync(_libraryPath));
+        var saved = json.RootElement.GetProperty("Videos")[0];
+        Assert.Equal("ARAN-117", saved.GetProperty("ProductCode").GetString());
+        Assert.Equal("우타카네 유우리", saved.GetProperty("Meta").GetProperty("Actors")[0].GetProperty("KoreanName").GetString());
+        var reloaded = Assert.Single((await store.LoadAsync()).Videos);
+        Assert.Equal(actor, Assert.Single(reloaded.Meta.ActorNames));
+        Assert.Equal("作品名", reloaded.Meta.Title);
+        Assert.Equal("작품명", reloaded.Meta.Korean?.Title);
+    }
+
+    [Fact]
     public async Task LoadAsync_V1MigrationPreservesRawValuesAndBackupAndStableIdentity()
     {
         var original = """
@@ -354,8 +381,7 @@ public sealed class LibraryStoreTests : IAsyncLifetime
         Assert.Equal(default, entry.CreatedUtc);
         Assert.Null(entry.Meta.Date);
         Assert.Equal("not-a-date", entry.Meta.RawDate);
-        Assert.Contains(MetadataField.Date, entry.Meta.ManualFieldLocks);
-        Assert.DoesNotContain(MetadataField.Title, entry.Meta.ManualFieldLocks);
+        Assert.Empty(entry.Meta.ManualFieldLocks);
         Assert.Equal(bytes, await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(_tempDirectory, "*.v1-backup-*.json"))));
         var reread = await CreateStore().LoadAsync();
         Assert.Equal(entry.Id, Assert.Single(reread.Videos).Id);

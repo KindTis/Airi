@@ -246,7 +246,6 @@ public sealed class SortSettingsPersistenceTests
 
         public MainViewModel CreateViewModel(SettingsStore? settingsStore = null)
         {
-            var provider = new CrawlerSessionProvider();
             return new MainViewModel(
                 Store,
                 Scanner,
@@ -255,9 +254,6 @@ public sealed class SortSettingsPersistenceTests
                     new ThumbnailCache(_root),
                     NullTranslationService.Instance,
                     "KO"),
-                provider,
-                new OneFourOneJavMetaSource(provider),
-                new NeverCrawlerSessionFactory(),
                 ThumbnailPerformanceProbe.Disabled,
                 new TestThumbnailImageLoader(),
                 settingsStore: settingsStore ?? Settings);
@@ -349,13 +345,4 @@ public sealed class SortSettingsPersistenceTests
         }
     }
 
-    private sealed class NeverCrawlerSessionFactory :
-        IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromException<OneFourOneJavCrawlerStartResult>(
-                new InvalidOperationException(
-                    "Crawler is not used by sort settings tests."));
-    }
 }

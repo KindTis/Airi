@@ -160,11 +160,11 @@ public partial class MainViewModel
         if (checkedTargets.IsSubsetOf(completedTargets) && CheckedCount == 0)
             GalleryCheckedWorkCompleted?.Invoke();
     }
-    private IReadOnlyList<VideoItem> CaptureGalleryTargets(bool inspectedOnly = false)
+    private IReadOnlyList<VideoItem> CaptureGalleryTargets(bool inspectedOnly = false, VideoItem? focusedItem = null)
     {
         if (inspectedOnly) return InspectedVideo is { } inspected ? new[] { inspected } : Array.Empty<VideoItem>();
         var checkedItems = Videos.Where(item => item.IsChecked).ToArray();
-        return checkedItems.Length > 0 ? checkedItems : SelectedVideo is { } active ? new[] { active } : Array.Empty<VideoItem>();
+        return checkedItems.Length > 0 ? checkedItems : (focusedItem ?? SelectedVideo) is { } active ? new[] { active } : Array.Empty<VideoItem>();
     }
     private void NotifyGallerySelection()
     {
@@ -304,7 +304,7 @@ public partial class MainViewModel
                 if (value) selected.Add(changed.Key); else selected.Remove(changed.Key);
                 changed.SetSelected(value); RequestGalleryQuery();
             });
-            else option.Update(count.Count, selected.Contains(count.Value));
+            option.Update(count.Count, selected.Contains(count.Value), count.DisplayLabel);
             if (index >= target.Count) target.Add(option);
             else if (!ReferenceEquals(target[index], option))
             {
@@ -320,8 +320,15 @@ public partial class MainViewModel
         QueryChips.Clear();
         if (!string.IsNullOrWhiteSpace(SearchQuery)) QueryChips.Add(new(SearchQuery, new RelayCommand(_ => SearchQuery = string.Empty)));
         foreach (var facet in Enum.GetValues<GalleryFacet>())
-            foreach (var value in Filters(facet).ToArray()) QueryChips.Add(new($"{facet switch { GalleryFacet.Actors => "배우", GalleryFacet.Studio => "제작사", _ => "장르" }} {value.Label}", new RelayCommand(_ =>
+            foreach (var value in Filters(facet).ToArray()) QueryChips.Add(new($"{facet switch { GalleryFacet.Actors => "배우", GalleryFacet.Studio => "제작사", _ => "장르" }} {FacetLabel(facet, value)}", new RelayCommand(_ =>
             { if (GuardGalleryEdit()) { Filters(facet).Remove(value); RequestGalleryQuery(); } })));
+    }
+
+    private string FacetLabel(GalleryFacet facet, GalleryFacetValue key)
+    {
+        var options = facet switch { GalleryFacet.Actors => ActorFacets, GalleryFacet.Studio => StudioFacets, _ => GenreFacets };
+        return options.FirstOrDefault(option => option.Key == key)?.Label ??
+            (facet == GalleryFacet.Actors && !key.IsUnspecified ? new ActorName(key.Value ?? string.Empty).DisplayName : key.Label);
     }
     private sealed class GalleryIdOrder(IReadOnlyList<Guid> ids) : IComparer
     {

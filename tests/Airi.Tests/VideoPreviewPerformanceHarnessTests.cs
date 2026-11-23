@@ -482,10 +482,8 @@ public sealed class VideoPreviewPerformanceHarnessTests
 
     private static MainViewModel CreateViewModel(string root, IThumbnailImageLoader loader)
     {
-        var provider = new CrawlerSessionProvider();
-        var source = new OneFourOneJavMetaSource(provider);
         var metadata = new WebMetadataService(
-            new IWebVideoMetaSource[] { new NoopMetaSource() },
+            Array.Empty<IWebVideoMetaSource>(),
             new ThumbnailCache(root),
             NullTranslationService.Instance,
             "KO");
@@ -493,9 +491,6 @@ public sealed class VideoPreviewPerformanceHarnessTests
             new LibraryStore(Path.Combine(root, "videos.json")),
             new LibraryScanner(new FileSystemScanner()),
             metadata,
-            provider,
-            source,
-            new NoopCrawlerFactory(),
             ThumbnailPerformanceProbe.Disabled,
             loader);
     }
@@ -637,17 +632,4 @@ public sealed class VideoPreviewPerformanceHarnessTests
         }
     }
 
-    private sealed class NoopMetaSource : IWebVideoMetaSource
-    {
-        public string Name => "Noop";
-        public bool CanHandle(string query) => false;
-        public Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) =>
-            Task.FromResult<WebVideoMetaResult?>(null);
-    }
-
-    private sealed class NoopCrawlerFactory : IOneFourOneJavCrawlerSessionFactory
-    {
-        public Task<OneFourOneJavCrawlerStartResult> StartAsync(CancellationToken cancellationToken = default) =>
-            Task.FromException<OneFourOneJavCrawlerStartResult>(new InvalidOperationException("Not used."));
-    }
 }

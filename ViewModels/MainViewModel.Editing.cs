@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using Airi.Domain;
 using Airi.Infrastructure;
-using Airi.Web;
+using Airi.Services;
 
 namespace Airi.ViewModels;
 
@@ -33,7 +33,6 @@ public partial class MainViewModel
     public Func<GalleryOperationConfirmation, Task<bool>>? ConfirmOperationAsync { get; set; }
     public Func<VideoItem, Task>? StopPreviewForOperationAsync { get; set; }
     public RelayCommand EditCommand { get; private set; } = null!;
-    public RelayCommand EditInspectedCommand { get; private set; } = null!;
     public RelayCommand PreviewChangesCommand { get; private set; } = null!;
     public RelayCommand BackToEditCommand { get; private set; } = null!;
     public RelayCommand ApplyChangesCommand { get; private set; } = null!;
@@ -45,27 +44,22 @@ public partial class MainViewModel
     public RelayCommand RestoreInspectedCommand { get; private set; } = null!;
     public RelayCommand ReinspectInspectedCommand { get; private set; } = null!;
     public RelayCommand UndoCommand { get; private set; } = null!;
-    public RelayCommand RefreshDraftMetadataCommand { get; private set; } = null!;
     public RelayCommand TranslateDraftDescriptionCommand { get; private set; } = null!;
-    public RelayCommand FetchInspectedMetadataCommand { get; private set; } = null!;
 
     private void InitializeGalleryEditing()
     {
-        EditCommand = new RelayCommand(_ => StartGalleryAction(() => BeginGalleryEditAsync(false)));
-        EditInspectedCommand = new RelayCommand(_ => StartGalleryAction(() => BeginGalleryEditAsync(true)));
+        EditCommand = new RelayCommand(target => StartGalleryAction(() => BeginGalleryEditAsync(CaptureGalleryTargets(focusedItem: target as VideoItem))));
         PreviewChangesCommand = new RelayCommand(_ => PreviewGalleryChanges(), _ => IsEditing && !IsSaving && !IsFetchingDraft);
         BackToEditCommand = new RelayCommand(_ =>
         {
             if (IsSaving || IsFetchingDraft) return;
             if (EditorDraft is { IsAutomaticProposal: true } draft)
             {
-                if (!draft.IsBatch && draft.AutomaticCandidates?.GetValueOrDefault(draft.Targets[0].Id) is { } proposed)
-                    foreach (var field in draft.Fields) field.ProposedValue = GalleryMetadataFields.Get(proposed.Meta, field.Field);
                 draft.IsAutomaticProposal = false;
             }
             IsChangePreview = false;
         });
-        ApplyChangesCommand = new RelayCommand(_ => StartGalleryAction(ApplyGalleryChangesAsync), _ => IsEditing && IsChangePreview && !IsSaving && EditorDraft?.HasChanges == true);
+        ApplyChangesCommand = new RelayCommand(_ => StartGalleryAction(ApplyGalleryChangesAsync), _ => CanSaveGalleryDraft());
         CancelEditCommand = new RelayCommand(_ => CancelGalleryEdit(), _ => IsEditing && !IsSaving);
         DeleteCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRecycleAsync(CaptureGalleryTargets(), false)));
         DeleteInspectedCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRecycleAsync(CaptureGalleryTargets(true), false)));
@@ -77,9 +71,12 @@ public partial class MainViewModel
             _ => CanMutateLibrary && !IsEditing && InspectedVideo?.IsInRecycleBin == true);
         ReinspectCommand = new RelayCommand(_ => StartGalleryAction(() => ReinspectGalleryEntriesAsync(CaptureGalleryTargets())));
         UndoCommand = new RelayCommand(_ => StartGalleryAction(UndoGalleryAsync), _ => CanMutateLibrary && !IsEditing && !IsSaving && ChangeHistory.Any(item => item.CanUndo));
-        RefreshDraftMetadataCommand = new RelayCommand(_ => StartGalleryAction(RefreshGalleryDraftMetadataAsync), _ => IsEditing && EditorDraft?.IsBatch == false && !IsSaving && !IsFetchingDraft);
         TranslateDraftDescriptionCommand = new RelayCommand(_ => StartGalleryAction(TranslateGalleryDraftDescriptionAsync), _ => IsEditing && EditorDraft?.IsBatch == false && !IsSaving && !IsFetchingDraft);
-        FetchInspectedMetadataCommand = new RelayCommand(_ => StartGalleryAction(() => EnrichGalleryTargetsAsync(true)));
+        FetchMetadataCommand = new RelayCommand(
+            target => StartGalleryAction(() => UpdateGalleryMetadataAsync(target as VideoItem)),
+            target => IsEditing
+                ? target is null && EditorDraft?.IsBatch == false && !IsSaving && !IsFetchingDraft && !IsChangePreview
+                : CanMutateLibrary);
     }
 
     private void StartGalleryAction(Func<Task> action)
@@ -108,7 +105,7 @@ public partial class MainViewModel
     private void RefreshGalleryCommands()
     {
         foreach (var command in new[] { PreviewChangesCommand, ApplyChangesCommand, CancelEditCommand, UndoCommand,
-            RefreshDraftMetadataCommand, TranslateDraftDescriptionCommand, EditCommand, EditInspectedCommand,
+            FetchMetadataCommand, TranslateDraftDescriptionCommand, EditCommand,
             DeleteCommand, DeleteInspectedCommand, RestoreCommand, RestoreInspectedCommand, ReinspectCommand, ReinspectInspectedCommand }) command?.RaiseCanExecuteChanged();
         PropertyChanged?.Invoke(this, new(nameof(IsEditing)));
         PropertyChanged?.Invoke(this, new(nameof(EditorDraft)));
@@ -116,12 +113,14 @@ public partial class MainViewModel
         NotifyGallerySelection();
     }
 
-    public async Task BeginGalleryEditAsync(bool inspectedOnly = false)
+    public Task BeginGalleryEditAsync() => BeginGalleryEditAsync(CaptureGalleryTargets());
+
+    private async Task BeginGalleryEditAsync(IReadOnlyList<VideoItem> items)
     {
-        if (IsEditing) return;
-        var items = CaptureGalleryTargets(inspectedOnly).ToArray();
-        if (items.Length == 0) return;
+        if (IsEditing || _metadataShutdown.IsCancellationRequested) return;
+        if (items.Count == 0) return;
         if (_mutationLease?.Owner == LibraryMutationOwner.AutoMetadata) await _metadataProcessingTask;
+        if (_metadataShutdown.IsCancellationRequested) return;
         if (!CanMutateLibrary) { StatusMessage = "진행 중인 작업이 끝난 뒤 편집할 수 있습니다."; return; }
         var entries = items.Select(item => _library.Videos.SingleOrDefault(entry => entry.Id == item.Id)).ToArray();
         if (entries.Any(entry => entry is null)) { StatusMessage = "편집 대상을 확인할 수 없습니다."; return; }
@@ -130,6 +129,7 @@ public partial class MainViewModel
         try
         {
             foreach (var item in items) if (StopPreviewForOperationAsync is { } stop) await stop(item);
+            _metadataShutdown.Token.ThrowIfCancellationRequested();
             InspectedVideo = items[0];
             _editorDraft = new GalleryEditorDraft(entries.Select(entry => CloneEntry(entry!)).ToArray(), items[0]);
         }
@@ -163,9 +163,7 @@ public partial class MainViewModel
         _draftFetchCts?.Cancel();
         if (accepted) draft?.AcceptChanges();
         draft?.Dispose();
-        foreach (var proposal in _draftProposals) _webMetadataService.DiscardCandidate(proposal);
-        _draftProposals.Clear();
-        if (draft?.AutomaticCandidates is { } automatic) foreach (var candidate in automatic.Values) _webMetadataService.DiscardCandidate(candidate);
+        ReleaseDraftProposals();
         _editorDraft = null;
         IsChangePreview = false;
         if (_galleryEditLease is { } lease) EndMetadataEditorMutation(lease);
@@ -173,13 +171,27 @@ public partial class MainViewModel
         RefreshGalleryCommands();
     }
 
+    private void ReleaseDraftProposals()
+    {
+        foreach (var proposal in _draftProposals) _webMetadataService.DiscardCandidate(proposal);
+        _draftProposals.Clear();
+    }
+
+    private bool CanSaveGalleryDraft() => EditorDraft is { } draft && !IsSaving && !IsFetchingDraft
+        && (IsChangePreview ? draft.HasChanges : !draft.IsBatch);
+
     public async Task ApplyGalleryChangesAsync()
     {
         var draft = EditorDraft;
         var lease = _galleryEditLease;
-        if (draft is null || lease is null || IsSaving || !IsChangePreview) return;
+        if (draft is null || lease is null || !CanSaveGalleryDraft()) return;
         var proposals = draft.BuildCandidates();
-        if (proposals is null || !draft.HasChanges) return;
+        if (proposals is null) return;
+        if (!draft.HasChanges)
+        {
+            draft.Error = "저장할 변경 사항이 없습니다.";
+            return;
+        }
         EnsureCurrentLease(lease);
         var changes = new List<GalleryMetadataUndo>();
         foreach (var before in draft.Targets)
@@ -202,11 +214,14 @@ public partial class MainViewModel
         IsSaving = true; RefreshGalleryCommands();
         try
         {
+            _lifetimeCts.Token.ThrowIfCancellationRequested();
             await _libraryStore.SaveAsync(candidate, CancellationToken.None);
+            foreach (var change in changes) _webMetadataService.AcceptCandidate(change.After);
             EnsureCurrentLease(lease);
             _library = candidate;
-            foreach (var change in changes) { _webMetadataService.AcceptCandidate(change.After); ApplyMetadataToCollections(change.After); }
-            AddGalleryHistory(new GalleryHistoryItem { Summary = draft.IsAutomaticProposal ? "정보 보강" : draft.IsBatch ? "일괄 편집" : "정보 편집",
+            foreach (var change in changes) ApplyMetadataToCollections(change.After);
+            var includesMetadataUpdate = draft.IsAutomaticProposal || draft.Fields.Any(field => field.FetchedMetadata is not null);
+            AddGalleryHistory(new GalleryHistoryItem { Summary = includesMetadataUpdate ? "메타데이터 갱신" : draft.IsBatch ? "일괄 편집" : "정보 편집",
                 Count = changes.Count, Metadata = changes, EntryIds = changes.Select(change => change.Before.Id).ToArray() });
             var needsAttention = draft.IsAutomaticProposal ? draft.MetadataUpdatesNeedingAttention.Count : 0;
             var savedMessage = $"{changes.Count}개 영상의 정보를 저장했습니다.";
@@ -220,68 +235,53 @@ public partial class MainViewModel
         finally { IsSaving = false; RefreshGalleryCommands(); }
     }
 
-    private async Task EnrichGalleryTargetsAsync(bool inspectedOnly = false)
+    private async Task UpdateGalleryMetadataAsync(VideoItem? target)
     {
-        await BeginGalleryEditAsync(inspectedOnly);
+        if (!IsEditing)
+        {
+            var targets = target is null ? CaptureGalleryTargets() : new[] { target };
+            await BeginGalleryEditAsync(targets.Where(item => !item.IsInRecycleBin).ToArray());
+        }
+        else if (target is not null || EditorDraft?.IsBatch != false || IsChangePreview) return;
+
         var draft = EditorDraft;
         if (draft is null || _galleryEditLease is null) return;
+        draft.Error = null;
+        draft.TargetResults.Clear();
         draft.MetadataUpdatesNeedingAttention.Clear();
         var candidates = new Dictionary<Guid, VideoEntry>();
         using var fetch = BeginDraftFetch();
         try
         {
-            if (!await PrepareGalleryMetadataSourceAsync(draft, fetch.Token)) return;
             foreach (var entry in draft.Targets)
             {
-                var query = string.IsNullOrWhiteSpace(entry.Meta.Title) ? System.IO.Path.GetFileNameWithoutExtension(entry.Path) : entry.Meta.Title;
-                var response = await _webMetadataService.FetchEnrichmentAsync(entry, query, fetch.Token);
-                if (!ReferenceEquals(EditorDraft, draft)) { if (response.Entry is { } stale) _webMetadataService.DiscardCandidate(stale); return; }
-                fetch.Token.ThrowIfCancellationRequested();
-                if (response.Entry is { } updated) { candidates[entry.Id] = updated; _draftProposals.Add(updated); }
-                if (response.Entry is null || response.IsPartial) draft.MetadataUpdatesNeedingAttention.Add(entry.Id);
-                draft.TargetResults.Add(new(entry.Meta.Title, response.Entry is not null ? response.IsPartial ? "부분 후보" : "후보 확보" : response.NoResult ? "결과 없음" : "수집 실패", response.Source, response.Error));
+                var response = await _webMetadataService.FetchEnrichmentAsync(draft.GetMetadataUpdateTarget(entry), fetch.Token);
+                if (!TrackDraftProposal(draft, response.Entry, fetch.Token)) return;
+                if (!draft.IsBatch)
+                {
+                    draft.ProposalSource = response.Source;
+                    draft.ProposalReason = null;
+                    if (response.Entry is { } fetched)
+                    {
+                        draft.FillFromMetadata(fetched.Meta, response.FieldSources.Keys);
+                        draft.ProposalReason = response.Detail ?? "가져온 정보를 편집창에 채웠습니다.";
+                    }
+                    else draft.Error = response.Detail ?? MetadataOutcomeLabel(response.Status);
+                    return;
+                }
+                if (response.Entry is { } updated) candidates[entry.Id] = updated;
+                if (response.Status is not (MetadataLookupOutcome.Found or MetadataLookupOutcome.Unchanged))
+                    draft.MetadataUpdatesNeedingAttention.Add(entry.Id);
+                draft.TargetResults.Add(new(entry.Meta.Title, MetadataOutcomeLabel(response.Status), response.Source, response.Detail));
             }
             if (candidates.Count == 0) { draft.Error = "새 정보를 찾지 못했습니다. 변경 사항은 저장되지 않았습니다."; return; }
             draft.IsAutomaticProposal = true; draft.AutomaticCandidates = candidates;
             _ = draft.BuildCandidates(); IsChangePreview = true;
-            if (!draft.HasChanges) draft.Error = "변경할 빈 정보가 없습니다.";
+            if (!draft.HasChanges) draft.Error = "갱신할 변경 사항이 없습니다.";
         }
         finally { EndDraftFetch(fetch); }
     }
 
-    private async Task RefreshGalleryDraftMetadataAsync()
-    {
-        var draft = EditorDraft;
-        if (draft is null || draft.IsBatch) return;
-        var entry = draft.Targets[0];
-        using var fetch = BeginDraftFetch();
-        try
-        {
-            if (!await PrepareGalleryMetadataSourceAsync(draft, fetch.Token)) return;
-            var empty = entry with { Meta = new VideoMeta(string.Empty, null, Array.Empty<string>(), string.Empty, Array.Empty<string>(), string.Empty) };
-            var response = await _webMetadataService.FetchEnrichmentAsync(empty, entry.Meta.Title, fetch.Token);
-            if (!ReferenceEquals(EditorDraft, draft)) { if (response.Entry is { } stale) _webMetadataService.DiscardCandidate(stale); return; }
-            draft.ProposalSource = response.Source;
-            draft.ProposalReason = response.Error;
-            draft.IsProposalPartial = response.IsPartial;
-            draft.TargetResults.Add(new(entry.Meta.Title, response.Entry is not null ? response.IsPartial ? "부분 후보" : "후보 확보" : response.NoResult ? "결과 없음" : "수집 실패", response.Source, response.Error));
-            var proposal = response.Entry;
-            if (proposal is null) { draft.Error = response.Error ?? "수집 결과가 없습니다."; return; }
-            fetch.Token.ThrowIfCancellationRequested();
-            _draftProposals.Add(proposal);
-            foreach (var field in draft.Fields)
-            {
-                var value = GalleryMetadataFields.Get(proposal.Meta, field.Field);
-                if (!string.IsNullOrWhiteSpace(value))
-                {
-                    field.ProposedValue = value;
-                    field.ProposalSource = response.Source;
-                    field.ProposalReason = response.Error;
-                }
-            }
-        }
-        finally { EndDraftFetch(fetch); }
-    }
     private async Task TranslateGalleryDraftDescriptionAsync()
     {
         var draft = EditorDraft;
@@ -290,30 +290,46 @@ public partial class MainViewModel
         using var fetch = BeginDraftFetch();
         try
         {
-            var result = await _webMetadataService.TranslateResultDescriptionAsync(new WebVideoMetaResult(
-                draft.Targets[0].Meta with { Description = field.Value }, null, null), fetch.Token);
-            if (ReferenceEquals(EditorDraft, draft)) { fetch.Token.ThrowIfCancellationRequested(); field.Value = result.Meta.Description; }
+            var original = field.FetchedMetadata?.Description ?? (field.ValueEdited ? field.Value : draft.Targets[0].Meta.Description);
+            var meta = draft.Targets[0].Meta with { Description = original };
+            var result = await _webMetadataService.TranslateDescriptionAsync(meta, fetch.Token);
+            if (ReferenceEquals(EditorDraft, draft) && !string.Equals(original, result.Description, StringComparison.Ordinal))
+            {
+                fetch.Token.ThrowIfCancellationRequested();
+                field.FillFromMetadata(meta with { Korean = (meta.Korean ?? new KoreanMetadata()) with { Description = result.Description } });
+            }
         }
         finally { EndDraftFetch(fetch); }
     }
 
-    private async Task<bool> PrepareGalleryMetadataSourceAsync(GalleryEditorDraft draft, CancellationToken token)
+    private bool TrackDraftProposal(GalleryEditorDraft draft, VideoEntry? proposal, CancellationToken token)
     {
-        if (!_webMetadataService.RequiresCrawlerSession) return true;
-        if (await EnsureCrawlerReadyAsync(token)) { token.ThrowIfCancellationRequested(); return ReferenceEquals(EditorDraft, draft); }
-        if (ReferenceEquals(EditorDraft, draft))
+        if (!ReferenceEquals(EditorDraft, draft) || token.IsCancellationRequested)
         {
-            draft.Error = StatusMessage;
-            draft.ProposalSource = "141Jav";
-            draft.ProposalReason = StatusMessage;
-            foreach (var entry in draft.Targets) draft.TargetResults.Add(new(entry.Meta.Title, "수집 준비 실패", "141Jav", StatusMessage));
+            if (proposal is not null) _webMetadataService.DiscardCandidate(proposal);
+            token.ThrowIfCancellationRequested();
+            return false;
         }
-        return false;
+        if (proposal is not null) _draftProposals.Add(proposal);
+        return true;
     }
+
+    private static string MetadataOutcomeLabel(MetadataLookupOutcome outcome) => outcome switch
+    {
+        MetadataLookupOutcome.Unidentified => "품번 식별 불가",
+        MetadataLookupOutcome.NotFound => "결과 없음",
+        MetadataLookupOutcome.Failed => "조회 실패",
+        MetadataLookupOutcome.Partial => "부분 후보",
+        MetadataLookupOutcome.Found => "후보 확보",
+        MetadataLookupOutcome.Unchanged => "변경 없음",
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+    };
 
     private CancellationTokenSource BeginDraftFetch()
     {
-        var fetch = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+        var shutdownToken = _metadataShutdown.Token;
+        shutdownToken.ThrowIfCancellationRequested();
+        var fetch = CancellationTokenSource.CreateLinkedTokenSource(shutdownToken);
         _draftFetchCts = fetch;
         PropertyChanged?.Invoke(this, new(nameof(IsFetchingDraft))); RefreshGalleryCommands();
         return fetch;

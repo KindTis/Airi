@@ -148,8 +148,17 @@ public sealed class MainWindowVideoDeletionTests
         public string Name => "Cancellation waiting test source";
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationToken Token { get; private set; }
-        public bool CanHandle(string query) => true;
-        public async Task<WebVideoMetaResult?> FetchAsync(string query, CancellationToken cancellationToken) { Token = cancellationToken; Started.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
+        public VideoMetadataSourceKind Kind => VideoMetadataSourceKind.LibreDmm;
+        public string Host => "fixture.invalid";
+
+        public async Task<WebVideoMetaResult> FetchAsync(MetadataProductCode code, bool includeThumbnail,
+            ISet<string> blockedHosts, CancellationToken cancellationToken)
+        {
+            Token = cancellationToken;
+            Started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new(null);
+        }
     }
 
     [Fact]
