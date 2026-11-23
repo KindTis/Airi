@@ -16,7 +16,8 @@ public sealed class GalleryPopupCoordinator : IDisposable
     public GalleryPopupCoordinator(Dispatcher dispatcher, Action<VideoItem, ListBoxItem, bool> open, Action close, TimeProvider? clock = null) { _dispatcher = dispatcher; _open = open; _close = close; _clock = clock ?? TimeProvider.System; }
     public void Hover(VideoItem item, ListBoxItem anchor)
     {
-        if (_disposed || IsPinned) return; _suppressFocus = null; CancelClose(); if (ReferenceEquals(Item, item) && State == GalleryPopupState.Detail) return;
+        if (_disposed || IsPinned) return; _suppressFocus = null; CancelClose(); if (ReferenceEquals(Item, item) && State == GalleryPopupState.Detail) { KeyboardOpened = false; return; }
+        if (Item is not null && !ReferenceEquals(Item, item)) { Item = null; Anchor = null; KeyboardOpened = false; _close(); }
         var generation = ++_generation; _openTimer?.Dispose(); State = GalleryPopupState.HoverPending;
         _openTimer = _clock.CreateTimer(_ => _dispatcher.BeginInvoke(new Action(() => { if (_disposed || generation != _generation || IsPinned || !ReferenceEquals(anchor.DataContext, item) || !anchor.IsLoaded) return; Open(item, anchor, false); })), null, TimeSpan.FromMilliseconds(300), Timeout.InfiniteTimeSpan);
     }

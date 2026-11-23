@@ -1,6 +1,6 @@
 <UserControl x:Class="Airi.Views.GalleryFacetPicker" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:c="clr-namespace:Airi.Controls" x:Name="Picker" FontSize="12">
   <Grid>
-    <Button x:Name="Trigger" Padding="10,9" MinHeight="37" Click="Toggle" HorizontalContentAlignment="Stretch">
+    <Button x:Name="Trigger" Style="{StaticResource GalleryDropdownTrigger}" Padding="10,9" MinHeight="37" Click="Toggle" HorizontalContentAlignment="Stretch">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />

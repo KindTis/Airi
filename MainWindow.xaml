@@ -1,4 +1,4 @@
-<Window xmlns:d="clr-namespace:Airi.Domain" x:Class="Airi.MainWindow" x:Name="Shell" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Airi" xmlns:c="clr-namespace:Airi.Controls" xmlns:v="clr-namespace:Airi.Views" xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel" Title="Airi" Width="1300" Height="800" MinWidth="340" MinHeight="400" WindowStartupLocation="CenterScreen" PreviewKeyDown="OnPreviewKeyDown" PreviewKeyUp="OnVideoDeleteKeyUp" Background="#181C1E" FontFamily="Segoe UI Variable, Segoe UI, Malgun Gothic" FontSize="14" UseLayoutRounding="False" TextOptions.TextFormattingMode="Ideal">
+<Window xmlns:d="clr-namespace:Airi.Domain" x:Class="Airi.MainWindow" x:Name="Shell" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Airi" xmlns:c="clr-namespace:Airi.Controls" xmlns:v="clr-namespace:Airi.Views" xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel" Title="Airi" Width="1600" Height="980" MinWidth="340" MinHeight="400" WindowStartupLocation="CenterScreen" PreviewKeyDown="OnPreviewKeyDown" PreviewKeyUp="OnVideoDeleteKeyUp" Background="#181C1E" FontFamily="Segoe UI Variable, Segoe UI, Malgun Gothic" FontSize="14" UseLayoutRounding="False" TextOptions.TextFormattingMode="Ideal">
   <Window.Resources>
     <ResourceDictionary>
       <Style x:Key="GalleryNav" TargetType="Button" BasedOn="{StaticResource GalleryQuiet}">
@@ -24,10 +24,10 @@
         <Grid Width="{Binding Tag.Metrics.ColumnStride,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.RowStride,RelativeSource={RelativeSource AncestorType=ListBox}}">
           <StackPanel Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" HorizontalAlignment="Left" Background="Transparent">
             <Grid Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}">
-              <Border x:Name="ActiveOutline" BorderThickness="1" CornerRadius="9" Margin="-3" BorderBrush="Transparent" />
               <c:GalleryRoundedBorder Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}" CornerRadius="7" Background="{StaticResource GalleryPanel}">
                 <Image Source="{Binding ThumbnailSource}" Tag="MainCardThumbnail" Loaded="OnThumbnailImageLoaded" Unloaded="OnThumbnailImageUnloaded" DataContextChanged="OnThumbnailImageDataContextChanged" Width="{Binding Tag.Metrics.CardWidth,RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding Tag.Metrics.CoverHeight,RelativeSource={RelativeSource AncestorType=ListBox}}" Stretch="UniformToFill" />
               </c:GalleryRoundedBorder>
+              <Border x:Name="ActiveOutline" BorderThickness="2" CornerRadius="7" BorderBrush="Transparent" IsHitTestVisible="False" />
               <CheckBox Style="{StaticResource GalleryCardCheck}" x:Name="CardCheck" IsChecked="{Binding IsChecked,Mode=OneWay}" Width="19" Height="19" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" Focusable="False" IsHitTestVisible="False" Visibility="{Binding IsGallerySelectionMode,RelativeSource={RelativeSource AncestorType=local:MainWindow},Converter={StaticResource GalleryVisibility},FallbackValue=Collapsed}" AutomationProperties.Name="영상 선택" />
               <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,5" Background="{StaticResource GalleryTint}" CornerRadius="5" Visibility="{Binding IsMissing,Converter={StaticResource GalleryVisibility}}">
                 <TextBlock Text="파일 없음" Foreground="{StaticResource GalleryDanger}" />
@@ -37,25 +37,18 @@
               </Border>
             </Grid>
             <TextBlock x:Name="CardTitle" FontWeight="SemiBold" FontSize="{Binding Tag.Metrics.CardTitleSize,RelativeSource={RelativeSource AncestorType=ListBox}}" LineHeight="20.3" TextTrimming="CharacterEllipsis" Margin="0,6,0,0" ><TextBlock.Text><MultiBinding Converter="{StaticResource GalleryDisplayTitle}"><Binding Path="Title"/><Binding Path="SourcePath"/><Binding Path="LibraryPath"/></MultiBinding></TextBlock.Text></TextBlock>
-            <Grid x:Name="DesktopMeta" Margin="0,3,0,0">
+            <Grid x:Name="DesktopMeta" Margin="0,3,0,0" Height="19.2">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition />
               </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition x:Name="MetadataFirstRow" Height="22.2" />
-                <RowDefinition Height="19.2" />
-              </Grid.RowDefinitions>
-              <TextBlock Text="{Binding Actors,Converter={StaticResource GalleryLabel},ConverterParameter=배우}" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Grid.Column="1" Text="{Binding ReleaseLabel,Converter={StaticResource GalleryLabel}}" HorizontalAlignment="Right" Foreground="{StaticResource GalleryMuted}" />
-              <TextBlock Grid.Row="1" Text="{Binding Studio,Converter={StaticResource GalleryLabel},ConverterParameter=제작사}" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Genres,Converter={StaticResource GalleryLabel},ConverterParameter=장르}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" Foreground="{StaticResource GalleryMuted}" />
+              <TextBlock x:Name="CardProductCode" Text="{Binding ProductCode}" Foreground="{StaticResource GalleryAccent}" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="CardActors" Grid.Column="1" Margin="8,0,0,0" TextAlignment="Right"
+                         Text="{Binding DisplayActors,Converter={StaticResource GalleryLabel},ConverterParameter=배우}" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
             </Grid>
             <StackPanel x:Name="CompactMeta" Visibility="Collapsed" Margin="0,5,0,0">
-              <TextBlock Text="{Binding Actors,Converter={StaticResource GalleryLabel},ConverterParameter=배우}" Height="19.2" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Text="{Binding ReleaseLabel,Converter={StaticResource GalleryLabel}}" Height="19.2" Foreground="{StaticResource GalleryMuted}" />
-              <TextBlock x:Name="CompactStudio" Text="{Binding Studio,Converter={StaticResource GalleryLabel},ConverterParameter=제작사}" Margin="0,5,0,0" Height="19.2" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Text="{Binding Genres,Converter={StaticResource GalleryLabel},ConverterParameter=장르}" Height="19.2" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="CompactProductCode" Text="{Binding ProductCode}" Height="19.2" Foreground="{StaticResource GalleryAccent}" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="CompactActors" Text="{Binding DisplayActors,Converter={StaticResource GalleryLabel},ConverterParameter=배우}" Height="19.2" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </StackPanel>
         </Grid>
@@ -77,7 +70,6 @@
           <DataTrigger Binding="{Binding Tag.Metrics.Short,RelativeSource={RelativeSource AncestorType=ListBox}}" Value="False">
             <Setter TargetName="CardTitle" Property="Margin" Value="0,10,0,0" />
             <Setter TargetName="DesktopMeta" Property="Margin" Value="0,5,0,0" />
-            <Setter TargetName="MetadataFirstRow" Property="Height" Value="24.2" />
           </DataTrigger>
           <DataTrigger Binding="{Binding Tag.Metrics.Compact,RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
             <Setter TargetName="CardTitle" Property="LineHeight" Value="17.4" />
@@ -101,8 +93,8 @@
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition />
-                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition x:Name="HeaderSpacerColumn" Width="*" />
+                  <ColumnDefinition x:Name="HeaderSearchColumn" Width="1.5*" MaxWidth="600" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -140,11 +132,11 @@
                     </Border>
                   </Grid>
                 </Border>
-                <Button x:Name="HeaderHistory" Grid.Column="4" Style="{StaticResource GalleryQuiet}" Margin="24,0,0,0" Click="OnHistoryClick">
-                  <TextBlock>
-                    <Run Text="변경 내역 " />
-                    <Run Text="{Binding ChangeHistory.Count,Mode=OneWay}" />
-                  </TextBlock>
+                <Button x:Name="RandomPlayButton" Grid.Column="4" Command="{Binding RandomPlayCommand}" Style="{StaticResource GalleryPrimary}" Height="37" Margin="12,0,0,0" VerticalAlignment="Center" ToolTip="임의 영상 재생" AutomationProperties.Name="임의 재생">
+                  <StackPanel Orientation="Horizontal">
+                    <c:GalleryIcon x:Name="RandomPlayIcon" Kind="shuffle" Margin="0,0,7,0" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    <TextBlock x:Name="RandomPlayLabel" Text="임의 재생" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}"/>
+                  </StackPanel>
                 </Button>
               </Grid>
             </Border>
@@ -223,32 +215,7 @@
           </c:GalleryPageScrollHost.Sidebar>
           <c:GalleryPageScrollHost.Prefix>
             <StackPanel x:Name="GalleryPrefix">
-              <Grid x:Name="GalleryHeading" Margin="25,15,25,11">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                  <TextBlock x:Name="HeadingTitle" Text="라이브러리" FontSize="22" FontWeight="620" LineHeight="31.2" Margin="0,0,0,5" />
-                  <TextBlock Foreground="{StaticResource GalleryMuted}" LineHeight="16.8">
-                    <Run Text="현재 조건 결과 " />
-                    <Run Text="{Binding ResultCount,Mode=OneWay}" />
-                    <Run Text="개 · 일반 보관 " />
-                    <Run Text="{Binding NormalCount,Mode=OneWay}" />
-                    <Run Text="개" />
-                  </TextBlock>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                  <Button x:Name="MobileFilter" Content="필터" Style="{StaticResource GalleryQuiet}" Click="OnMobileFilterClick" Visibility="Collapsed" />
-                  <Button Command="{Binding RandomPlayCommand}" Style="{StaticResource GalleryQuiet}" ToolTip="임의 영상 재생">
-                    <StackPanel Orientation="Horizontal">
-                      <c:GalleryIcon Kind="shuffle" Foreground="{StaticResource GalleryText}" Margin="0,0,7,0" />
-                      <TextBlock Text="임의 재생" />
-                    </StackPanel>
-                  </Button>
-                </StackPanel>
-              </Grid>
-              <Grid x:Name="FacetShelf" Margin="25,0,25,8">
+              <Grid x:Name="FacetShelf" Margin="25,15,25,8">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="125"/><ColumnDefinition Width="9"/>
@@ -377,38 +344,32 @@
                 </Border>
               </Grid>
               <WrapPanel x:Name="Chips" Margin="25,0,25,7" MinHeight="26.8">
+                <Button x:Name="MobileFilter" Content="전체 영상" Style="{StaticResource GalleryToolbarButton}" Click="OnMobileFilterClick" Visibility="Collapsed" Margin="0,0,8,0"/>
+                <TextBlock x:Name="ViewContext" Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed"/>
+                <TextBlock x:Name="LibraryCounts" Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <Run Text="결과 "/><Run Text="{Binding ResultCount,Mode=OneWay}"/><Run Text="개 · 보관 "/><Run Text="{Binding NormalCount,Mode=OneWay}"/><Run Text="개"/>
+                </TextBlock>
                 <ItemsControl ItemsSource="{Binding QueryChips}" MaxWidth="{Binding ActualWidth,RelativeSource={RelativeSource AncestorType=WrapPanel}}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <WrapPanel />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <Button Command="{Binding RemoveCommand}" Style="{StaticResource GalleryChip}" Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
-                          <TextBlock Text="{Binding Label}" Foreground="{StaticResource GalleryAccent}" />
-                          <c:GalleryIcon Kind="close" Width="12" Height="12" Foreground="{StaticResource GalleryAccent}" Margin="6,0,0,0" />
+                          <TextBlock Text="{Binding Label}" Foreground="{StaticResource GalleryAccent}"/>
+                          <c:GalleryIcon Kind="close" Width="12" Height="12" Foreground="{StaticResource GalleryAccent}" Margin="6,0,0,0"/>
                         </StackPanel>
                       </Button>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button x:Name="ClearFilters" Content="전체 해제" Command="{Binding ClearFiltersCommand}" Style="{StaticResource GalleryQuiet}" MinHeight="26" Padding="3,5" Foreground="{StaticResource GalleryMuted}" />
-                <TextBlock x:Name="NoFilters" Text="선택한 필터가 없습니다" Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center" />
-                <Button x:Name="CompactHistory" Style="{StaticResource GalleryQuiet}" MinHeight="28" Padding="8,4" Click="OnHistoryClick" Visibility="Collapsed">
-                  <TextBlock>
-                    <Run Text="변경 내역 " />
-                    <Run Text="{Binding ChangeHistory.Count,Mode=OneWay}" />
-                  </TextBlock>
-                </Button>
+                <Button x:Name="ClearFilters" Content="전체 해제" Command="{Binding ClearFiltersCommand}" Style="{StaticResource GalleryQuiet}" MinHeight="26" Padding="3,5" Foreground="{StaticResource GalleryMuted}"/>
               </WrapPanel>
               <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,0,0,1"/>
             </StackPanel>
           </c:GalleryPageScrollHost.Prefix>
           <c:GalleryPageScrollHost.List>
             <Grid>
-              <ListBox x:Name="VideoList" AutomationProperties.Name="영상 결과" AutomationProperties.HelpText="방향키로 영상을 선택하고 Enter로 상세를 조작합니다." Tag="{Binding ElementName=GalleryHost}" ItemsSource="{Binding FilteredVideos}" SelectedItem="{Binding SelectedVideo,Mode=TwoWay}" MouseDoubleClick="VideoList_MouseDoubleClick" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1,1" VirtualizingPanel.CacheLengthUnit="Page" BorderThickness="0" Background="Transparent" ItemTemplate="{StaticResource GalleryCard}">
+              <ListBox x:Name="VideoList" AutomationProperties.Name="영상 결과" AutomationProperties.HelpText="마우스를 올리거나 방향키로 선택합니다. Enter 또는 더블 클릭으로 재생하고 F1로 편집합니다." Tag="{Binding ElementName=GalleryHost}" ItemsSource="{Binding FilteredVideos}" SelectedItem="{Binding SelectedVideo,Mode=TwoWay}" MouseDoubleClick="VideoList_MouseDoubleClick" ContextMenuOpening="OnGalleryContextMenuOpening" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1,1" VirtualizingPanel.CacheLengthUnit="Page" BorderThickness="0" Background="Transparent" ItemTemplate="{StaticResource GalleryCard}">
                 <ListBox.Template>
                   <ControlTemplate TargetType="ListBox">
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="0">
@@ -430,6 +391,7 @@
                     <Setter Property="VerticalContentAlignment" Value="Stretch" />
                     <Setter Property="FocusVisualStyle" Value="{StaticResource GalleryFocus}" />
                     <Setter Property="ToolTipService.IsEnabled" Value="False" />
+                    <Setter Property="ContextMenu"><Setter.Value><ContextMenu/></Setter.Value></Setter>
                     <Setter Property="Template">
                       <Setter.Value>
                         <ControlTemplate TargetType="ListBoxItem">
@@ -471,213 +433,126 @@
             </Grid>
           </c:GalleryPageScrollHost.List>
           <c:GalleryPageScrollHost.Suffix>
-            <Border Background="{StaticResource GallerySurface}" BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="20,7" MinHeight="31">
-              <DockPanel>
-                <TextBlock Foreground="{StaticResource GalleryMuted}" DockPanel.Dock="Left">
+            <Border Panel.ZIndex="1" Background="{StaticResource GallerySurface}" BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="12,1" MinHeight="31">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center">
                   <Run Text="● " Foreground="{StaticResource GalleryAccent}" />
                   <Run Text="로컬 라이브러리" />
                 </TextBlock>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right" Margin="20,0,0,0" />
-              </DockPanel>
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Foreground="{StaticResource GalleryMuted}" TextTrimming="CharacterEllipsis" TextAlignment="Right" VerticalAlignment="Center" Margin="12,0" />
+                <Button x:Name="StatusHistory" Grid.Column="2" Style="{StaticResource GalleryToolbarButton}" Click="OnHistoryClick">
+                  <TextBlock><Run Text="변경 내역 "/><Run Text="{Binding ChangeHistory.Count,Mode=OneWay}"/></TextBlock>
+                </Button>
+              </Grid>
             </Border>
           </c:GalleryPageScrollHost.Suffix>
         </c:GalleryPageScrollHost>
       </ScrollViewer>
     </Border>
-    <Popup x:Name="GalleryDetail" AllowsTransparency="True" StaysOpen="True" Placement="Relative" PlacementTarget="{Binding ElementName=GalleryHost}" Opened="OnGalleryPopupOpened">
-      <c:GalleryDialogSurface x:Name="DetailSurface" AutomationProperties.Name="영상 상세정보" AutomationProperties.HelpText="비모달 영상 상세 대화 상자. Escape로 닫고 원래 영상으로 돌아갑니다." IsDialogOpen="{Binding IsOpen,ElementName=GalleryDetail}" Margin="40" KeyboardNavigation.TabNavigation="Cycle" Width="390" Padding="20" CornerRadius="12" Background="{StaticResource GallerySurface}" PreviewKeyDown="OnDetailKeyDown" MouseEnter="OnDetailEnter" MouseLeave="OnDetailLeave">
-        <c:GalleryDialogSurface.Effect>
-          <DropShadowEffect BlurRadius="40" ShadowDepth="12" Direction="270" Opacity=".4" />
-        </c:GalleryDialogSurface.Effect>
+    <c:GalleryPointerPopup x:Name="GalleryDetail" AllowsTransparency="True" StaysOpen="True" Focusable="False" Placement="Absolute" Opened="OnGalleryPopupOpened" Closed="OnGalleryPopupClosed">
+      <c:GalleryDialogSurface x:Name="DetailSurface" AutomationProperties.Name="영상 상세정보" AutomationProperties.HelpText="읽기 전용 영상 요약. Enter로 재생하고 F1로 전체 정보를 확인하거나 편집합니다." IsDialogOpen="{Binding IsOpen,ElementName=GalleryDetail}" IsHitTestVisible="False" Focusable="False" Margin="40" Width="484" Padding="12" CornerRadius="12" Background="{StaticResource GallerySurface}">
+        <c:GalleryDialogSurface.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="12" Direction="270" Opacity=".4"/></c:GalleryDialogSurface.Effect>
         <Grid>
-          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel>
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition />
-                <ColumnDefinition Width="30" />
-              </Grid.ColumnDefinitions>
-              <TextBlock x:Name="DetailHeading" Text="영상 상세정보" Foreground="{StaticResource GalleryMuted}" VerticalAlignment="Center" />
-              <Button Grid.Column="1" Style="{StaticResource GalleryIconButton}" Click="OnDetailCloseClick" AutomationProperties.Name="상세 닫기">
-                <c:GalleryIcon Kind="close" Foreground="{StaticResource GalleryText}" />
-              </Button>
-            </Grid>
-            <StackPanel x:Name="DetailReadOnly" DataContext="{Binding InspectedVideo}" Margin="0,12,0,0">
-              <c:GalleryRoundedBorder CornerRadius="7" Height="148" Background="{StaticResource GalleryPanel}">
-                <Grid>
-                  <Image x:Name="GalleryCover" Source="{Binding ThumbnailSource}" Stretch="UniformToFill" />
-                  <Image x:Name="GalleryPreviewFrame" Stretch="Uniform" Visibility="Collapsed" />
-                  <ProgressBar x:Name="GalleryPreviewProgress" Height="4" VerticalAlignment="Bottom" Minimum="0" Maximum="100" Foreground="{StaticResource GalleryAccent}" Background="{StaticResource GalleryPanel}" Visibility="Collapsed" />
-                </Grid>
-              </c:GalleryRoundedBorder>
-              <TextBlock FontSize="23" FontWeight="620" TextWrapping="Wrap" LineHeight="29.9" Margin="0,15,0,6" ><TextBlock.Text><MultiBinding Converter="{StaticResource GalleryDisplayTitle}"><Binding Path="Title"/><Binding Path="SourcePath"/><Binding Path="LibraryPath"/></MultiBinding></TextBlock.Text></TextBlock>
-              <TextBlock Text="{Binding Genres,Converter={StaticResource GalleryLabel},ConverterParameter=장르}" Foreground="{StaticResource GalleryMuted}" Margin="0,0,0,10" />
-              <UniformGrid Columns="2" Margin="0,12,0,15">
-                <Button x:Name="DetailPlay" Style="{StaticResource GalleryPrimary}" Margin="0,0,3.5,0" Click="OnDetailPlayClick"><StackPanel Orientation="Horizontal"><c:GalleryIcon Kind="play" Foreground="{StaticResource GalleryAccentText}" Margin="0,0,7,0"/><TextBlock Text="재생" Foreground="{StaticResource GalleryAccentText}"/></StackPanel></Button>
-                <Button Margin="3.5,0,0,0" Click="OnDetailEditClick"><StackPanel Orientation="Horizontal"><c:GalleryIcon Kind="edit" Margin="0,0,7,0"/><TextBlock Text="편집"/></StackPanel></Button>
-              </UniformGrid>
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="8"/><RowDefinition Height="16"/></Grid.RowDefinitions>
+          <Grid x:Name="DetailBody" ClipToBounds="True" DataContext="{Binding InspectedVideo}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition x:Name="DetailBodyGap" Height="12"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <c:GalleryRoundedBorder x:Name="DetailCoverFrame" CornerRadius="7" Width="460" Height="309.35" HorizontalAlignment="Center" VerticalAlignment="Top" Background="{StaticResource GallerySurface}">
               <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="62" />
-                  <ColumnDefinition Width="8" />
-                  <ColumnDefinition />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                  <RowDefinition />
-                  <RowDefinition />
-                  <RowDefinition />
-                  <RowDefinition />
-                  <RowDefinition />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="1" Text="배우" Foreground="{StaticResource GalleryMuted}" Margin="0,5" />
-                <ItemsControl Grid.Row="1" Grid.Column="2" ItemsSource="{Binding Actors}" Margin="0,5">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <WrapPanel />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Content="{Binding}" Style="{StaticResource GalleryQuiet}" Padding="0" MinHeight="19.2" Click="OnActorLinkClick" Margin="0,0,8,0" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl><TextBlock Grid.Row="1" Grid.Column="2" Text="배우 미지정" Foreground="{StaticResource GalleryMuted}" Margin="0,5"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Actors.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                <TextBlock Grid.Row="0" Text="출시일" Foreground="{StaticResource GalleryMuted}" Margin="0,5" />
-                <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding ReleaseLabel,Converter={StaticResource GalleryLabel}}" Margin="0,5" />
-                <TextBlock Grid.Row="2" Text="제작사" Foreground="{StaticResource GalleryMuted}" Margin="0,5" />
-                <Button Grid.Row="2" Grid.Column="2" Content="{Binding StudioLabel}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" Padding="0,5" MinHeight="19.2" Click="OnStudioLinkClick" />
-                <TextBlock Grid.Row="3" Text="장르" Foreground="{StaticResource GalleryMuted}" Margin="0,5" />
-                <ItemsControl Grid.Row="3" Grid.Column="2" ItemsSource="{Binding Genres}" Margin="0,5">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <WrapPanel />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Content="{Binding}" Style="{StaticResource GalleryQuiet}" Padding="0" MinHeight="19.2" Click="OnGenreLinkClick" Margin="0,0,8,0" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl><TextBlock Grid.Row="3" Grid.Column="2" Text="장르 미지정" Foreground="{StaticResource GalleryMuted}" Margin="0,5"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Genres.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                <TextBlock Grid.Row="4" Text="태그" Foreground="{StaticResource GalleryMuted}" Margin="0,5"/>
-                <Grid Grid.Row="4" Grid.Column="2" Margin="0,5">
-                  <ItemsControl ItemsSource="{Binding Tags}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Button Content="{Binding}" Style="{StaticResource GalleryTag}" Click="OnTagLinkClick"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                  <TextBlock Text="태그 미지정" Foreground="{StaticResource GalleryMuted}"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Tags.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                </Grid>
+                <Image x:Name="GalleryCover" Source="{Binding ThumbnailSource}" Stretch="UniformToFill">
+                  <Image.Style>
+                    <Style TargetType="Image">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding Visibility,ElementName=GalleryPreviewFrame}" Value="Visible">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Image.Style>
+                </Image>
+                <Image x:Name="GalleryPreviewFrame" Stretch="Uniform" Visibility="Collapsed"/>
+                <ProgressBar x:Name="GalleryPreviewProgress" Height="4" VerticalAlignment="Bottom" Minimum="0" Maximum="100" Foreground="{StaticResource GalleryAccent}" Background="{StaticResource GalleryPanel}" Visibility="Collapsed"/>
               </Grid>
-              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="0,12" Margin="0,11,0,0">
-                <StackPanel>
-                  <TextBlock Text="설명" Foreground="{StaticResource GalleryMuted}" FontWeight="SemiBold" Margin="0,0,0,7" />
-                  <TextBlock Text="{Binding Description,Converter={StaticResource GalleryPlaceholder},ConverterParameter=설명이 아직 등록되지 않았습니다.}" FontSize="13" LineHeight="22.75" TextWrapping="Wrap" />
-                </StackPanel>
-              </Border>
-              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="0,12" Margin="0,11,0,0">
-                <StackPanel>
-                  <TextBlock Text="파일" Foreground="{StaticResource GalleryMuted}" FontWeight="SemiBold" Margin="0,0,0,7" />
-                  <TextBlock Text="{Binding SourcePath}" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" LineHeight="20.4" />
-                  <TextBlock Text="{Binding CreatedLabel}" Foreground="{StaticResource GalleryMuted}" Margin="0,10,0,0" />
-                  <TextBlock Text="{Binding SizeBytes,StringFormat={}{0:N0} bytes}" Foreground="{StaticResource GalleryMuted}" />
-                  <TextBlock Text="{Binding RecycleStatusLabel}" Foreground="{StaticResource GalleryDanger}" Margin="0,10,0,0" />
-                  <TextBlock Text="{Binding RecycleReason}" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" />
-                  <Button Content="폴더에서 보기" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" Padding="0,7" Click="OnDetailFolderClick" />
-                </StackPanel>
-              </Border>
-              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="0,13,0,0">
-                <WrapPanel HorizontalAlignment="Right">
-                  <Button Content="정보 보강" Style="{StaticResource GalleryQuiet}" Click="OnDetailFetchClick" />
-                  <Button Content="재검사" Style="{StaticResource GalleryQuiet}" Click="OnDetailReinspectClick" />
-                  <Button x:Name="DetailDelete" Content="휴지통으로 이동" Style="{StaticResource GalleryDangerButton}" Click="OnDetailDeleteClick" />
-                  <Button x:Name="DetailRestore" Content="복원" Click="OnDetailRestoreClick" Visibility="Collapsed" />
-                </WrapPanel>
-              </Border>
-            </StackPanel>
-            <StackPanel x:Name="EditorPanel" Visibility="Collapsed" Margin="0,12,0,0">
-              <TextBlock x:Name="EditorTitle" Text="메타데이터 편집" FontSize="20" FontWeight="DemiBold" TextWrapping="Wrap" Margin="0,0,0,7"/>
-              <TextBlock x:Name="EditorHint" Text="변경 내용을 먼저 확인한 뒤 적용합니다." Foreground="{StaticResource GalleryMuted}" LineHeight="20.4" TextWrapping="Wrap"/>
-              <TextBlock Text="{Binding EditorDraft.ProposalSource,StringFormat=출처: {0}}" Foreground="{StaticResource GalleryMuted}" Margin="0,7,0,0" Visibility="{Binding EditorDraft.ProposalSource,Converter={StaticResource GalleryVisibility}}"/><TextBlock Text="{Binding EditorDraft.ProposalReason}" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" Visibility="{Binding EditorDraft.ProposalReason,Converter={StaticResource GalleryVisibility}}"/><ItemsControl x:Name="EditorFields" ItemsSource="{Binding EditorDraft.Fields}" Margin="0,17,0,0">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <StackPanel Margin="0,0,0,14">
-                      <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                      <CheckBox x:Name="FieldLabel" Content="{Binding Label}" AutomationProperties.Name="{Binding Label,StringFormat={}{0} 적용}" IsChecked="{Binding IsApplied,Mode=TwoWay}"/>
-                      <CheckBox Grid.Column="1" Content="수동 보호" IsChecked="{Binding IsLocked,Mode=TwoWay}" AutomationProperties.Name="{Binding Label,StringFormat={}{0} 수동 변경 보호}" Foreground="{StaticResource GalleryMuted}"/>
-                      </Grid>
-                      <TextBox AutomationProperties.Name="{Binding Label}" AutomationProperties.LabeledBy="{Binding ElementName=FieldLabel}" AutomationProperties.HelpText="적용할 필드의 값을 편집합니다. 빈 값도 명시적으로 적용할 수 있습니다." Text="{Binding Value,UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsApplied}" TextWrapping="Wrap">
-                        <TextBox.Style>
-                          <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                            <Setter Property="MinHeight" Value="34"/>
-                            <Setter Property="VerticalContentAlignment" Value="Center"/>
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding Field}" Value="{x:Static d:MetadataField.Description}">
-                                <Setter Property="AcceptsReturn" Value="True" />
-                                <Setter Property="VerticalContentAlignment" Value="Top"/>
-                                <Setter Property="MinHeight" Value="74" />
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </TextBox.Style>
-                      </TextBox>
-                      <Button Content="{Binding ProposedValue,StringFormat='보강 제안: {0}'}" Command="{Binding UseProposalCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" Padding="0,7" Visibility="{Binding ProposedValue,Converter={StaticResource GalleryVisibility}}" /><TextBlock Text="{Binding ProposalSource,StringFormat=출처: {0}}" Foreground="{StaticResource GalleryMuted}" Visibility="{Binding ProposalSource,Converter={StaticResource GalleryVisibility}}"/><TextBlock Text="{Binding ProposalReason}" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" Visibility="{Binding ProposalReason,Converter={StaticResource GalleryVisibility}}"/>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <StackPanel x:Name="ThumbnailTools">
-                <Image Source="{Binding EditorDraft.ThumbnailEditor.ThumbnailPreviewUri}" Height="120" Stretch="UniformToFill" />
-                <WrapPanel Margin="0,7">
-                  <Button Content="이미지 선택" Click="OnChooseThumbnailClick" Style="{StaticResource GalleryToolbarButton}" />
-                  <Button Content="영상에서 생성" Click="OnGenerateGalleryThumbnailClick" Style="{StaticResource GalleryToolbarButton}" Margin="5,0" />
-                  <Button Content="초기화" Click="OnResetGalleryThumbnailClick" Style="{StaticResource GalleryToolbarButton}" />
-                </WrapPanel>
-                <Button Content="설명 번역" Command="{Binding TranslateDraftDescriptionCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" />
-                <Button Content="정보 새로고침" Command="{Binding FetchMetadataCommand}" Style="{StaticResource GalleryQuiet}" HorizontalAlignment="Left" />
+            </c:GalleryRoundedBorder>
+            <StackPanel x:Name="DetailReadOnly" Grid.Row="2" VerticalAlignment="Top">
+              <TextBlock x:Name="DetailTitle" FontSize="20" FontWeight="620" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" LineHeight="26" LineStackingStrategy="BlockLineHeight" MaxHeight="52" Margin="0,0,0,8"><TextBlock.Text><MultiBinding Converter="{StaticResource GalleryDisplayTitle}"><Binding Path="Title"/><Binding Path="SourcePath"/><Binding Path="LibraryPath"/></MultiBinding></TextBlock.Text></TextBlock>
+              <StackPanel x:Name="DetailDescription">
+                <TextBlock Text="설명" FontSize="11" Foreground="{StaticResource GalleryMuted}" Margin="0,0,0,4" />
+                <TextBlock x:Name="DetailDescriptionText" Text="{Binding Description,Converter={StaticResource GalleryPlaceholder},ConverterParameter=설명이 아직 등록되지 않았습니다.}"
+                           FontSize="12" LineHeight="18" LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="54" />
               </StackPanel>
-              <ItemsControl ItemsSource="{Binding EditorDraft.TargetResults}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <StackPanel Margin="0,7">
-                      <TextBlock Text="{Binding TargetTitle}" FontWeight="SemiBold" />
-                      <TextBlock Text="{Binding Outcome}" Foreground="{StaticResource GalleryMuted}" /><TextBlock Text="{Binding Source,StringFormat=출처: {0}}" Foreground="{StaticResource GalleryMuted}" Visibility="{Binding Source,Converter={StaticResource GalleryVisibility}}"/>
-                      <TextBlock Text="{Binding Reason}" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <ItemsControl x:Name="ChangesList" ItemsSource="{Binding EditorDraft.Changes}" Visibility="Collapsed">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Padding="0,13" BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,0,0,1">
-                      <StackPanel>
-                        <TextBlock Text="{Binding TargetTitle}" FontWeight="SemiBold" />
-                        <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                          <TextBlock Text="{Binding Field,Converter={StaticResource GalleryFieldLabel}}" Foreground="{StaticResource GalleryMuted}" LineHeight="21.6"/>
-                          <StackPanel Grid.Column="2"><TextBlock Text="{Binding Converter={StaticResource GalleryChangeLabel},ConverterParameter=Before}" TextDecorations="Strikethrough" Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" LineHeight="21.6"/>
-                          <TextBlock Text="{Binding Converter={StaticResource GalleryChangeLabel},ConverterParameter=After}" Foreground="{StaticResource GalleryAccent}" FontWeight="SemiBold" TextWrapping="Wrap" LineHeight="21.6"/>
-                          <TextBlock Text="보호 설정 변경" Foreground="{StaticResource GalleryMuted}" Visibility="{Binding LockChanged,Converter={StaticResource GalleryVisibility}}"/></StackPanel>
-                        </Grid>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Text="{Binding EditorDraft.Error}" Foreground="{StaticResource GalleryDanger}" TextWrapping="Wrap" Margin="0,8" />
-              <Border BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Margin="0,18,0,0" Padding="0,15,0,0"><TextBlock x:Name="EditorPreservation" Text="원본 파일과 경로는 변경하지 않습니다." Foreground="{StaticResource GalleryMuted}" TextWrapping="Wrap" LineHeight="22.8"/></Border>
-
+              <Border x:Name="DetailFactsSection" BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="0,7,0,0" Margin="0,7,0,0">
+                <Grid x:Name="DetailFacts">
+                  <Grid.Resources>
+                    <Style x:Key="DetailFactLabel" TargetType="TextBlock">
+                      <Setter Property="FontSize" Value="11" />
+                      <Setter Property="Foreground" Value="{StaticResource GalleryMuted}" />
+                      <Setter Property="Margin" Value="0,0,0,2" />
+                    </Style>
+                    <Style x:Key="DetailFactValue" TargetType="TextBlock">
+                      <Setter Property="FontSize" Value="12" />
+                      <Setter Property="Foreground" Value="{StaticResource GalleryText}" />
+                      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                      <Setter Property="LineHeight" Value="18" />
+                      <Setter Property="MaxHeight" Value="18" />
+                    </Style>
+                  </Grid.Resources>
+                  <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                  </Grid.RowDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="작품 번호" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock x:Name="DetailProductCode" Text="{Binding ProductCode,Converter={StaticResource GalleryPlaceholder},ConverterParameter=미지정}"
+                               Style="{StaticResource DetailFactValue}" Foreground="{StaticResource GalleryAccent}" />
+                  </StackPanel>
+                  <StackPanel x:Name="DetailRelease" Grid.Column="2">
+                    <TextBlock Text="출시일" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock Text="{Binding ReleaseLabel,Converter={StaticResource GalleryLabel}}" Style="{StaticResource DetailFactValue}" />
+                  </StackPanel>
+                  <StackPanel x:Name="DetailActors" Grid.Row="1" Margin="0,6,0,0">
+                    <TextBlock Text="배우" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock x:Name="DetailActorsText" Text="{Binding DisplayActors,Converter={StaticResource GalleryLabel},ConverterParameter=배우}" Style="{StaticResource DetailFactValue}" />
+                  </StackPanel>
+                  <StackPanel x:Name="DetailStudio" Grid.Row="1" Grid.Column="2" Margin="0,6,0,0">
+                    <TextBlock Text="제작사" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock x:Name="DetailStudioText" Text="{Binding Studio,Converter={StaticResource GalleryPlaceholder},ConverterParameter=미지정}" Style="{StaticResource DetailFactValue}" />
+                  </StackPanel>
+                  <StackPanel x:Name="DetailGenres" Grid.Row="2" Margin="0,6,0,0">
+                    <TextBlock Text="장르" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock x:Name="DetailGenresText" Text="{Binding Genres,Converter={StaticResource GalleryLabel},ConverterParameter=장르}"
+                               Style="{StaticResource DetailFactValue}" TextWrapping="Wrap" LineStackingStrategy="BlockLineHeight" MaxHeight="36" />
+                  </StackPanel>
+                  <StackPanel x:Name="DetailTags" Grid.Row="2" Grid.Column="2" Margin="0,6,0,0">
+                    <TextBlock Text="태그" Style="{StaticResource DetailFactLabel}" />
+                    <TextBlock x:Name="DetailTagsText" Text="{Binding Tags,Converter={StaticResource GalleryLabel},ConverterParameter=태그}"
+                               Style="{StaticResource DetailFactValue}" TextWrapping="Wrap" LineStackingStrategy="BlockLineHeight" MaxHeight="36" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+              <Border x:Name="DetailFile" BorderBrush="{StaticResource GalleryLine}" BorderThickness="0,1,0,0" Padding="0,7,0,0" Margin="0,7,0,0">
+                <StackPanel>
+                  <TextBlock Text="파일 정보" FontSize="11" Foreground="{StaticResource GalleryMuted}" Margin="0,0,0,4" />
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="DetailPath" Text="{Binding SourcePath}" Foreground="{StaticResource GalleryMuted}" FontSize="11"
+                               TextTrimming="CharacterEllipsis" LineHeight="16" MaxHeight="16" />
+                    <TextBlock x:Name="DetailSize" Grid.Column="2" Text="{Binding SizeBytes,StringFormat={}{0:N0} bytes}"
+                               Foreground="{StaticResource GalleryMuted}" FontSize="11" TextTrimming="CharacterEllipsis" LineHeight="16" MaxHeight="16" />
+                  </Grid>
+                  <TextBlock Text="{Binding RecycleStatusLabel}" Foreground="{StaticResource GalleryDanger}" FontSize="11" TextTrimming="CharacterEllipsis"
+                             LineHeight="16" MaxHeight="16" Margin="0,4,0,0" Visibility="{Binding RecycleStatusLabel,Converter={StaticResource GalleryVisibility}}" />
+                  <TextBlock x:Name="DetailRecycleReason" Text="{Binding RecycleReason}" Foreground="{StaticResource GalleryMuted}" FontSize="11" TextWrapping="Wrap"
+                             TextTrimming="CharacterEllipsis" LineHeight="16" LineStackingStrategy="BlockLineHeight" MaxHeight="32"
+                             Visibility="{Binding RecycleReason,Converter={StaticResource GalleryVisibility}}" />
+                </StackPanel>
+              </Border>
             </StackPanel>
-          </StackPanel>
-        </ScrollViewer>
-        <Border x:Name="EditorActionsPanel" Grid.Row="1" Background="{StaticResource GallerySurface}" Padding="0,12,0,2" Visibility="{Binding Visibility,ElementName=EditorPanel}">
-          <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <Button x:Name="EditorPreview" Content="변경 미리보기" Command="{Binding PreviewChangesCommand}" Style="{StaticResource GalleryPrimary}"/>
-            <Button x:Name="EditorCancel" Grid.Column="2" Content="취소" Command="{Binding CancelEditCommand}"/>
-            <Button x:Name="EditorApply" Content="변경 적용" Command="{Binding ApplyChangesCommand}" Style="{StaticResource GalleryPrimary}" Visibility="Collapsed"/>
-            <Button x:Name="EditorBack" Grid.Column="2" Content="돌아가기" Command="{Binding BackToEditCommand}" Visibility="Collapsed"/>
           </Grid>
-        </Border>
+          <TextBlock Grid.Row="2" Text="F1 전체 정보·편집 · Enter 재생 · 우클릭 관리" Foreground="{StaticResource GalleryMuted}" FontSize="10.5" TextTrimming="CharacterEllipsis"/>
         </Grid>
       </c:GalleryDialogSurface>
-    </Popup>
+    </c:GalleryPointerPopup>
     <Border x:Name="Toast" Background="{StaticResource GalleryText}" CornerRadius="8" Padding="17,12" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,47" Visibility="{Binding ToastMessage,Converter={StaticResource GalleryVisibility}}">
       <StackPanel Orientation="Horizontal">
         <TextBlock Text="{Binding ToastMessage}" Foreground="{StaticResource GallerySurface}" />

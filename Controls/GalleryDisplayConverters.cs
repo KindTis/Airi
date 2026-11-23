@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Data;
+using Airi.Infrastructure;
 using Airi.ViewModels;
 namespace Airi.Controls;
 
@@ -22,6 +23,28 @@ public sealed class GalleryTextOrPlaceholderConverter : IValueConverter
     public object Convert(object value, Type type, object parameter, CultureInfo culture) => value is string text && !string.IsNullOrWhiteSpace(text) ? text : parameter?.ToString() ?? "미지정";
     public object ConvertBack(object value, Type type, object parameter, CultureInfo culture) => Binding.DoNothing;
 }
+
+public sealed class GalleryThumbnailPreviewConverter : IValueConverter
+{
+    public object Convert(object value, Type type, object parameter, CultureInfo culture)
+    {
+        if (value is not string text || !Uri.TryCreate(text, UriKind.Absolute, out var uri) || !uri.IsFile)
+            return DependencyProperty.UnsetValue;
+
+        try
+        {
+            using var stream = new FileStream(uri.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return ThumbnailImageLoader.DecodeFrozenBitmap(stream, 440);
+        }
+        catch (Exception error) when (ThumbnailImageLoader.IsExpectedImageFailure(error))
+        {
+            return DependencyProperty.UnsetValue;
+        }
+    }
+
+    public object ConvertBack(object value, Type type, object parameter, CultureInfo culture) => Binding.DoNothing;
+}
+
 public sealed class GalleryChangeLabelConverter : IValueConverter
 {
     public object Convert(object value, Type type, object parameter, CultureInfo culture)

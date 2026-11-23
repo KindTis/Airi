@@ -273,13 +273,14 @@
       <Setter.Value>
         <ControlTemplate TargetType="ComboBoxItem">
           <Border x:Name="Item" Padding="{TemplateBinding Padding}" Background="Transparent" CornerRadius="4">
-            <ContentPresenter />
+            <ContentPresenter><ContentPresenter.Resources><Style TargetType="TextBlock"/></ContentPresenter.Resources></ContentPresenter>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsHighlighted" Value="True">
               <Setter TargetName="Item" Property="Background" Value="{StaticResource GalleryHover}" />
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Item" Property="Background" Value="{StaticResource GalleryTint}"/>
               <Setter Property="Foreground" Value="{StaticResource GalleryAccent}" />
             </Trigger>
           </ControlTemplate.Triggers>

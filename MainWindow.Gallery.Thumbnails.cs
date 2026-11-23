@@ -26,6 +26,7 @@ public partial class MainWindow
     }
     private void SyncGalleryThumbnailLifetime()
     {
+        if (_galleryEditorWindow is null) return;
         if (_galleryThumbnailOwner is { } owner && !ReferenceEquals(owner, ViewModel.EditorDraft)) CancelGalleryThumbnailWork();
         var idle = _galleryThumbnailTask.IsCompleted;
         ThumbnailTools.IsEnabled = idle && !ViewModel.IsSaving && !ViewModel.IsFetchingDraft;

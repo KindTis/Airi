@@ -76,17 +76,19 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
 
     private sealed class BitmapDecoder : IThumbnailBitmapDecoder
     {
-        public ImageSource Decode(Stream stream, int decodePixelWidth)
-        {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.DecodePixelWidth = decodePixelWidth;
-            bitmap.StreamSource = stream;
-            bitmap.EndInit();
-            bitmap.Freeze();
-            return bitmap;
-        }
+        public ImageSource Decode(Stream stream, int decodePixelWidth) => DecodeFrozenBitmap(stream, decodePixelWidth);
+    }
+
+    internal static ImageSource DecodeFrozenBitmap(Stream stream, int decodePixelWidth)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.DecodePixelWidth = decodePixelWidth;
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private readonly object _cacheSync = new();
@@ -522,7 +524,7 @@ public sealed class ThumbnailImageLoader : IThumbnailImageLoader
         return bitmap;
     }
 
-    private static bool IsExpectedImageFailure(Exception exception) =>
+    internal static bool IsExpectedImageFailure(Exception exception) =>
         exception is IOException or
         UnauthorizedAccessException or
         NotSupportedException or

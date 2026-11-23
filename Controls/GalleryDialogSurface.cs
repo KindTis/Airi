@@ -5,7 +5,7 @@ using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 namespace Airi.Controls;
 
-/// <summary>A native, non-modal dialog surface in the Popup HWND, with an addressable UIA peer.</summary>
+/// <summary>A read-only tooltip surface in the Popup HWND, with an addressable UIA peer.</summary>
 public sealed class GalleryDialogSurface : Border
 {
     public static readonly DependencyProperty IsDialogOpenProperty = DependencyProperty.Register(nameof(IsDialogOpen), typeof(bool), typeof(GalleryDialogSurface), new PropertyMetadata(false, (d,e) =>
@@ -20,8 +20,8 @@ public sealed class GalleryDialogSurface : Border
 public sealed class GalleryDialogSurfacePeer(GalleryDialogSurface owner) : FrameworkElementAutomationPeer(owner), IExpandCollapseProvider
 {
     protected override string GetClassNameCore() => nameof(GalleryDialogSurface);
-    protected override string GetLocalizedControlTypeCore() => "대화 상자";
-    protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+    protected override string GetLocalizedControlTypeCore() => "도움말";
+    protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.ToolTip;
     protected override bool IsControlElementCore() => true;
     protected override bool IsContentElementCore() => true;
     public override object? GetPattern(PatternInterface pattern) => pattern == PatternInterface.ExpandCollapse ? this : base.GetPattern(pattern);

@@ -66,6 +66,204 @@ public sealed class MainViewModelMetadataTests
     });
 
     [MetadataFixtureFact]
+    public Task Gallery_UsesCheckedAndCardTargetsAndFillsSingleRefreshFields() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var failed = fixture.Copy("ABP-383.mp4");
+        var checkedVideo = fixture.Copy("ABP-398.mp4");
+        var card = fixture.Copy("ABP-445.mp4");
+        await fixture.ConfigureScanAsync();
+        await fixture.Store.SaveAsync(new LibraryData
+        {
+            Videos = new()
+            {
+                LocalEntry(failed, "Unavailable title"),
+                LocalEntry(checkedVideo, "ABP-398") with
+                {
+                    Meta = new("ABP-398", null, [], "", [], "Existing notes")
+                    { RawDate = "legacy date", ManualFieldLocks = [MetadataField.Studio] }
+                },
+                LocalEntry(card, "Card title")
+            }
+        });
+        var calls = new ConcurrentQueue<string>();
+        var source = new Source(VideoMetadataSourceKind.LibreDmm, calls,
+            code => code.Value == "ABP-383"
+                ? new(null, Detail: "fixture unavailable", Failed: true)
+                : new(Candidate($"New {code.Value}") with { Description = "" }));
+        var translation = new RecordingTranslation();
+        using var viewModel = fixture.Create(translation, source);
+        var window = new MainWindow(viewModel);
+        try
+        {
+            await viewModel.InitializeAsync();
+            var initialJson = await File.ReadAllTextAsync(fixture.Store.FilePath);
+            var initialCommits = fixture.Commits;
+            var registered = (await fixture.Store.LoadAsync()).Videos;
+            var failedEntry = Entry(registered, "ABP-383.mp4");
+            var checkedEntry = Entry(registered, "ABP-398.mp4");
+            var cardEntry = Entry(registered, "ABP-445.mp4");
+            var failedItem = viewModel.Videos.Single(item => item.Id == failedEntry.Id);
+            var checkedItem = viewModel.Videos.Single(item => item.Id == checkedEntry.Id);
+            var cardItem = viewModel.Videos.Single(item => item.Id == cardEntry.Id);
+            failedItem.IsChecked = true;
+            checkedItem.IsChecked = true;
+            viewModel.FetchMetadataCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            Assert.Equal(new[] { "LibreDmm:ABP-383", "LibreDmm:ABP-398" }, calls);
+            Assert.Collection(viewModel.EditorDraft!.TargetResults,
+                result => Assert.Equal("조회 실패", result.Outcome),
+                result => Assert.Equal("부분 후보", result.Outcome));
+            Assert.Equal(initialJson, await File.ReadAllTextAsync(fixture.Store.FilePath));
+            viewModel.ApplyChangesCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            Assert.Equal(initialCommits + 1, fixture.Commits);
+            var afterBatch = (await fixture.Store.LoadAsync()).Videos;
+            var updated = Entry(afterBatch, "ABP-398.mp4");
+            Assert.Equal(checkedEntry.Revision + 1, updated.Revision);
+            Assert.Equal("New ABP-398", updated.Meta.Title);
+            Assert.Null(updated.Meta.RawDate);
+            Assert.Equal(new DateOnly(2024, 1, 2), updated.Meta.Date);
+            Assert.Null(updated.Meta.Studio);
+            Assert.Contains(MetadataField.Studio, updated.Meta.ManualFieldLocks);
+            Assert.Equal(new[] { "Actor" }, updated.Meta.Actors);
+            Assert.Equal(failedEntry.Revision, Entry(afterBatch, "ABP-383.mp4").Revision);
+            Assert.Equal(cardEntry.Revision, Entry(afterBatch, "ABP-445.mp4").Revision);
+
+            failedItem.IsChecked = true;
+            checkedItem.IsChecked = true;
+            calls.Clear();
+            var menu = window.CreateGalleryCardMenu(cardItem);
+            var enrich = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "메타데이터 갱신"));
+            enrich.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, enrich));
+            await viewModel.GalleryActionTask;
+            Assert.Equal(new[] { "LibreDmm:ABP-445" }, calls);
+            Assert.Equal(cardEntry.Id, Assert.Single(viewModel.EditorDraft!.Targets).Id);
+            Assert.False(viewModel.IsChangePreview);
+            Assert.Equal(initialCommits + 1, fixture.Commits);
+            viewModel.ApplyChangesCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            Assert.Equal(cardEntry.Revision + 1, Entry((await fixture.Store.LoadAsync()).Videos, "ABP-445.mp4").Revision);
+
+            viewModel.SelectedVideo = checkedItem;
+            await viewModel.BeginGalleryEditAsync();
+            viewModel.FetchMetadataCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            var fields = viewModel.EditorDraft!.Fields;
+            var title = fields.Single(field => field.Field == MetadataField.Title);
+            var studio = fields.Single(field => field.Field == MetadataField.Studio);
+            Assert.Equal("New ABP-398", title.Value);
+            Assert.Empty(studio.Value);
+            Assert.True(studio.IsLocked);
+            var description = fields.Single(field => field.Field == MetadataField.Description);
+            Assert.Equal("Existing notes", description.Value);
+            description.Value = "Typed description";
+            Assert.True(description.IsLocked);
+            viewModel.TranslateDraftDescriptionCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            Assert.Equal(new[] { ("Typed description", "KO") }, translation.Calls);
+            Assert.Equal("Translated description", description.Value);
+            Assert.False(description.IsLocked);
+            viewModel.CancelEditCommand.Execute(null);
+            Assert.Equal(initialCommits + 2, fixture.Commits);
+
+            viewModel.SelectedVideo = checkedItem;
+            await viewModel.BeginGalleryEditAsync();
+            viewModel.EditorDraft!.Fields.Single(field => field.Field == MetadataField.Studio).IsLocked = false;
+            viewModel.FetchMetadataCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            Assert.False(viewModel.IsChangePreview);
+            Assert.True(viewModel.ApplyChangesCommand.CanExecute(null));
+            viewModel.ApplyChangesCommand.Execute(null);
+            await viewModel.GalleryActionTask;
+            var refreshed = Entry((await fixture.Store.LoadAsync()).Videos, "ABP-398.mp4");
+            Assert.Equal(initialCommits + 3, fixture.Commits);
+            Assert.Equal("New ABP-398", refreshed.Meta.Title);
+            Assert.Equal("Studio", refreshed.Meta.Studio);
+            Assert.Equal(new DateOnly(2024, 1, 2), refreshed.Meta.Date);
+            Assert.Null(refreshed.Meta.RawDate);
+            Assert.Equal("Existing notes", refreshed.Meta.Description);
+            Assert.Empty(refreshed.Meta.ManualFieldLocks);
+            Assert.Equal(updated.Revision + 1, refreshed.Revision);
+        }
+        finally
+        {
+            viewModel.CancelEditCommand.Execute(null);
+            window.Close();
+        }
+    });
+
+    [MetadataFixtureFact]
+    public Task F1Refresh_FillsTheDraftAndCoverAndSavesWithTheVisibleButton() => WpfTestHost.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var path = fixture.Copy("ABP-088.mp4", "ARAN-117.mp4");
+        var original = LocalEntry(path, "ARAN-117");
+        await fixture.ConfigureScanAsync();
+        await fixture.Store.SaveAsync(new LibraryData { Videos = [original] });
+        var cover = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "resources", "noimage.jpg"));
+        var source = new Source(VideoMetadataSourceKind.LibreDmm, new(),
+            _ => new(Candidate("ARAN-117") with { Actors = ["Actor, Jr."] }, cover, ".jpg"));
+        using var viewModel = fixture.Create(source);
+        var window = new MainWindow(viewModel);
+        try
+        {
+            await viewModel.InitializeAsync();
+            var initialJson = await File.ReadAllTextAsync(fixture.Store.FilePath);
+            var initialCommits = fixture.Commits;
+
+            async Task<(GalleryEditorDraft Draft, string Cover)> RefreshAsync()
+            {
+                viewModel.SelectedVideo = Assert.Single(viewModel.Videos);
+                await viewModel.BeginGalleryEditAsync();
+                var draft = Assert.IsType<GalleryEditorDraft>(viewModel.EditorDraft);
+                draft.Fields.Single(field => field.Field == MetadataField.Title).Value = "Unsaved edit";
+                viewModel.FetchMetadataCommand.Execute(null);
+                await viewModel.GalleryActionTask;
+                Assert.Equal("Unsaved edit", draft.Fields.Single(field => field.Field == MetadataField.Title).Value);
+                Assert.Equal("Description", draft.Fields.Single(field => field.Field == MetadataField.Description).Value);
+                var thumbnail = draft.Fields.Single(field => field.Field == MetadataField.Thumbnail).Value;
+                Assert.NotEmpty(thumbnail);
+                Assert.Equal(thumbnail, draft.ThumbnailEditor.ThumbnailPath);
+                var coverPath = new Uri(draft.ThumbnailEditor.ThumbnailPreviewUri).LocalPath;
+                Assert.Equal(LibraryPathHelper.ResolveToAbsolute(thumbnail), coverPath);
+                Assert.True(File.Exists(coverPath));
+                WpfTestHost.DrainDispatcher(window.Dispatcher);
+                Assert.True(window.GalleryEditorWindowForTests.EditorThumbnailPreview.Source?.IsFrozen);
+                Assert.False(viewModel.IsChangePreview);
+                Assert.Equal(initialJson, await File.ReadAllTextAsync(fixture.Store.FilePath));
+                return (draft, coverPath);
+            }
+
+            var cancelled = await RefreshAsync();
+            viewModel.CancelEditCommand.Execute(null);
+            Assert.False(File.Exists(cancelled.Cover));
+            Assert.Equal(initialCommits, fixture.Commits);
+
+            var filled = await RefreshAsync();
+            var editor = window.GalleryEditorWindowForTests;
+            Assert.Equal(Visibility.Collapsed, editor.EditorPreview.Visibility);
+            Assert.Equal(Visibility.Visible, editor.EditorApply.Visibility);
+            Assert.Equal("저장", editor.EditorApply.Content);
+            var save = editor.EditorApply.Command;
+            Assert.True(save.CanExecute(null));
+            save.Execute(null);
+            await viewModel.GalleryActionTask;
+
+            var stored = Assert.Single((await fixture.Store.LoadAsync()).Videos);
+            Assert.Equal(initialCommits + 1, fixture.Commits);
+            Assert.Equal(1, stored.Revision);
+            Assert.Equal("Unsaved edit", stored.Meta.Title);
+            Assert.Equal([MetadataField.Title], stored.Meta.ManualFieldLocks);
+            Assert.Equal("Description", stored.Meta.Description);
+            Assert.Equal(["Actor, Jr."], stored.Meta.Actors);
+            Assert.Equal(filled.Cover, LibraryPathHelper.ResolveToAbsolute(stored.Meta.Thumbnail));
+            Assert.True(File.Exists(filled.Cover));
+        }
+        finally { viewModel.CancelEditCommand.Execute(null); window.Close(); }
+    });
+
+    [MetadataFixtureFact]
     public Task Commit_StaleOrCancelledCandidatesDiscardOnlyTheirOwnCover() => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new Fixture();

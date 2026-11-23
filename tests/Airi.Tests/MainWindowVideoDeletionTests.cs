@@ -119,8 +119,10 @@ public sealed class MainWindowVideoDeletionTests
             var labels = Descendants(root).OfType<TextBlock>().Select(text => text.Text).ToArray();
             Assert.Contains("설명이 아직 등록되지 않았습니다.", labels);
             Assert.Equal("", item.Title); Assert.Equal("", item.Description); Assert.Empty(item.Actors); Assert.Empty(item.Genres); Assert.Empty(item.Tags);
-            await vm.BeginGalleryEditAsync(); root.UpdateLayout(); WpfTestHost.DrainDispatcher(window.Dispatcher);
-            var inputs = Descendants(root).OfType<TextBox>().Where(input => input.DataContext is GalleryDraftField).ToArray();
+            await vm.BeginGalleryEditAsync();
+            var editor = window.GalleryEditorWindowForTests;
+            editor.UpdateLayout(); WpfTestHost.DrainDispatcher(window.Dispatcher);
+            var inputs = Descendants(editor).OfType<TextBox>().Where(input => input.DataContext is GalleryDraftField).ToArray();
             Assert.NotEmpty(inputs);
             foreach (var input in inputs)
             {
@@ -128,7 +130,8 @@ public sealed class MainWindowVideoDeletionTests
                 Assert.Equal(field.Label, UIElementAutomationPeer.CreatePeerForElement(input)!.GetName());
                 Assert.NotNull(AutomationProperties.GetLabeledBy(input)); Assert.NotEmpty(AutomationProperties.GetHelpText(input));
             }
-            window.CloseGalleryAndRestoreForTests(); await window.GalleryFocusRestoreTask;
+            vm.CancelEditCommand.Execute(null);
+            await window.GalleryFocusRestoreTask;
             Assert.Equal(ExpandCollapseState.Collapsed, expanded.ExpandCollapseState);
             Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
         }

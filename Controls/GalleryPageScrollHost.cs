@@ -45,8 +45,8 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
         if (client <= 0) client = width;
         var compact = client <= 700;
         var contentWidth = compact ? width : Math.Max(1, width - 170);
-        var hasScroll = compact ? _extent > height + .1 : FindScroll(List)?.ComputedVerticalScrollBarVisibility == Visibility.Visible;
-        var metrics = GalleryLayoutMetrics.Calculate(client, clientHeight, contentWidth, hasScroll && !compact);
+        var hasScroll = !compact && FindScroll(List)?.ComputedVerticalScrollBarVisibility == Visibility.Visible;
+        var metrics = GalleryLayoutMetrics.Calculate(client, clientHeight, contentWidth, hasScroll);
         if (Metrics != metrics)
         {
             if (!_scrollResetRequested && _resizeAnchor is null && _last.Height > 0 && FindList(List) is { } anchorList) _resizeAnchor = CaptureAnchor(anchorList);
@@ -59,8 +59,9 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
         if (!_scrollResetRequested && _resizeAnchor is null && _last.Height > 0 && Math.Abs(prefixHeight - _prefixHeight) > .1 && FindList(List) is { } prefixList) _resizeAnchor = CaptureAnchor(prefixList);
         _prefixHeight = prefixHeight;
         Suffix?.Measure(new Size(width, double.PositiveInfinity));
-        _footerHeight = Suffix?.DesiredSize.Height ?? 31;
-        Sidebar?.Measure(new Size(170, Math.Max(0, height - _headerHeight - _footerHeight)));
+        _footerHeight = Suffix?.DesiredSize.Height ?? 0;
+        var contentHeight = Math.Max(0, height - _footerHeight);
+        Sidebar?.Measure(new Size(170, Math.Max(0, contentHeight - _headerHeight)));
         if (FindList(List) is ListBox list)
         {
             var p = metrics.GridPadding;
@@ -69,14 +70,14 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
             ScrollViewer.SetPanningMode(list, compact ? PanningMode.None : PanningMode.VerticalOnly);
             _gridHeight = p.Top + p.Bottom + Math.Ceiling(list.Items.Count / (double)metrics.Columns) * metrics.RowStride - metrics.RowGap;
             _gridHeight = Math.Max(compact ? 120 : 0, _gridHeight);
-            _extent = compact ? _headerHeight + _prefixHeight + _gridHeight + _footerHeight : height;
-            _viewport = height;
+            _extent = compact ? _headerHeight + _prefixHeight + _gridHeight : height;
+            _viewport = compact ? contentHeight : height;
             if (compact && _resizeAnchor is { } resize) _offset = _headerHeight + _prefixHeight + resize.Index / metrics.Columns * metrics.RowStride - resize.ScreenY;
-            _offset = Math.Clamp(_offset, 0, Math.Max(0, _extent - height));
+            _offset = Math.Clamp(_offset, 0, Math.Max(0, _extent - _viewport));
             var gridTop = _headerHeight + _prefixHeight;
             var listTop = compact ? Math.Max(0, gridTop - _offset) : gridTop;
-            var listHeight = compact ? Math.Max(1, Math.Min(height - listTop, gridTop + _gridHeight - _offset)) : Math.Max(1, height - gridTop - _footerHeight);
-            List!.Measure(new Size(contentWidth, listHeight));
+            var listBottom = compact ? Math.Min(contentHeight, gridTop + _gridHeight - _offset) : contentHeight;
+            List!.Measure(new Size(contentWidth, Math.Max(1, listBottom - listTop)));
         }
         ScrollOwner?.InvalidateScrollInfo();
         if (_last != new Size(width, height)) { _last = new Size(width, height); QueueSync(); }
@@ -92,10 +93,11 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
         Prefix?.Arrange(new Rect(x, _headerHeight - (compact ? _offset : 0), Math.Max(1, size.Width - x), _prefixHeight));
         var gridTop = _headerHeight + _prefixHeight;
         var top = compact ? Math.Max(0, gridTop - _offset) : gridTop;
-        var bottom = compact ? Math.Min(size.Height, gridTop + _gridHeight - _offset) : size.Height - _footerHeight;
+        var footerTop = Math.Max(0, size.Height - _footerHeight);
+        var bottom = compact ? Math.Min(footerTop, gridTop + _gridHeight - _offset) : footerTop;
         List?.Arrange(new Rect(x, top, Math.Max(1, size.Width - x), Math.Max(1, bottom - top)));
         if (List is not null) List.Visibility = bottom > top ? Visibility.Visible : Visibility.Hidden;
-        Suffix?.Arrange(new Rect(0, compact ? gridTop + _gridHeight - _offset : size.Height - _footerHeight, size.Width, _footerHeight));
+        Suffix?.Arrange(new Rect(0, footerTop, size.Width, _footerHeight));
         QueueSync();
         return size;
     }
@@ -159,6 +161,7 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
     public Rect MakeVisible(Visual visual, Rect rectangle)
     {
         if (!IsCompact || !IsAncestorOf(visual)) return rectangle;
+        if (Suffix is { } footer && (ReferenceEquals(footer, visual) || footer.IsAncestorOf(visual))) return rectangle;
         if (Header is { } header && (ReferenceEquals(header, visual) || header.IsAncestorOf(visual)))
         {
             SetVerticalOffset(0);
@@ -181,7 +184,7 @@ public sealed class GalleryPageScrollHost : Panel, IScrollInfo
 public sealed record GalleryLayoutMetrics(bool Compact, bool Short, int Columns, double HeaderHeight, double CardWidth, double CoverHeight, double CardHeight, double ColumnGap, double RowGap, Thickness GridPadding, double HeadingTop, double HeadingBottom, double SidePadding, double ShelfBottom, double TitleSize, double CardTitleSize, double TitleTop, double MetadataTop)
 {
     // 지정한 캐시의 무작위 100장 표본에서 가장 흔한 정확 비율.
-    private const double CoverAspectRatio = 400d / 269d;
+    public const double CoverAspectRatio = 400d / 269d;
 
     public double ColumnStride => CardWidth + ColumnGap;
     public double RowStride => CardHeight + RowGap;
@@ -201,7 +204,7 @@ public sealed record GalleryLayoutMetrics(bool Compact, bool Short, int Columns,
         var width = Math.Max(1, (resultWidth - (scrollbar ? 10 : 0) - 2 * gridSide - (columns - 1) * col) / columns);
         var cover = width / CoverAspectRatio;
         var titleTop = shortWindow ? 6 : 10; var metaTop = shortWindow ? 3 : 5;
-        var cardHeight = cover + titleTop + (compact ? 17.4 : 20.3) + 2 * metaTop + (compact ? 76.8 : 38.4);
+        var cardHeight = cover + titleTop + (compact ? 17.4 : 20.3) + metaTop + (compact ? 38.4 : 19.2);
         return new(compact, shortWindow, columns, compact ? 66 : shortWindow ? 64 : 76, width, cover, cardHeight, col, row, new Thickness(gridSide, gridTop, gridSide, gridBottom), compact ? 21 : shortWindow ? 15 : 21, compact ? 12 : shortWindow ? 11 : 17, side, compact ? 10 : shortWindow ? 8 : 13, compact || shortWindow ? 22 : 24, compact ? 12 : 14, titleTop, metaTop);
     }
 }

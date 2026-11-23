@@ -23,6 +23,7 @@ public sealed class GalleryPageScrollHostTests
     [Theory]
     [InlineData(1280, 820)]
     [InlineData(1507, 884)]
+    [InlineData(1920, 1080)]
     public Task WideGallery_FillsFourActualColumnsAndUsesSampledCoverRatio(double width, double height) =>
         VerifyActualLayoutAsync(new[] { new Size(width, height) });
 
@@ -31,7 +32,7 @@ public sealed class GalleryPageScrollHostTests
         VerifyActualLayoutAsync(new[]
         {
             new Size(1280, 820), new Size(1554, 902), new Size(1100, 820),
-            new Size(700, 850), new Size(1507, 884)
+            new Size(700, 850), new Size(340, 700), new Size(340, 400), new Size(1507, 884)
         });
 
     private static Task VerifyActualLayoutAsync(IReadOnlyList<Size> sizes) => WpfTestHost.RunAsync(async () =>
@@ -68,7 +69,22 @@ public sealed class GalleryPageScrollHostTests
                 Assert.False(window.IsVisible);
                 Assert.Null(PresentationSource.FromVisual(window));
                 Assert.False(window.GalleryPopupIsOpenForTests);
-                var metrics = window.GalleryHostForTests.Metrics;
+                var header = (FrameworkElement)window.FindName("GalleryHeader");
+                var search = (FrameworkElement)window.FindName("SearchBorder");
+                var random = (FrameworkElement)window.FindName("RandomPlayButton");
+                AssertFits(header, search);
+                AssertFits(header, random);
+                Assert.True(search.TranslatePoint(new Point(search.ActualWidth, 0), header).X <=
+                    random.TranslatePoint(new Point(), header).X);
+                var shelf = (FrameworkElement)window.FindName("FacetShelf");
+                foreach (var name in new[] { "ActorPicker", "StudioPicker", "GenrePicker", "SortPicker" })
+                    AssertFits(shelf, (FrameworkElement)window.FindName(name));
+                var host = window.GalleryHostForTests;
+                var statusBar = Assert.IsType<Border>(host.Suffix);
+                Assert.Equal(host.ActualHeight, statusBar.TranslatePoint(new Point(0, statusBar.ActualHeight), host).Y, 5);
+                var history = Assert.IsType<Button>(window.FindName("StatusHistory"));
+                AssertFits(statusBar, history);
+                var metrics = host.Metrics;
                 var expectedColumns = size.Width <= 1230 ? 2 : 4;
                 Assert.Equal(expectedColumns, metrics.Columns);
                 var panel = Assert.Single(VisualDescendants<WpfToolkit.Controls.VirtualizingWrapPanel>(list));
@@ -88,10 +104,43 @@ public sealed class GalleryPageScrollHostTests
                 var cover = Assert.Single(VisualDescendants<GalleryRoundedBorder>(cards[0]));
                 Assert.True(cover.ActualWidth > 0 && cover.ActualHeight > 0);
                 Assert.Equal(400d / 269d, cover.ActualWidth / cover.ActualHeight, 5);
+                var tooltip = window.ApplyGalleryTooltipLayout(size);
+                var surface = (FrameworkElement)window.FindName("DetailSurface");
+                surface.Measure(new Size(tooltip.Width + 80, tooltip.Height + 80));
+                surface.Arrange(new Rect(surface.DesiredSize));
+                var enlarged = (GalleryRoundedBorder)window.FindName("DetailCoverFrame");
+                Assert.Equal(400d / 269d, enlarged.ActualWidth / enlarged.ActualHeight, 5);
+                Assert.InRange(tooltip.Width, 1, size.Width - 24);
+                Assert.InRange(tooltip.Height, 1, size.Height - 24);
+                var information = (FrameworkElement)window.FindName("DetailReadOnly");
+                Assert.True(information.TranslatePoint(new Point(), surface).Y >=
+                    enlarged.TranslatePoint(new Point(0, enlarged.ActualHeight), surface).Y + tooltip.Gap - .01);
+                Assert.Equal(enlarged.ActualWidth + 24, surface.ActualWidth, 5);
+                Assert.True(information.DesiredSize.Height <= tooltip.BodyHeight + .1);
+                if (size.Width > 1230)
+                {
+                    Assert.Equal(cover.ActualWidth * 1.5, enlarged.ActualWidth, 5);
+                    Assert.Equal(cover.ActualHeight * 1.5, enlarged.ActualHeight, 5);
+                }
                 Assert.True(VirtualizingPanel.GetIsVirtualizing(list));
                 Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(list));
                 Assert.True(ScrollViewer.GetCanContentScroll(list));
                 Assert.NotNull(((IScrollInfo)panel).ScrollOwner);
+                if (size == new Size(340, 700))
+                {
+                    var offset = host.VerticalOffset;
+                    Assert.True(offset < host.ExtentHeight - host.ViewportHeight);
+                    host.MakeVisible(history, new Rect(history.RenderSize));
+                    Assert.Equal(offset, host.VerticalOffset);
+                    host.ScrollToIndex(list.Items.Count - 1);
+                    root.UpdateLayout();
+                    WpfTestHost.DrainDispatcher(window.Dispatcher);
+                    root.UpdateLayout();
+                    var footerTop = statusBar.TranslatePoint(new Point(), host).Y;
+                    var last = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(list.Items.Count - 1));
+                    Assert.True(last.TranslatePoint(new Point(0, metrics.CardHeight), host).Y <= footerTop + .1);
+                    Assert.Equal(host.ActualHeight, footerTop + statusBar.ActualHeight, 5);
+                }
                 if (sizeIndex == 0 && sizes.Count > 1)
                 {
                     // Resizing at index zero refreshes the panel's implicit size cache; reproduce away from it.
@@ -106,6 +155,16 @@ public sealed class GalleryPageScrollHostTests
         finally { window.Close(); }
     });
 
+    private static void AssertFits(FrameworkElement parent, FrameworkElement child)
+    {
+        var position = child.TranslatePoint(new Point(), parent);
+        Assert.True(child.ActualWidth > 0 && child.ActualHeight > 0);
+        Assert.InRange(position.X, -.1, parent.ActualWidth);
+        Assert.InRange(position.Y, -.1, parent.ActualHeight);
+        Assert.InRange(position.X + child.ActualWidth, 0, parent.ActualWidth + .1);
+        Assert.InRange(position.Y + child.ActualHeight, 0, parent.ActualHeight + .1);
+    }
+
     private static IEnumerable<T> VisualDescendants<T>(DependencyObject root) where T : DependencyObject
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
@@ -117,7 +176,7 @@ public sealed class GalleryPageScrollHostTests
     }
 
     [Fact]
-    public Task CompactTenThousand_HasFiniteRealizationAndFooterAfterGrid() => WpfTestHost.RunAsync(async () =>
+    public Task CompactTenThousand_HasFiniteRealizationAndFixedFooter() => WpfTestHost.RunAsync(async () =>
     {
         var item = new FrameworkElementFactory(typeof(Border)); item.SetBinding(FrameworkElement.WidthProperty, new System.Windows.Data.Binding("Tag.Metrics.ColumnStride") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(ListBox), 1) }); item.SetBinding(FrameworkElement.HeightProperty, new System.Windows.Data.Binding("Tag.Metrics.RowStride") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor, typeof(ListBox), 1) });
         var panel = new FrameworkElementFactory(typeof(WpfToolkit.Controls.VirtualizingWrapPanel)); panel.SetValue(WpfToolkit.Controls.VirtualizingWrapPanel.OrientationProperty, Orientation.Horizontal); panel.SetValue(WpfToolkit.Controls.VirtualizingWrapPanel.SpacingModeProperty, WpfToolkit.Controls.SpacingMode.None);
@@ -127,6 +186,6 @@ public sealed class GalleryPageScrollHostTests
         list.Tag = host; var containerStyle = new Style(typeof(ListBoxItem)); containerStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0))); containerStyle.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0))); list.ItemContainerStyle = containerStyle;
         var window = new Window { Width = 446, Height = 919, Content = new ScrollViewer { CanContentScroll = true, Content = host, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } }; WpfTestHost.Show(window); window.UpdateLayout(); WpfTestHost.DrainDispatcher(window.Dispatcher);
         foreach (var index in new[] { 0, 5000, 9999 }) { host.ScrollToIndex(index); window.UpdateLayout(); await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded); window.UpdateLayout(); WpfTestHost.DrainDispatcher(window.Dispatcher); var realized = Enumerable.Range(0, 10000).Count(i => list.ItemContainerGenerator.ContainerFromIndex(i) != null); Assert.InRange(realized, 1, 60); Assert.True(list.ItemContainerGenerator.ContainerFromIndex(index) != null, $"index={index}; page={host.VerticalOffset}/{host.ExtentHeight}; inner={GalleryPageScrollHost.FindScroll(list)?.VerticalOffset}/{GalleryPageScrollHost.FindScroll(list)?.ExtentHeight}; width={list.ActualWidth}; metrics={host.Metrics}; realized=" + string.Join(",", Enumerable.Range(0, 10000).Where(i => list.ItemContainerGenerator.ContainerFromIndex(i) != null))); Assert.True(double.IsFinite(list.ActualHeight)); }
-        Assert.True(footer.TranslatePoint(new Point(), host).Y < host.ActualHeight); window.Close();
+        Assert.Equal(host.ActualHeight, footer.TranslatePoint(new Point(0, footer.ActualHeight), host).Y, 5); window.Close();
     });
 }

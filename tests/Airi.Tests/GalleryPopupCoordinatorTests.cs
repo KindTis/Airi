@@ -40,6 +40,48 @@ public sealed class GalleryPopupCoordinatorTests
         coordinator.Hover(item, anchor); coordinator.QueryChanged(); clock.Advance(1000); WpfTestHost.DrainDispatcher(window.Dispatcher);
         Assert.Equal(1, opens); Assert.Equal(GalleryPopupState.Closed, coordinator.State); window.Close();
     });
+    [Fact]
+    public void MovingToNewCard_ImmediatelyHidesPreviousInformationWithoutShowingWindow() => WpfTestHost.Run(() =>
+    {
+        var clock = new Clock();
+        var first = new VideoItem();
+        var second = new VideoItem();
+        var opens = 0;
+        var closes = 0;
+        using var coordinator = new GalleryPopupCoordinator(System.Windows.Threading.Dispatcher.CurrentDispatcher, (_, _, _) => opens++, () => closes++, clock);
+        coordinator.Focus(first, new ListBoxItem { DataContext = first });
+        coordinator.Hover(second, new ListBoxItem { DataContext = second });
+        Assert.Equal(1, closes);
+        Assert.Null(coordinator.Item);
+        Assert.Equal(GalleryPopupState.HoverPending, coordinator.State);
+        clock.Advance(299);
+        WpfTestHost.DrainDispatcher(System.Windows.Threading.Dispatcher.CurrentDispatcher);
+        Assert.Equal(1, opens);
+    });
+
+    [Fact]
+    public void SameCardHover_KeepsReadingAndClosesAfter180msWithoutShowingWindow() => WpfTestHost.Run(() =>
+    {
+        var clock = new Clock();
+        var item = new VideoItem();
+        var anchor = new ListBoxItem { DataContext = item };
+        var opens = 0;
+        var closes = 0;
+        using var coordinator = new GalleryPopupCoordinator(System.Windows.Threading.Dispatcher.CurrentDispatcher, (_, _, _) => opens++, () => closes++, clock);
+        coordinator.Focus(item, anchor);
+        coordinator.Hover(item, anchor);
+        Assert.Equal(1, opens);
+        Assert.False(coordinator.KeyboardOpened);
+        coordinator.LeaveCard();
+        clock.Advance(179);
+        WpfTestHost.DrainDispatcher(System.Windows.Threading.Dispatcher.CurrentDispatcher);
+        Assert.Equal(0, closes);
+        clock.Advance(1);
+        WpfTestHost.DrainDispatcher(System.Windows.Threading.Dispatcher.CurrentDispatcher);
+        Assert.Equal(1, closes);
+        Assert.Equal(GalleryPopupState.Closed, coordinator.State);
+    });
+
     private sealed class Clock : TimeProvider
     {
         private long _now; private readonly List<Timer> _timers = [];

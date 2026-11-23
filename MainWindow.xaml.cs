@@ -670,6 +670,9 @@ namespace Airi
         {
             if (ViewModel is null) { base.OnClosed(e); return; }
             Loaded -= OnLoaded;
+            StopGalleryPointerTracking();
+            CloseGalleryEditorWindow();
+            _galleryCardMenu?.SetCurrentValue(ContextMenu.IsOpenProperty, false);
             _galleryPopup?.Dispose();
             ViewModel.PropertyChanged -= OnGalleryPropertyChanged;
             ViewModel.GalleryScrollToTopRequested -= OnGalleryScrollToTop;
