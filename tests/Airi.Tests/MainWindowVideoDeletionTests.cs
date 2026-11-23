@@ -166,6 +166,11 @@ public sealed class MainWindowVideoDeletionTests
     {
         using var f = new VideoDeletionFixture();
         using var vm = await f.CreateAsync();
+        var item = vm.SelectedVideo!;
+        File.Delete(item.SourcePath);
+        item.Presence = VideoPresenceState.Missing;
+        vm.CurrentGalleryView = GalleryView.Missing;
+        await VideoDeletionFixture.WaitForQueryAsync(vm);
         var window = new MainWindow(vm);
         var list = (ListBox)window.FindName("VideoList");
         var confirmations = 0;

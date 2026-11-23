@@ -453,10 +453,21 @@ public partial class MainWindow
     internal Window CreateGalleryOperationDialog(GalleryOperationConfirmation confirmation)
     {
         var body = new StackPanel(); body.Children.Add(new TextBlock { Text = $"대상 {confirmation.Count}개", Margin = new Thickness(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap });
-        body.Children.Add(new TextBlock { Text = confirmation.Intent == LibraryOperationIntent.Restore ? "영상을 Windows 휴지통에서 원래 경로로 복원합니다." : "영상 파일만 Windows 휴지통으로 이동하며 메타데이터는 앱에서 보존합니다.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
+        var message = confirmation.Intent switch
+        {
+            LibraryOperationIntent.Delete => "선택한 항목과 영상 정보를 라이브러리에서 삭제합니다. 영상 파일이 있으면 Windows 휴지통으로 이동합니다.",
+            LibraryOperationIntent.Restore => "영상을 Windows 휴지통에서 원래 경로로 복원합니다.",
+            _ => "영상 파일만 Windows 휴지통으로 이동하며 메타데이터는 앱에서 보존합니다."
+        };
+        body.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) });
         for (var i = 0; i < Math.Min(5, confirmation.Count); i++) { body.Children.Add(new TextBlock { Text = confirmation.Titles[i], TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) }); if (i < confirmation.Paths.Count) body.Children.Add(new TextBlock { Text = confirmation.Paths[i], Foreground = (Brush)FindResource("GalleryMuted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 7) }); }
         if (confirmation.Count > 5) body.Children.Add(new TextBlock { Text = $"그 외 {confirmation.Count - 5}개", Margin = new Thickness(0, 7, 0, 0) });
-        var title = confirmation.Intent == LibraryOperationIntent.Restore ? "영상을 복원할까요?" : "휴지통으로 이동할까요?";
+        var title = confirmation.Intent switch
+        {
+            LibraryOperationIntent.Delete => "선택한 항목을 삭제할까요?",
+            LibraryOperationIntent.Restore => "영상을 복원할까요?",
+            _ => "휴지통으로 이동할까요?"
+        };
         return CreateGalleryDialog(title, new ScrollViewer { Content = body, MaxHeight = 400, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, true);
     }
     private bool? ShowGalleryDialog(string title, UIElement body, bool confirmation) =>

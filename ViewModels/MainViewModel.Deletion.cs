@@ -26,7 +26,7 @@ public partial class MainViewModel
     {
         _dispatcher.VerifyAccess();
         var item = SelectedVideo;
-        if (item is null || item.Presence != VideoPresenceState.Available || IsEditing || !CanMutateLibrary) return Task.CompletedTask;
+        if (item is null || IsEditing || !CanMutateLibrary) return Task.CompletedTask;
         VideoDeletionTarget target;
         try { target = CreateDeletionTarget(item); }
         catch (Exception ex) { StatusMessage = $"비디오 삭제 실패: {ex.Message}"; return Task.CompletedTask; }
@@ -39,7 +39,7 @@ public partial class MainViewModel
     private async Task CompleteLegacyDeletionAsync(VideoDeletionTarget target, Func<VideoDeletionTarget, Task<bool>> confirm,
         Func<VideoItem, Task> stopPreview, TaskCompletionSource completion)
     {
-        try { await RunGalleryNativeAsync(new[] { target.Item }, LibraryOperationIntent.Recycle, false,
+        try { await RunGalleryNativeAsync(new[] { target.Item }, LibraryOperationIntent.Delete, false,
             _ => confirm(target), stopPreview); }
         catch (Exception ex) { StatusMessage = $"비디오 삭제 실패: {ex.Message}"; }
         finally { _videoDeletionTarget = null; completion.TrySetResult(); }
@@ -76,37 +76,41 @@ public partial class MainViewModel
         var checkedTargets = items.Where(item => item.IsChecked).Select(item => item.Id).ToHashSet();
         var successes = new List<Guid>();
         var errors = new List<string>();
+        var deletesEntries = intent == LibraryOperationIntent.Delete;
+        var recyclesFiles = intent != LibraryOperationIntent.Restore;
+        var recycledPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var cancelled = 0;
         var notRun = 0;
         IsSaving = true;
         foreach (var pair in captured) _nativeOperationIds.Add(pair.Item.Id);
         try
         {
-            var effective = captured;
-            if (intent == LibraryOperationIntent.Recycle)
+            var effective = new List<(VideoItem Item, VideoEntry Entry, bool FileExists)>();
+            foreach (var pair in captured)
             {
-                var available = new List<(VideoItem Item, VideoEntry? Entry)>();
-                foreach (var pair in captured)
+                var entry = pair.Entry!;
+                try
                 {
-                    try { await ValidateNativeTargetAsync(pair.Item, pair.Entry!, lease); available.Add(pair); }
-                    catch (Exception ex) { errors.Add($"{pair.Entry!.Meta.Title}: {ex.Message}"); }
+                    var fileExists = recyclesFiles && await ProbeNativeTargetAsync(pair.Item, entry, lease);
+                    if (recyclesFiles && !deletesEntries && !fileExists) throw new IOException("영상 파일이 없습니다.");
+                    effective.Add((pair.Item, entry, fileExists));
                 }
-                effective = available.ToArray();
-                if (effective.Length == 0) { StatusMessage = "작업 실패: " + string.Join(" / ", errors); return; }
+                catch (Exception ex) { errors.Add($"{entry.Meta.Title}: {ex.Message}"); }
             }
+            if (effective.Count == 0) { StatusMessage = "작업 실패: " + string.Join(" / ", errors); return; }
             var confirm = confirmation ?? ConfirmOperationAsync;
-            if (intent == LibraryOperationIntent.Recycle)
+            if (recyclesFiles)
             {
-                if (confirm is null) { StatusMessage = "휴지통 이동 확인이 필요합니다."; return; }
-                var info = new GalleryOperationConfirmation(intent, effective.Select(pair => pair.Entry!.Meta.Title).ToArray())
-                { Paths = effective.Select(pair => LibraryPathHelper.ResolveToAbsolute(pair.Entry!.Path)).ToArray() };
+                if (confirm is null) { StatusMessage = "삭제 확인이 필요합니다."; return; }
+                var info = new GalleryOperationConfirmation(intent, effective.Select(pair => pair.Entry.Meta.Title).ToArray())
+                { Paths = effective.Select(pair => LibraryPathHelper.ResolveToAbsolute(pair.Entry.Path)).ToArray() };
                 if (!await confirm(info)) return;
             }
-            for (var targetIndex = 0; targetIndex < effective.Length; targetIndex++)
+            for (var targetIndex = 0; targetIndex < effective.Count; targetIndex++)
             {
                 var pair = effective[targetIndex];
                 var stopAfterCurrent = false;
-                var entry = pair.Entry!;
+                var entry = pair.Entry;
                 var item = pair.Item;
                 try
                 {
@@ -116,11 +120,11 @@ public partial class MainViewModel
                         throw new IOException("대상 정보나 경로가 변경되었습니다.");
                     var latest = _library.LatestOperation(entry.Id);
                     var absolute = LibraryPathHelper.ResolveToAbsolute(entry.Path);
-                    if (intent == LibraryOperationIntent.Recycle)
+                    // Multiple catalogue entries can point to the same file. Move it at most once.
+                    var fileExpected = pair.FileExists && !recycledPaths.Contains(absolute);
+                    if (recyclesFiles)
                     {
-                        if (_library.IsInRecycleBin(entry.Id) || _unsavedNativeRecords.ContainsKey(entry.Id))
-                            throw new IOException("확인이 필요한 이동 기록이 있어 다시 실행할 수 없습니다.");
-                        await ValidateNativeTargetAsync(item, entry, lease);
+                        await VerifyNativeTargetAsync(item, entry, lease, fileExpected);
                     }
                     else
                     {
@@ -132,12 +136,22 @@ public partial class MainViewModel
                     var stop = stopPreview ?? StopPreviewForOperationAsync;
                     if (stop is not null) await stop(item);
                     EnsureCurrentLease(lease);
-                    if (intent == LibraryOperationIntent.Recycle) await ValidateNativeTargetAsync(item, entry, lease);
+                    if (recyclesFiles) await VerifyNativeTargetAsync(item, entry, lease, fileExpected);
+                    if (deletesEntries && !fileExpected)
+                    {
+                        var candidate = WithoutLibraryEntries(_library, new[] { entry.Id });
+                        await _libraryStore.SaveAsync(candidate, CancellationToken.None);
+                        EnsureCurrentLease(lease);
+                        _library = candidate;
+                        RemoveDeletedGalleryItem(item);
+                        successes.Add(entry.Id);
+                        continue;
+                    }
                     var pending = new LibraryJournalEntry
                     {
                         EntryId = entry.Id, BaseRevision = entry.Revision, OriginalPath = entry.Path,
                         Snapshot = CloneEntry(entry), Intent = intent,
-                        State = intent == LibraryOperationIntent.Recycle ? LibraryOperationState.Pending : LibraryOperationState.RestorePending,
+                        State = recyclesFiles ? LibraryOperationState.Pending : LibraryOperationState.RestorePending,
                         ReceiptJson = intent == LibraryOperationIntent.Restore ? latest!.ReceiptJson : null,
                         RestoreAvailable = intent == LibraryOperationIntent.Restore
                     };
@@ -151,7 +165,7 @@ public partial class MainViewModel
                     VideoRecycleResult result;
                     try
                     {
-                        result = intent == LibraryOperationIntent.Recycle ? await _videoRecycleService.RecycleAsync(absolute) :
+                        result = recyclesFiles ? await _videoRecycleService.RecycleAsync(absolute) :
                             await _videoRecycleService.RestoreAsync(pending.ReceiptJson!);
                     }
                     catch (Exception ex) { result = new(VideoRecycleOutcome.Unknown, ex.Message); }
@@ -160,20 +174,31 @@ public partial class MainViewModel
                     {
                         stopAfterCurrent = true;
                         cancelled++;
-                        notRun = effective.Length - targetIndex - 1;
+                        notRun = effective.Count - targetIndex - 1;
                     }
                     var final = ClassifyNativeResult(pending, result);
+                    var deleted = IsCompletedDeletion(final);
                     var finalEntry = pendingEntry with { Revision = checked(pendingEntry.Revision + 1),
                         Presence = final.State == LibraryOperationState.Restored ? LibraryFilePresence.Available :
                             final.State == LibraryOperationState.Trashed ? LibraryFilePresence.Missing : pendingEntry.Presence,
                         PresenceProbedAtUtc = final.MoveConfirmed ? DateTime.UtcNow : pendingEntry.PresenceProbedAtUtc };
-                    var finalLibrary = _library.WithVideos(_library.Videos.Select(value => value.Id == entry.Id ? finalEntry : value));
-                    finalLibrary.Journal = finalLibrary.Journal.Select(record => record.OperationId == pending.OperationId ? final : record).ToList();
+                    var finalLibrary = deleted ? WithoutLibraryEntries(_library, new[] { entry.Id }) :
+                        _library.WithVideos(_library.Videos.Select(value => value.Id == entry.Id ? finalEntry : value));
+                    if (!deleted)
+                        finalLibrary.Journal = finalLibrary.Journal.Select(record => record.OperationId == pending.OperationId ? final : record).ToList();
                     try
                     {
                         await _libraryStore.SaveAsync(finalLibrary, CancellationToken.None);
-                        EnsureCurrentLease(lease); _library = finalLibrary; item.Revision = finalEntry.Revision;
+                        EnsureCurrentLease(lease); _library = finalLibrary;
                         _unsavedNativeRecords.Remove(entry.Id);
+                        if (deleted)
+                        {
+                            RemoveDeletedGalleryItem(item);
+                            recycledPaths.Add(absolute);
+                            successes.Add(entry.Id);
+                            continue;
+                        }
+                        item.Revision = finalEntry.Revision;
                         ApplyJournalToItem(item, final);
                         if (IsCompletedNativeIntent(final))
                         {
@@ -195,10 +220,11 @@ public partial class MainViewModel
                 catch (Exception ex) { errors.Add($"{entry.Meta.Title}: {ex.Message}"); }
                 if (stopAfterCurrent) break;
             }
+            var action = deletesEntries ? "삭제" : recyclesFiles ? "휴지통 이동" : "복원";
             if (successes.Count > 0 && !undo)
-                AddGalleryHistory(new GalleryHistoryItem { Summary = intent == LibraryOperationIntent.Recycle ? "휴지통 이동" : "복원",
+                AddGalleryHistory(new GalleryHistoryItem { Summary = action,
                     Intent = intent, Count = successes.Count, EntryIds = successes.ToArray() });
-            if (successes.Count > 0) ShowGalleryToast($"{successes.Count}개 {(intent == LibraryOperationIntent.Recycle ? "휴지통 이동" : "복원")} 완료" + (errors.Count > 0 ? $" · {errors.Count}개 확인 필요" : string.Empty));
+            if (successes.Count > 0) ShowGalleryToast($"{successes.Count}개 {action} 완료" + (errors.Count > 0 ? $" · {errors.Count}개 확인 필요" : string.Empty));
             var summary = $"완료 {successes.Count}개 · 취소 {cancelled}개 · 미실행 {notRun}개";
             StatusMessage = errors.Count > 0 ? summary + " · 작업 실패 또는 확인 필요: " + string.Join(" / ", errors) : summary;
             if (errors.Count == 0 && successes.Count > 0) InspectedVideo = null;
@@ -211,34 +237,79 @@ public partial class MainViewModel
         }
     }
 
-    private async Task ValidateNativeTargetAsync(VideoItem item, VideoEntry entry, LibraryMutationLease lease)
+    private static bool ProbeDeletionFile(string path)
+    {
+        try
+        {
+            if (File.GetAttributes(path).HasFlag(FileAttributes.Directory)) throw new IOException("영상 경로에 폴더가 있습니다.");
+            return true;
+        }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException)
+        {
+            // An unavailable drive or share does not establish that the file is missing.
+            var root = Path.GetPathRoot(path);
+            if (string.IsNullOrEmpty(root)) throw;
+            _ = File.GetAttributes(root);
+            return false;
+        }
+    }
+
+    private async Task<bool> ProbeNativeTargetAsync(VideoItem item, VideoEntry entry, LibraryMutationLease lease)
     {
         EnsureCurrentLease(lease);
         var target = CreateDeletionTarget(item);
-        if (item.Presence != VideoPresenceState.Available || _library.IsInRecycleBin(entry.Id)) throw new IOException("영상 파일이 없거나 이동 기록 확인이 필요합니다.");
+        if (_library.IsInRecycleBin(entry.Id) || _unsavedNativeRecords.ContainsKey(entry.Id))
+            throw new IOException("확인이 필요한 이동 기록이 있어 다시 실행할 수 없습니다.");
         var exists = await Task.Run(() => _deletionFileProbe(target.AbsolutePath));
         EnsureCurrentLease(lease);
-        if (!exists || !IsValidDeletionIdentity(target) || _library.Videos.SingleOrDefault(value => value.Id == entry.Id)?.Revision != entry.Revision)
-            throw new IOException("대상 항목이나 파일 경로가 변경되었거나 파일이 없습니다.");
+        if (!IsValidDeletionIdentity(target) || _library.Videos.SingleOrDefault(value => value.Id == entry.Id)?.Revision != entry.Revision)
+            throw new IOException("대상 항목이나 파일 경로가 변경되었습니다.");
+        return exists;
     }
 
+    private async Task VerifyNativeTargetAsync(VideoItem item, VideoEntry entry, LibraryMutationLease lease, bool fileExpected)
+    {
+        if (await ProbeNativeTargetAsync(item, entry, lease) != fileExpected)
+            throw new IOException("파일 상태가 변경되었습니다. 대상을 확인하고 다시 시도해 주세요.");
+    }
+
+    private static LibraryData WithoutLibraryEntries(LibraryData library, IEnumerable<Guid> entryIds)
+    {
+        var ids = entryIds.ToHashSet();
+        var candidate = library.WithVideos(library.Videos.Where(entry => !ids.Contains(entry.Id)));
+        candidate.Journal.RemoveAll(record => ids.Contains(record.EntryId));
+        return candidate;
+    }
+
+    private void RemoveDeletedGalleryItem(VideoItem item)
+    {
+        RemoveFromMetadataQueue(LibraryPathHelper.NormalizeLibraryPath(item.LibraryPath));
+        _videoIndex.Remove(item.Id);
+        Videos.Remove(item);
+    }
+
+    private static bool IsCompletedDeletion(LibraryJournalEntry record) =>
+        record is { Intent: LibraryOperationIntent.Delete, State: LibraryOperationState.Trashed };
+
     private static bool IsCompletedNativeIntent(LibraryJournalEntry record) =>
-        record.Intent == LibraryOperationIntent.Recycle ? record.State == LibraryOperationState.Trashed : record.State == LibraryOperationState.Restored;
+        record.Intent == LibraryOperationIntent.Restore ? record.State == LibraryOperationState.Restored : record.State == LibraryOperationState.Trashed;
 
     private static LibraryJournalEntry ClassifyNativeResult(LibraryJournalEntry pending, VideoRecycleResult result)
     {
         var exact = result.Outcome == VideoRecycleOutcome.Succeeded && result.MovementConfirmed && !string.IsNullOrWhiteSpace(result.Receipt);
-        var state = exact ? pending.Intent == LibraryOperationIntent.Recycle ? LibraryOperationState.Trashed : LibraryOperationState.Restored :
+        var state = exact ? pending.Intent == LibraryOperationIntent.Restore ? LibraryOperationState.Restored : LibraryOperationState.Trashed :
             result.Outcome == VideoRecycleOutcome.Succeeded && result.MovementConfirmed ? LibraryOperationState.RepairRequired :
             result.Outcome is VideoRecycleOutcome.Failed or VideoRecycleOutcome.Cancelled && result.SideEffectsKnownAbsent ?
-                pending.Intent == LibraryOperationIntent.Recycle ? LibraryOperationState.Failed : LibraryOperationState.Trashed : LibraryOperationState.Uncertain;
+                pending.Intent == LibraryOperationIntent.Restore ? LibraryOperationState.Trashed : LibraryOperationState.Failed : LibraryOperationState.Uncertain;
         return pending with
         {
             State = state, Outcome = result.Outcome.ToString(), Reason = result.Reason, NativeDiagnostics = result.Diagnostics,
             ReceiptJson = result.Receipt ?? pending.ReceiptJson,
             ObservedDestinationPath = result.RecycledPath ?? result.ObservedDestinationPath,
             MoveConfirmed = result.MovementConfirmed,
-            RestoreAvailable = exact || (pending.Intent == LibraryOperationIntent.Restore && state == LibraryOperationState.Trashed && pending.RestoreAvailable)
+            RestoreAvailable = (exact && pending.Intent != LibraryOperationIntent.Delete) ||
+                (pending.Intent == LibraryOperationIntent.Restore && state == LibraryOperationState.Trashed && pending.RestoreAvailable)
         };
     }
 
@@ -259,6 +330,7 @@ public partial class MainViewModel
         {
             var candidate = _library.WithVideos(_library.Videos);
             var recovered = new List<LibraryJournalEntry>();
+            var deletedIds = new HashSet<Guid>();
             foreach (var item in items.DistinctBy(item => item.Id))
             {
                 var durable = candidate.LatestOperation(item.Id);
@@ -266,24 +338,33 @@ public partial class MainViewModel
                 var evidence = _unsavedNativeRecords.GetValueOrDefault(item.Id) ?? durable;
                 var inspection = await _videoRecycleService.InspectAsync(LibraryPathHelper.ResolveToAbsolute(durable.OriginalPath), evidence.ReceiptJson);
                 var updated = ReconcileInspection(evidence, inspection);
+                if (IsCompletedDeletion(updated)) deletedIds.Add(item.Id);
                 if (_unsavedNativeRecords.ContainsKey(item.Id) && IsCompletedNativeIntent(updated))
                     recovered.Add(updated);
                 candidate.Journal = candidate.Journal.Select(record => record.OperationId == durable.OperationId ? updated with { OperationId = durable.OperationId } : record).ToList();
             }
+            if (deletedIds.Count > 0) candidate = WithoutLibraryEntries(candidate, deletedIds);
             await _libraryStore.SaveAsync(candidate, CancellationToken.None);
             EnsureCurrentLease(lease); _library = candidate;
-            foreach (var item in items)
+            foreach (var item in items.DistinctBy(item => item.Id))
             {
+                _unsavedNativeRecords.Remove(item.Id);
+                if (deletedIds.Contains(item.Id)) { RemoveDeletedGalleryItem(item); continue; }
                 var record = candidate.LatestOperation(item.Id);
                 ApplyJournalToItem(item, record);
                 if (record?.State == LibraryOperationState.Restored) item.Presence = VideoPresenceState.Available;
                 if (record?.State == LibraryOperationState.Trashed) item.Presence = VideoPresenceState.Missing;
-                _unsavedNativeRecords.Remove(item.Id);
             }
             foreach (var group in recovered.GroupBy(record => record.Intent))
-                AddGalleryHistory(new GalleryHistoryItem { Summary = group.Key == LibraryOperationIntent.Recycle ? "휴지통 이동 결과 저장" : "복원 결과 저장",
+                AddGalleryHistory(new GalleryHistoryItem { Summary = group.Key switch
+                {
+                    LibraryOperationIntent.Delete => "삭제",
+                    LibraryOperationIntent.Recycle => "휴지통 이동 결과 저장",
+                    _ => "복원 결과 저장"
+                },
                     Intent = group.Key, Count = group.Count(), EntryIds = group.Select(record => record.EntryId).ToArray() });
-            RequestGalleryQuery(moveToTop: false); RefreshHistoryUndo(); StatusMessage = "이동·복원 기록을 재검사했습니다.";
+            RequestGalleryQuery(moveToTop: false); RefreshHistoryUndo();
+            StatusMessage = deletedIds.Count > 0 ? $"{deletedIds.Count}개 삭제 완료" : "이동·복원 기록을 재검사했습니다.";
         }
         finally { IsSaving = false; ReleaseLibraryMutation(lease); }
     }
@@ -296,7 +377,7 @@ public partial class MainViewModel
                 LibraryOperationState.RepairRequired : LibraryOperationState.Uncertain;
         return record with { State = state, InspectionReason = inspection.Reason,
             MoveConfirmed = record.MoveConfirmed || state is LibraryOperationState.Trashed or LibraryOperationState.Restored,
-            RestoreAvailable = state == LibraryOperationState.Trashed && !string.IsNullOrWhiteSpace(record.ReceiptJson) };
+            RestoreAvailable = state == LibraryOperationState.Trashed && hasReceipt && record.Intent != LibraryOperationIntent.Delete };
     }
     private async Task<LibraryData> RecoverPendingJournalAsync(LibraryData library)
     {
@@ -304,14 +385,17 @@ public partial class MainViewModel
             record.State is LibraryOperationState.Pending or LibraryOperationState.RestorePending or LibraryOperationState.Uncertain).ToArray();
         if (pending.Length == 0) return library;
         var candidate = library.WithVideos(library.Videos);
+        var deletedIds = new HashSet<Guid>();
         foreach (var record in pending)
         {
             VideoRecycleInspection inspection;
             try { inspection = await _videoRecycleService.InspectAsync(LibraryPathHelper.ResolveToAbsolute(record.OriginalPath), record.ReceiptJson); }
             catch (Exception ex) { inspection = new(VideoFileEvidence.Unknown, VideoFileEvidence.Unknown, ex.Message); }
             var reconciled = ReconcileInspection(record, inspection);
+            if (IsCompletedDeletion(reconciled)) deletedIds.Add(record.EntryId);
             candidate.Journal = candidate.Journal.Select(value => value.OperationId == record.OperationId ? reconciled : value).ToList();
         }
+        if (deletedIds.Count > 0) candidate = WithoutLibraryEntries(candidate, deletedIds);
         try { await _libraryStore.SaveAsync(candidate, CancellationToken.None); return candidate; }
         catch (Exception ex) { AppLogger.Error("Pending journal recovery could not be saved; durable pending state retained.", ex); return library; }
     }

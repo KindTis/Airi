@@ -93,6 +93,7 @@ public sealed class WindowVisualStyleTests
     [Theory]
     [InlineData(LibraryOperationIntent.Recycle)]
     [InlineData(LibraryOperationIntent.Restore)]
+    [InlineData(LibraryOperationIntent.Delete)]
     public Task GalleryOperationDialog_UsesFullValuesAndCancelDefaultWithoutShowing(LibraryOperationIntent intent) => WpfTestHost.RunAsync(async () =>
     {
         using var fixture = new VideoDeletionFixture();
@@ -103,7 +104,12 @@ public sealed class WindowVisualStyleTests
         var dialog = window.CreateGalleryOperationDialog(new GalleryOperationConfirmation(intent, new[] { title }) { Paths = new[] { path } });
         try
         {
-            Assert.Equal(intent == LibraryOperationIntent.Restore ? "영상을 복원할까요?" : "휴지통으로 이동할까요?", dialog.Title);
+            Assert.Equal(intent switch
+            {
+                LibraryOperationIntent.Delete => "선택한 항목을 삭제할까요?",
+                LibraryOperationIntent.Restore => "영상을 복원할까요?",
+                _ => "휴지통으로 이동할까요?"
+            }, dialog.Title);
             Assert.Null(dialog.Owner);
             Assert.Empty(dialog.Resources.MergedDictionaries);
             Assert.Same(Application.Current!.FindResource("GalleryText"), dialog.Foreground);
@@ -112,7 +118,13 @@ public sealed class WindowVisualStyleTests
             Assert.Contains(title, texts);
             Assert.Contains(path, texts);
             Assert.Contains("대상 1개", texts);
-            Assert.Contains(texts, text => text.Contains(intent == LibraryOperationIntent.Restore ? "원래 경로로 복원" : "메타데이터는 앱에서 보존", StringComparison.Ordinal));
+            var expectedMessage = intent switch
+            {
+                LibraryOperationIntent.Delete => "라이브러리에서 삭제",
+                LibraryOperationIntent.Restore => "원래 경로로 복원",
+                _ => "메타데이터는 앱에서 보존"
+            };
+            Assert.Contains(texts, text => text.Contains(expectedMessage, StringComparison.Ordinal));
             var buttons = FindDescendants<Button>(dialog).ToArray();
             var cancel = Assert.Single(buttons, button => Equals(button.Content, "취소"));
             Assert.True(cancel.IsDefault);

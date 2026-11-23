@@ -8,7 +8,7 @@ namespace Airi.Domain;
 
 public enum MetadataField { Title, Date, Actors, Thumbnail, Tags, Description, Studio, Genres }
 public enum LibraryFilePresence { Checking, Available, Missing }
-public enum LibraryOperationIntent { Recycle, Restore }
+public enum LibraryOperationIntent { Recycle, Restore, Delete }
 public enum LibraryOperationState { Pending, Trashed, RestorePending, Restored, Uncertain, RepairRequired, Failed }
 
 public record VideoMeta(

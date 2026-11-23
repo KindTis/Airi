@@ -61,8 +61,8 @@ public partial class MainViewModel
         });
         ApplyChangesCommand = new RelayCommand(_ => StartGalleryAction(ApplyGalleryChangesAsync), _ => CanSaveGalleryDraft());
         CancelEditCommand = new RelayCommand(_ => CancelGalleryEdit(), _ => IsEditing && !IsSaving);
-        DeleteCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRecycleAsync(CaptureGalleryTargets(), false)));
-        DeleteInspectedCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRecycleAsync(CaptureGalleryTargets(true), false)));
+        DeleteCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryNativeAsync(CaptureGalleryTargets(), LibraryOperationIntent.Delete, false)));
+        DeleteInspectedCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryNativeAsync(CaptureGalleryTargets(true), LibraryOperationIntent.Delete, false)));
         RestoreCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRestoreAsync(CaptureGalleryTargets(), false)),
             _ => CanMutateLibrary && !IsEditing && CaptureGalleryTargets().Any(item => item.CanRestore));
         RestoreInspectedCommand = new RelayCommand(_ => StartGalleryAction(() => RunGalleryRestoreAsync(CaptureGalleryTargets(true), false)),
@@ -349,12 +349,13 @@ public partial class MainViewModel
         var latest = ChangeHistory.FirstOrDefault(item => !item.IsUndone);
         foreach (var item in ChangeHistory)
         {
-            var validState = item.Intent is null ? item.EntryIds.All(id => !_library.IsInRecycleBin(id)) :
-                item.EntryIds.All(id => !_unsavedNativeRecords.ContainsKey(id) &&
+            var validState = item.Intent is null ? item.EntryIds.All(id => _videoIndex.ContainsKey(id) && !_library.IsInRecycleBin(id)) :
+                item.Intent != LibraryOperationIntent.Delete && item.EntryIds.All(id => !_unsavedNativeRecords.ContainsKey(id) &&
                     _library.LatestOperation(id) is { } record &&
                     (item.Intent == LibraryOperationIntent.Recycle ? record.State == LibraryOperationState.Trashed && record.RestoreAvailable : record.State == LibraryOperationState.Restored));
             item.CanUndo = ReferenceEquals(item, latest) && validState;
-            if (ReferenceEquals(item, latest) && !validState) item.Error = "대상 상태 확인이 필요합니다. 휴지통에서 재검사해 주세요.";
+            if (ReferenceEquals(item, latest) && !validState && item.Intent != LibraryOperationIntent.Delete)
+                item.Error = "대상 상태 확인이 필요합니다. 휴지통에서 재검사해 주세요.";
         }
         UndoCommand?.RaiseCanExecuteChanged();
         PropertyChanged?.Invoke(this, new(nameof(ToastUndoAvailable)));

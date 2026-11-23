@@ -205,7 +205,7 @@ namespace Airi.ViewModels
         {
             _libraryStore = libraryStore ?? throw new ArgumentNullException(nameof(libraryStore));
             _videoRecycleService = recycleService ?? new WindowsVideoRecycleService();
-            _deletionFileProbe = deletionFileProbe ?? (path => File.Exists(path) && !Directory.Exists(path));
+            _deletionFileProbe = deletionFileProbe ?? ProbeDeletionFile;
             _settingsStore = settingsStore ?? new SettingsStore(_libraryStore.FilePath);
             _libraryScanner = libraryScanner ?? throw new ArgumentNullException(nameof(libraryScanner));
             _webMetadataService = webMetadataService ?? throw new ArgumentNullException(nameof(webMetadataService));

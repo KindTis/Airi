@@ -12,6 +12,95 @@ namespace Airi.Tests;
 public sealed class VideoDeletionTests
 {
     [Fact]
+    public Task DeleteCommand_MixedSelectionRecyclesOnlyExistingFilesAndRemovesBothEntries() => WpfTestHost.RunAsync(async () =>
+    {
+        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync();
+        var existing = vm.Videos.Single(item => item.Title == "Title 0");
+        var missing = vm.Videos.Single(item => item.Title == "Title 1");
+        var untouched = vm.Videos.Single(item => item.Title == "Title 2");
+        File.Delete(missing.SourcePath);
+        missing.Presence = VideoPresenceState.Missing;
+        existing.IsChecked = true;
+        missing.IsChecked = true;
+
+        var confirmations = new List<GalleryOperationConfirmation>();
+        vm.ConfirmOperationAsync = confirmation =>
+        {
+            confirmations.Add(confirmation);
+            return Task.FromResult(true);
+        };
+        f.Recycler.Override = async path =>
+        {
+            var pending = await f.Store.LoadAsync();
+            Assert.Contains(pending.Videos, entry => entry.Id == existing.Id);
+            Assert.Equal(LibraryOperationState.Pending, pending.LatestOperation(existing.Id)?.State);
+            File.Move(path, path + ".test-recycled");
+            return new VideoRecycleResult(VideoRecycleOutcome.Succeeded) { Receipt = "fake:" + path, MovementConfirmed = true };
+        };
+
+        vm.DeleteCommand.Execute(null);
+        await vm.GalleryActionTask;
+        await VideoDeletionFixture.WaitForQueryAsync(vm);
+
+        var confirmed = Assert.Single(confirmations);
+        Assert.Equal(LibraryOperationIntent.Delete, confirmed.Intent);
+        Assert.Equal(new[] { existing.Title, missing.Title }, confirmed.Titles);
+        Assert.Equal(existing.SourcePath, Assert.Single(f.Recycler.Paths));
+        Assert.False(File.Exists(existing.SourcePath));
+        Assert.True(File.Exists(existing.SourcePath + ".test-recycled"));
+        Assert.True(File.Exists(untouched.SourcePath));
+        Assert.Same(untouched, Assert.Single(vm.Videos));
+        Assert.Same(untouched, Assert.Single(vm.FilteredVideos.Cast<VideoItem>()));
+        var saved = await f.Store.LoadAsync();
+        Assert.Equal(untouched.Id, Assert.Single(saved.Videos).Id);
+        Assert.Empty(saved.Journal);
+        Assert.False(Assert.Single(vm.ChangeHistory).CanUndo);
+    });
+
+    [Fact]
+    public Task DeleteInspectedCommand_MissingFileKeepsEntryOnSaveFailureAndCanRetry() => WpfTestHost.RunAsync(async () =>
+    {
+        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync();
+        var item = vm.SelectedVideo!;
+        File.Delete(item.SourcePath);
+        item.Presence = VideoPresenceState.Missing;
+        vm.InspectCommand.Execute(item);
+        vm.ConfirmOperationAsync = _ => Task.FromResult(true);
+
+        f.FailSave = true;
+        vm.DeleteInspectedCommand.Execute(null);
+        await vm.GalleryActionTask;
+        Assert.Contains(item, vm.Videos);
+        Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
+        Assert.Contains("실패", vm.StatusMessage);
+
+        f.FailSave = false;
+        vm.DeleteInspectedCommand.Execute(null);
+        await vm.GalleryActionTask;
+        Assert.DoesNotContain(item, vm.Videos);
+        Assert.DoesNotContain((await f.Store.LoadAsync()).Videos, entry => entry.Id == item.Id);
+        Assert.Empty(f.Recycler.Paths);
+    });
+
+    [Fact]
+    public Task DeleteCommand_SharedFileIsRecycledOnceAndBothSelectedEntriesAreRemoved() => WpfTestHost.RunAsync(async () =>
+    {
+        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync(duplicatePath: true);
+        var sharedPath = vm.SelectedVideo!.SourcePath;
+        foreach (var item in vm.Videos.Where(item => item.SourcePath == sharedPath)) item.IsChecked = true;
+        vm.ConfirmOperationAsync = _ => Task.FromResult(true);
+
+        vm.DeleteCommand.Execute(null);
+        await vm.GalleryActionTask;
+
+        Assert.Equal(sharedPath, Assert.Single(f.Recycler.Paths));
+        Assert.Equal("Title 2", Assert.Single(vm.Videos).Title);
+        var saved = await f.Store.LoadAsync();
+        Assert.Equal("Title 2", Assert.Single(saved.Videos).Meta.Title);
+        Assert.Empty(saved.Journal);
+    });
+
+    [Fact]
     public Task CancelMissingAndBusy_DoNotRecycleOrSave() => WpfTestHost.RunAsync(async () =>
     {
         using var f = new VideoDeletionFixture();
@@ -19,9 +108,11 @@ public sealed class VideoDeletionTests
         var item = vm.SelectedVideo!;
         await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(false), _ => throw new Exception("stop"));
         Assert.Same(item, vm.SelectedVideo);
+        File.Delete(item.SourcePath);
         item.Presence = VideoPresenceState.Missing;
-        await vm.DeleteSelectedVideoAsync(_ => throw new Exception("confirm"), _ => Task.CompletedTask);
-        item.Presence = VideoPresenceState.Available;
+        var confirmed = false;
+        await vm.DeleteSelectedVideoAsync(_ => { confirmed = true; return Task.FromResult(false); }, _ => Task.CompletedTask);
+        Assert.True(confirmed);
         var lease = vm.TryBeginLibraryMutation(LibraryMutationOwner.EditorSave)!;
         await vm.DeleteSelectedVideoAsync(_ => throw new Exception("confirm"), _ => Task.CompletedTask);
         vm.ReleaseLibraryMutation(lease);
@@ -84,19 +175,19 @@ public sealed class VideoDeletionTests
         await task;
         Assert.Equal(new[] { target.SourcePath }, f.Recycler.Paths);
         await VideoDeletionFixture.WaitForQueryAsync(vm);
-        Assert.Contains(target, vm.Videos);
+        Assert.DoesNotContain(target, vm.Videos);
         Assert.DoesNotContain(target, vm.FilteredVideos.Cast<VideoItem>());
         Assert.Same(next, vm.SelectedVideo);
         using var json = JsonDocument.Parse(await File.ReadAllTextAsync(f.Store.FilePath));
         var entries = json.RootElement.GetProperty("Videos").EnumerateArray().ToList();
-        Assert.Equal(3, entries.Count);
-        Assert.Contains(entries, entry => entry.GetProperty("Id").GetGuid() == target.Id);
-        Assert.Equal("Trashed", Assert.Single(json.RootElement.GetProperty("Journal").EnumerateArray()).GetProperty("State").GetString());
+        Assert.Equal(2, entries.Count);
+        Assert.DoesNotContain(entries, entry => entry.GetProperty("Id").GetGuid() == target.Id);
+        Assert.Empty(json.RootElement.GetProperty("Journal").EnumerateArray());
         Assert.All(entries, entry => Assert.Equal("preserved description", entry.GetProperty("Meta").GetProperty("Description").GetString()));
         Assert.True(File.Exists(f.SidecarPath));
         Assert.True(File.Exists(f.ThumbnailPath));
         var reloaded = await f.Store.LoadAsync();
-        Assert.Equal(3, reloaded.Videos.Count);
+        Assert.Equal(2, reloaded.Videos.Count);
         Assert.True(vm.CanMutateLibrary);
     });
 
@@ -149,6 +240,7 @@ public sealed class VideoDeletionTests
         Assert.False(File.Exists(item.SourcePath)); Assert.Single(f.Recycler.Paths);
         var persisted = await f.Store.LoadAsync();
         var pending = Assert.Single(persisted.Journal);
+        Assert.Equal(LibraryOperationIntent.Delete, pending.Intent);
         Assert.Equal(LibraryOperationState.Pending, pending.State); Assert.Null(pending.ReceiptJson); Assert.Null(pending.NativeDiagnostics);
         Assert.Equal(3, persisted.Videos.Count); Assert.Empty(vm.ChangeHistory);
         Assert.Contains("저장 실패", vm.StatusMessage);
@@ -158,9 +250,12 @@ public sealed class VideoDeletionTests
         f.FailFinalSave = false;
         vm.CurrentGalleryView = GalleryView.Trash; await VideoDeletionFixture.WaitForQueryAsync(vm);
         vm.SelectedVideo = item; vm.ReinspectCommand.Execute(null); await vm.GalleryActionTask;
-        Assert.Equal(LibraryOperationState.Trashed, (await f.Store.LoadAsync()).LatestOperation(item.Id)!.State);
-        Assert.True(item.CanRestore); Assert.Single(vm.ChangeHistory); Assert.Single(f.Recycler.Paths);
-        Assert.Equal("session diagnostics", (await f.Store.LoadAsync()).LatestOperation(item.Id)!.NativeDiagnostics);
+        var recovered = await f.Store.LoadAsync();
+        Assert.DoesNotContain(recovered.Videos, entry => entry.Id == item.Id);
+        Assert.Empty(recovered.Journal);
+        Assert.DoesNotContain(item, vm.Videos);
+        Assert.False(Assert.Single(vm.ChangeHistory).CanUndo);
+        Assert.Single(f.Recycler.Paths);
     });
 
     [Fact]
@@ -215,22 +310,27 @@ public sealed class VideoDeletionTests
         vm.ClearFiltersCommand.Execute(null); await VideoDeletionFixture.WaitForQueryAsync(vm);
         await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(true), _ => Task.CompletedTask);
         await VideoDeletionFixture.WaitForQueryAsync(vm);
-        Assert.Null(vm.SelectedVideo); Assert.Equal(0, vm.NormalCount); Assert.Equal(3, vm.TrashCount);
-        Assert.Equal(3, vm.Videos.Count);
+        Assert.Null(vm.SelectedVideo); Assert.Equal(0, vm.NormalCount); Assert.Equal(0, vm.TrashCount);
+        Assert.Empty(vm.Videos);
     });
 
     [Fact]
-    public Task ReceiptSuccess_RestoreRoundTripAndSessionUndoPreserveMetadataAndSidecars() => WpfTestHost.RunAsync(async () =>
+    public Task LegacyTrash_RestoreAndSessionUndoPreserveMetadataAndSidecars() => WpfTestHost.RunAsync(async () =>
     {
-        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync();
+        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync(legacyTrashCount: 1);
         vm.ConfirmOperationAsync = _ => Task.FromResult(true);
-        var item = vm.SelectedVideo!; var bytes = await File.ReadAllBytesAsync(item.SourcePath);
-        await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(true), _ => Task.CompletedTask);
+        vm.CurrentGalleryView = GalleryView.Trash;
         await VideoDeletionFixture.WaitForQueryAsync(vm);
+        var item = Assert.Single(vm.FilteredVideos.Cast<VideoItem>());
+        var bytes = await File.ReadAllBytesAsync(item.SourcePath + ".test-recycled");
+        vm.SelectedVideo = item;
+        vm.RestoreCommand.Execute(null); await vm.GalleryActionTask;
         Assert.Single(vm.ChangeHistory); Assert.True(vm.ChangeHistory[0].CanUndo);
-        vm.UndoCommand.Execute(null); await vm.GalleryActionTask; await VideoDeletionFixture.WaitForQueryAsync(vm);
         Assert.Equal(bytes, await File.ReadAllBytesAsync(item.SourcePath));
         Assert.Equal(LibraryOperationState.Restored, (await f.Store.LoadAsync()).LatestOperation(item.Id)!.State);
+        vm.UndoCommand.Execute(null); await vm.GalleryActionTask; await VideoDeletionFixture.WaitForQueryAsync(vm);
+        Assert.False(File.Exists(item.SourcePath));
+        Assert.Equal(LibraryOperationState.Trashed, (await f.Store.LoadAsync()).LatestOperation(item.Id)!.State);
         Assert.True(File.Exists(f.SidecarPath)); Assert.True(File.Exists(f.ThumbnailPath));
         Assert.Equal("preserved description", item.Description); Assert.False(vm.ChangeHistory[0].CanUndo);
     });
@@ -312,8 +412,8 @@ public sealed class VideoDeletionTests
     [Fact]
     public Task RestartWithReceipt_RestoresExactCanonicalIdentityAndKeepsMetadata() => WpfTestHost.RunAsync(async () =>
     {
-        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(); var item = vm.SelectedVideo!; var id = item.Id;
-        await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(true), _ => Task.CompletedTask);
+        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(legacyTrashCount: 1);
+        var item = vm.Videos.Single(video => video.IsInRecycleBin); var id = item.Id;
         vm.Dispose(); using var reopened = await f.ReopenAsync();
         reopened.CurrentGalleryView = GalleryView.Trash; await VideoDeletionFixture.WaitForQueryAsync(reopened);
         var restoredItem = Assert.Single(reopened.FilteredVideos.Cast<VideoItem>()); Assert.Equal(id, restoredItem.Id);
@@ -328,12 +428,16 @@ public sealed class VideoDeletionTests
     {
         using var f = new VideoDeletionFixture(); var source = new DelayedSource();
         using var vm = await f.CreateAsync(metadataSources: new[] { source });
-        vm.FetchMetadataCommand.Execute(null); await source.Started.Task;
+        vm.FetchMetadataCommand.Execute(null);
+        await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(vm.IsEditing); Assert.True(vm.IsFetchingDraft); Assert.False(vm.IsSaving);
+        vm.FetchMetadataCommand.Execute(null);
+        Assert.Equal(1, source.Calls);
         vm.CancelEditCommand.Execute(null);
         source.Release.TrySetResult(new WebVideoMetaResult(new VideoMeta("proposal", null, [], "", [], "incoming"),
             await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "resources", "noimage.jpg")), ".jpg"));
         await vm.GalleryActionTask;
+        Assert.Equal(1, source.Calls);
         Assert.False(vm.IsEditing); Assert.Equal(f.InitialJson, await File.ReadAllTextAsync(f.Store.FilePath));
         Assert.Empty(Directory.GetFiles(Path.Combine(f.Root, "cache"))); Assert.Empty(vm.ChangeHistory);
     });
@@ -376,9 +480,9 @@ public sealed class VideoDeletionTests
         };
         vm.DeleteCommand.Execute(null); await vm.GalleryActionTask;
         Assert.Equal(2, f.Recycler.Paths.Count);
-        var stored = await f.Store.LoadAsync(); Assert.Equal(2, stored.Journal.Count);
-        Assert.Equal(LibraryOperationState.Trashed, stored.Journal[0].State);
-        Assert.Equal(LibraryOperationState.Failed, stored.Journal[1].State);
+        var stored = await f.Store.LoadAsync();
+        Assert.Equal(2, stored.Videos.Count);
+        Assert.Equal(LibraryOperationState.Failed, Assert.Single(stored.Journal).State);
         Assert.Equal(1, Assert.Single(vm.ChangeHistory).Count);
         Assert.Contains("완료 1개", vm.StatusMessage); Assert.Contains("취소 1개", vm.StatusMessage); Assert.Contains("미실행 1개", vm.StatusMessage);
     });
@@ -429,10 +533,7 @@ public sealed class VideoDeletionTests
     [Fact]
     public Task BatchRestoreCancellation_StopsRemainingCallsAndDoesNotCountStillTrashedAsRestored() => WpfTestHost.RunAsync(async () =>
     {
-        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync();
-        vm.ConfirmOperationAsync = _ => Task.FromResult(true);
-        foreach (var item in vm.Videos) item.IsChecked = true;
-        vm.DeleteCommand.Execute(null); await vm.GalleryActionTask;
+        using var f = new VideoDeletionFixture(); using var vm = await f.CreateAsync(legacyTrashCount: 3);
         vm.CurrentGalleryView = GalleryView.Trash; await VideoDeletionFixture.WaitForQueryAsync(vm);
         foreach (var item in vm.Videos) item.IsChecked = true;
         var attempts = 0;
@@ -453,9 +554,9 @@ public sealed class VideoDeletionTests
     [Fact]
     public Task ExactReceiptExternalRestore_ReinspectionPersistsRecycleIntentWithRestoredStateAndSameIdAcrossRestart() => WpfTestHost.RunAsync(async () =>
     {
-        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(); var item = vm.SelectedVideo!;
-        var id = item.Id; var bytes = await File.ReadAllBytesAsync(item.SourcePath);
-        await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(true), _ => Task.CompletedTask);
+        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(legacyTrashCount: 1);
+        var item = vm.Videos.Single(video => video.IsInRecycleBin);
+        var id = item.Id; var bytes = await File.ReadAllBytesAsync(item.SourcePath + ".test-recycled");
         File.Move(item.SourcePath + ".test-recycled", item.SourcePath);
         Assert.Equal(bytes, await File.ReadAllBytesAsync(item.SourcePath));
         vm.CurrentGalleryView = GalleryView.Trash; await VideoDeletionFixture.WaitForQueryAsync(vm);
@@ -477,8 +578,8 @@ public sealed class VideoDeletionTests
     [InlineData(VideoFileEvidence.PresentUnverified)]
     public Task ExistingButUnconfirmedExternalSource_RemainsUncertainAcrossRestart(VideoFileEvidence evidence) => WpfTestHost.RunAsync(async () =>
     {
-        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(); var item = vm.SelectedVideo!; var id = item.Id;
-        await vm.DeleteSelectedVideoAsync(_ => Task.FromResult(true), _ => Task.CompletedTask);
+        using var f = new VideoDeletionFixture(); var vm = await f.CreateAsync(legacyTrashCount: 1);
+        var item = vm.Videos.Single(video => video.IsInRecycleBin); var id = item.Id;
         File.Move(item.SourcePath + ".test-recycled", item.SourcePath);
         await File.WriteAllBytesAsync(item.SourcePath, new byte[] { 9, 9, 9, 9 });
         f.Recycler.InspectOverride = (_, _) => Task.FromResult(new VideoRecycleInspection(evidence, VideoFileEvidence.Missing, "unconfirmed source"));
@@ -547,6 +648,24 @@ internal sealed class VideoDeletionFixture : IDisposable
         await File.WriteAllTextAsync(SidecarPath, "test subtitle");
         await File.WriteAllTextAsync(ThumbnailPath, "test thumbnail");
         if (duplicatePath) library.Videos[1] = library.Videos[1] with { Path = library.Videos[0].Path };
+        for (var i = 0; i < legacyTrashCount; i++)
+        {
+            var snapshot = library.Videos[i];
+            var result = await Recycler.RecycleAsync(LibraryPathHelper.ResolveToAbsolute(snapshot.Path));
+            library.Videos[i] = snapshot with { Revision = 2, Presence = LibraryFilePresence.Missing };
+            library.Journal.Add(new LibraryJournalEntry
+            {
+                EntryId = snapshot.Id,
+                BaseRevision = snapshot.Revision,
+                OriginalPath = snapshot.Path,
+                Snapshot = snapshot,
+                Intent = LibraryOperationIntent.Recycle,
+                State = LibraryOperationState.Trashed,
+                ReceiptJson = result.Receipt,
+                MoveConfirmed = true,
+                RestoreAvailable = true
+            });
+        }
         await Store.SaveAsync(library);
         var sources = metadataSources ?? Array.Empty<IWebVideoMetaSource>();
         var vm = new MainViewModel(Store, new Scanner(library), new WebMetadataService(sources,
@@ -558,7 +677,7 @@ internal sealed class VideoDeletionFixture : IDisposable
         vm.SelectedSortOption = vm.SortOptions.First(o => o.Field == MainViewModel.SortField.Title && o.Direction == System.ComponentModel.ListSortDirection.Ascending);
         await vm.SettingsSaveTask;
         await WaitForQueryAsync(vm);
-        vm.SelectedVideo = vm.FilteredVideos.Cast<VideoItem>().First();
+        vm.SelectedVideo = vm.FilteredVideos.Cast<VideoItem>().FirstOrDefault();
         return vm;
     }
 

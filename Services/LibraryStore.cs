@@ -204,11 +204,11 @@ namespace Airi.Services
                     !IsValidEntry(record.Snapshot) || record.Snapshot!.Id != record.EntryId || record.Snapshot.Revision != record.BaseRevision ||
                     !string.Equals(record.Snapshot.Path, record.OriginalPath, StringComparison.Ordinal) ||
                     (record.RestoreAvailable && string.IsNullOrWhiteSpace(record.ReceiptJson)) ||
-                    (record.State == LibraryOperationState.Pending && record.Intent != LibraryOperationIntent.Recycle) ||
+                    (record.State == LibraryOperationState.Pending && record.Intent == LibraryOperationIntent.Restore) ||
                     (record.State == LibraryOperationState.RestorePending && record.Intent != LibraryOperationIntent.Restore) ||
                     // Intent is the requested operation; exact inspection can observe an external restore after Recycle.
                     (record.State == LibraryOperationState.Restored && (!record.MoveConfirmed || string.IsNullOrWhiteSpace(record.ReceiptJson))) ||
-                    (record.State == LibraryOperationState.Failed && record.Intent != LibraryOperationIntent.Recycle))
+                    (record.State == LibraryOperationState.Failed && record.Intent == LibraryOperationIntent.Restore))
                     throw new JsonException("Library journal is invalid. The original file is preserved.");
             }
         }
